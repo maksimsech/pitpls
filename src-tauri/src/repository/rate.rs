@@ -26,7 +26,7 @@ impl RateRepository {
         for rate in rates {
             rows += 1;
             sqlx::query("INSERT OR REPLACE INTO rates(date, currency, rate) VALUES (?, ?, ?)")
-                .bind(rate.date.to_string())
+                .bind(rate.date)
                 .bind(serde_plain::to_string(&rate.currency)?)
                 .bind(rate.rate.to_string())
                 .execute(&mut *tx)
@@ -45,12 +45,12 @@ impl RateRepository {
 
         rows.into_iter()
             .map(|row| {
-                let date: String = row.try_get("date")?;
+                let date: NaiveDate = row.try_get("date")?;
                 let currency: String = row.try_get("currency")?;
                 let rate: String = row.try_get("rate")?;
 
                 Ok(RateExport {
-                    date: NaiveDate::parse_from_str(&date, "%Y-%m-%d")?,
+                    date,
                     currency: serde_plain::from_str(&currency)?,
                     rate: Decimal::from_str(&rate)?,
                 })

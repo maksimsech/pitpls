@@ -44,7 +44,7 @@ impl CryptoRepository {
                 ",
             )
             .bind(crypto.id.to_string())
-            .bind(crypto.date.to_string())
+            .bind(crypto.date)
             .bind(crypto.value.value.to_string())
             .bind(serde_plain::to_string(&crypto.value.currency)?)
             .bind(crypto.fee.value.to_string())
@@ -68,7 +68,7 @@ impl CryptoRepository {
                 WHERE id = ?
             ",
         )
-        .bind(c.date.to_string())
+        .bind(c.date)
         .bind(c.value.value.to_string())
         .bind(serde_plain::to_string(&c.value.currency)?)
         .bind(c.fee.value.to_string())
@@ -87,8 +87,8 @@ impl CryptoRepository {
         let rows = match year {
             None => sqlx::query(BASE).fetch_all(&self.db).await?,
             Some(y) => sqlx::query(&format!("{BASE} WHERE date BETWEEN ? AND ?"))
-                .bind(format!("{y:04}-01-01"))
-                .bind(format!("{y:04}-12-31"))
+                .bind(NaiveDate::from_ymd_opt(y, 1, 1).unwrap())
+                .bind(NaiveDate::from_ymd_opt(y, 12, 31).unwrap())
                 .fetch_all(&self.db)
                 .await?,
         };
@@ -96,7 +96,7 @@ impl CryptoRepository {
         rows.into_iter()
             .map(|row| {
                 let id: String = row.try_get("id")?;
-                let date: String = row.try_get("date")?;
+                let date: NaiveDate = row.try_get("date")?;
                 let value: String = row.try_get("value")?;
                 let value_currency: String = row.try_get("value_currency")?;
                 let fee: String = row.try_get("fee")?;
@@ -106,7 +106,7 @@ impl CryptoRepository {
 
                 Ok(Crypto {
                     id,
-                    date: NaiveDate::parse_from_str(&date, "%Y-%m-%d")?,
+                    date,
                     value: Amount {
                         value: Decimal::from_str(&value)?,
                         currency: serde_plain::from_str(&value_currency)?,

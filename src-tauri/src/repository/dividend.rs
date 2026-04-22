@@ -44,7 +44,7 @@ impl DividendRepository {
                 ",
             )
             .bind(dividend.id.to_string())
-            .bind(dividend.date.to_string())
+            .bind(dividend.date)
             .bind(dividend.ticker.to_string())
             .bind(dividend.value.value.to_string())
             .bind(serde_plain::to_string(&dividend.value.currency)?)
@@ -69,7 +69,7 @@ impl DividendRepository {
                 WHERE id = ?
             ",
         )
-        .bind(d.date.to_string())
+        .bind(d.date)
         .bind(d.ticker.to_string())
         .bind(d.value.value.to_string())
         .bind(serde_plain::to_string(&d.value.currency)?)
@@ -89,8 +89,8 @@ impl DividendRepository {
         let rows = match year {
             None => sqlx::query(BASE).fetch_all(&self.db).await?,
             Some(y) => sqlx::query(&format!("{BASE} WHERE date BETWEEN ? AND ?"))
-                .bind(format!("{y:04}-01-01"))
-                .bind(format!("{y:04}-12-31"))
+                .bind(NaiveDate::from_ymd_opt(y, 1, 1).unwrap())
+                .bind(NaiveDate::from_ymd_opt(y, 12, 31).unwrap())
                 .fetch_all(&self.db)
                 .await?,
         };
@@ -98,7 +98,7 @@ impl DividendRepository {
         rows.into_iter()
             .map(|row| {
                 let id: String = row.try_get("id")?;
-                let date: String = row.try_get("date")?;
+                let date: NaiveDate = row.try_get("date")?;
                 let ticker: String = row.try_get("ticker")?;
                 let value: String = row.try_get("value")?;
                 let value_currency: String = row.try_get("value_currency")?;
@@ -109,7 +109,7 @@ impl DividendRepository {
 
                 Ok(Dividend {
                     id,
-                    date: NaiveDate::parse_from_str(&date, "%Y-%m-%d")?,
+                    date,
                     ticker,
                     value: Amount {
                         value: Decimal::from_str(&value)?,

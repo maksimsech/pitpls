@@ -1,6 +1,6 @@
 # pitpls
 
-`pitpls` is a desktop project for collecting and reviewing imported financial data.
+`pitpls` is a desktop project for collecting and reviewing financial data.
 
 ## Usage Notice
 
@@ -34,7 +34,7 @@ You can also use the shortcut from the `justfile`:
 just d
 ```
 
-No builds are provided in this repository. At the moment, the project is intended to be run in development mode only.
+No builds are provided. At the moment, the project is intended to be run in development mode only.
 
 ## Project Structure
 
