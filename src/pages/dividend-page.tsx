@@ -17,6 +17,7 @@ import {
 import { CurrencyValue } from "@/components/currency-value";
 import { DividendFormModal } from "@/components/dividend-form-modal";
 import { ErrorState } from "@/components/error-state";
+import { LoadingState } from "@/components/loading-state";
 import { SelectionHeader } from "@/components/selection-header";
 import { Button } from "@/components/ui/button";
 import {
@@ -49,9 +50,10 @@ function DividendPage() {
     return (
         <Suspense
             fallback={
-                <div className="flex flex-1 items-center justify-center text-muted-foreground">
-                    Loading…
-                </div>
+                <LoadingState
+                    title="Loading dividends"
+                    message="Calculating dividend totals and entries."
+                />
             }
         >
             <DividendContent taxPromise={taxPromise} refresh={refresh} />
@@ -126,7 +128,9 @@ function DividendDataContent({
         setDeleting(true);
         setError(null);
         try {
-            const result = await commands.deleteDividends(Array.from(selectedIds));
+            const result = await commands.deleteDividends(
+                Array.from(selectedIds),
+            );
             if (result.status === "error") {
                 setError(result.error);
                 return;
@@ -191,10 +195,7 @@ function DividendDataContent({
             </div>
 
             {error && (
-                <ErrorState
-                    title="Couldn't update dividends"
-                    message={error}
-                />
+                <ErrorState title="Couldn't update dividends" message={error} />
             )}
 
             <div className="grid grid-cols-3 gap-3">
@@ -216,10 +217,10 @@ function DividendDataContent({
                 </div>
                 <div className="rounded-lg border p-3">
                     <div className="text-xs text-muted-foreground">
-                        Profit (Informational)
+                        Income (I-65)
                     </div>
                     <div className="font-mono text-lg">
-                        <CurrencyValue value={tax.profit} currency={"pln"} />
+                        <CurrencyValue value={tax.income} currency={"pln"} />
                         <span> ({tax.calculated.length})</span>
                     </div>
                 </div>

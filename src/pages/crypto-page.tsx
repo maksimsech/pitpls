@@ -17,6 +17,7 @@ import {
 import { CryptoFormModal } from "@/components/crypto-form-modal";
 import { CurrencyValue } from "@/components/currency-value";
 import { ErrorState } from "@/components/error-state";
+import { LoadingState } from "@/components/loading-state";
 import { SelectionHeader } from "@/components/selection-header";
 import { Button } from "@/components/ui/button";
 import {
@@ -49,9 +50,10 @@ function CryptoPage() {
     return (
         <Suspense
             fallback={
-                <div className="flex flex-1 items-center justify-center text-muted-foreground">
-                    Loading…
-                </div>
+                <LoadingState
+                    title="Loading crypto transactions"
+                    message="Preparing your tax calculations."
+                />
             }
         >
             <CryptoContent taxPromise={taxPromise} refresh={refresh} />
@@ -126,7 +128,9 @@ function CryptoDataContent({
         setDeleting(true);
         setError(null);
         try {
-            const result = await commands.deleteCryptos(Array.from(selectedIds));
+            const result = await commands.deleteCryptos(
+                Array.from(selectedIds),
+            );
             if (result.status === "error") {
                 setError(result.error);
                 return;
@@ -200,7 +204,7 @@ function CryptoDataContent({
             <div className="grid grid-cols-2 gap-3">
                 <div className="rounded-lg border p-3">
                     <div className="text-xs text-muted-foreground">
-                        Income (E-35)
+                        Income (E-36)
                     </div>
                     <div className="font-mono text-lg">
                         <CurrencyValue value={tax.income} currency={"pln"} />

@@ -27,7 +27,7 @@ pub fn calculate(
             costs: crypto_tax.costs,
         },
         foreign: ForeignTaxSummary {
-            profit: (dividend_tax.profit + interest_tax.profit),
+            income: (dividend_tax.income + interest_tax.income),
             tax_to_pay: (dividend_tax.to_pay + interest_tax.to_pay),
             tax_paid: dividend_tax.paid,
         },
@@ -109,7 +109,7 @@ mod tests {
 
         assert_eq!(summary.crypto.income, dec!(40));
         assert_eq!(summary.crypto.costs, dec!(28));
-        assert_eq!(summary.foreign.profit, dec!(150));
+        assert_eq!(summary.foreign.income, dec!(150));
         assert_eq!(summary.foreign.tax_to_pay, dec!(28.50));
         assert_eq!(summary.foreign.tax_paid, dec!(10));
     }
@@ -133,7 +133,7 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(summary.foreign.profit, dec!(100));
+        assert_eq!(summary.foreign.income, dec!(100));
         assert_eq!(summary.foreign.tax_to_pay, dec!(19));
         assert_eq!(summary.foreign.tax_paid, dec!(10));
     }
@@ -157,7 +157,7 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(summary.foreign.profit, dec!(100));
+        assert_eq!(summary.foreign.income, dec!(100));
         assert_eq!(summary.foreign.tax_to_pay, dec!(19));
         assert_eq!(summary.foreign.tax_paid, dec!(15));
     }
@@ -186,7 +186,7 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(summary.foreign.profit, dec!(40));
+        assert_eq!(summary.foreign.income, dec!(40));
         assert_eq!(summary.foreign.tax_to_pay, dec!(7.60));
         assert_eq!(summary.foreign.tax_paid, dec!(0));
     }

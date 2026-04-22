@@ -38,6 +38,6 @@ impl CalculatedInterest {
 #[derive(Serialize, Type)]
 pub struct InterestTaxData {
     pub to_pay: Decimal,
-    pub profit: Decimal,
+    pub income: Decimal,
     pub calculated: Vec<CalculatedInterest>,
 }

@@ -48,7 +48,7 @@ pub fn calculate(
     Ok(DividendTaxData {
         to_pay: to_pay_total.round_amount(),
         paid: paid_total.round_amount(),
-        profit: profit.round_amount(),
+        income: profit.round_amount(),
         calculated,
     })
 }

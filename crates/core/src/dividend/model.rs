@@ -64,6 +64,6 @@ impl CalculatedDividend {
 pub struct DividendTaxData {
     pub to_pay: Decimal,
     pub paid: Decimal,
-    pub profit: Decimal,
+    pub income: Decimal,
     pub calculated: Vec<CalculatedDividend>,
 }

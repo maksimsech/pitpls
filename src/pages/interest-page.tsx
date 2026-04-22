@@ -17,6 +17,7 @@ import {
 import { CurrencyValue } from "@/components/currency-value";
 import { ErrorState } from "@/components/error-state";
 import { InterestFormModal } from "@/components/interest-form-modal";
+import { LoadingState } from "@/components/loading-state";
 import { SelectionHeader } from "@/components/selection-header";
 import { Button } from "@/components/ui/button";
 import {
@@ -48,9 +49,10 @@ function InterestPage() {
     return (
         <Suspense
             fallback={
-                <div className="flex flex-1 items-center justify-center text-muted-foreground">
-                    Loading…
-                </div>
+                <LoadingState
+                    title="Loading interests"
+                    message="Preparing the latest interest entries."
+                />
             }
         >
             <InterestContent taxPromise={taxPromise} refresh={refresh} />
@@ -125,7 +127,9 @@ function InterestDataContent({
         setDeleting(true);
         setError(null);
         try {
-            const result = await commands.deleteInterests(Array.from(selectedIds));
+            const result = await commands.deleteInterests(
+                Array.from(selectedIds),
+            );
             if (result.status === "error") {
                 setError(result.error);
                 return;
@@ -180,10 +184,7 @@ function InterestDataContent({
             </div>
 
             {error && (
-                <ErrorState
-                    title="Couldn't update interests"
-                    message={error}
-                />
+                <ErrorState title="Couldn't update interests" message={error} />
             )}
 
             <div className="grid grid-cols-2 gap-3">
@@ -197,10 +198,10 @@ function InterestDataContent({
                 </div>
                 <div className="rounded-lg border p-3">
                     <div className="text-xs text-muted-foreground">
-                        Profit (Informational)
+                        Income (I-65)
                     </div>
                     <div className="font-mono text-lg">
-                        <CurrencyValue value={tax.profit} currency={"pln"} />
+                        <CurrencyValue value={tax.income} currency={"pln"} />
                     </div>
                 </div>
             </div>

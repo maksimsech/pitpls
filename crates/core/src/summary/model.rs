@@ -10,7 +10,7 @@ pub struct CryptoTaxSummary {
 
 #[derive(Debug, Serialize, Type)]
 pub struct ForeignTaxSummary {
-    pub profit: Decimal,
+    pub income: Decimal,
     pub tax_to_pay: Decimal,
     pub tax_paid: Decimal,
 }

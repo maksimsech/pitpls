@@ -27,7 +27,7 @@ pub fn calculate(
 
     Ok(InterestTaxData {
         to_pay: to_pay_total.round_amount(),
-        profit: profit.round_amount(),
+        income: profit.round_amount(),
         calculated,
     })
 }

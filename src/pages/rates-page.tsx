@@ -3,6 +3,7 @@ import { open } from "@tauri-apps/plugin-dialog";
 
 import { commands, type Rate, type Result } from "@/bindings";
 import { ErrorState } from "@/components/error-state";
+import { LoadingState } from "@/components/loading-state";
 import { Button } from "@/components/ui/button";
 import {
     Table,
@@ -31,9 +32,10 @@ function RatesPage() {
     return (
         <Suspense
             fallback={
-                <div className="flex flex-1 items-center justify-center text-muted-foreground">
-                    Loading…
-                </div>
+                <LoadingState
+                    title="Loading rates"
+                    message="Fetching imported exchange rates."
+                />
             }
         >
             <RatesContent ratesPromise={ratesPromise} refresh={refresh} />

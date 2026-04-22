@@ -1,10 +1,4 @@
-import {
-    Suspense,
-    use,
-    useCallback,
-    useState,
-    useTransition,
-} from "react";
+import { Suspense, use, useCallback, useState, useTransition } from "react";
 import { TriangleAlert } from "lucide-react";
 import { Link } from "react-router-dom";
 
@@ -16,9 +10,8 @@ import {
 } from "@/bindings";
 import { CurrencyValue } from "@/components/currency-value";
 import { ErrorState } from "@/components/error-state";
-import {
-    NO_RATES_AVAILABLE_ERROR,
-} from "@/lib/utils";
+import { LoadingState } from "@/components/loading-state";
+import { NO_RATES_AVAILABLE_ERROR } from "@/lib/utils";
 
 function loadWarnings() {
     return commands.getWarnings();
@@ -41,7 +34,14 @@ function MainPage() {
     }, []);
 
     return (
-        <Suspense fallback={null}>
+        <Suspense
+            fallback={
+                <LoadingState
+                    title="Loading dashboard"
+                    message="Collecting warnings and tax summary."
+                />
+            }
+        >
             <MainContent
                 warningsPromise={warningsPromise}
                 summaryPromise={summaryPromise}
@@ -112,7 +112,7 @@ function MainContent({
                         </h3>
                         <div className="grid grid-cols-2 gap-3">
                             <SummaryCell
-                                label="Income (E-35)"
+                                label="Income (E-36)"
                                 value={summary.crypto.income}
                             />
                             <SummaryCell
@@ -128,8 +128,8 @@ function MainContent({
                         </h3>
                         <div className="grid grid-cols-3 gap-3">
                             <SummaryCell
-                                label="Profit"
-                                value={summary.foreign.profit}
+                                label="Income (I-65)"
+                                value={summary.foreign.income}
                             />
                             <SummaryCell
                                 label="Tax to pay (G-47)"
