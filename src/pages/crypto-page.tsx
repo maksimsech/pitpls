@@ -2,6 +2,7 @@ import {
     Suspense,
     use,
     useCallback,
+    useEffect,
     useRef,
     useState,
     useTransition,
@@ -19,6 +20,7 @@ import { CurrencyValue } from "@/components/currency-value";
 import { ErrorState } from "@/components/error-state";
 import { LoadingState } from "@/components/loading-state";
 import { SelectionHeader } from "@/components/selection-header";
+import { useYear } from "@/components/year-provider";
 import { Button } from "@/components/ui/button";
 import {
     TableCell,
@@ -33,19 +35,28 @@ import { cryptoActionDisplay } from "@/lib/display";
 const COLUMN_COUNT = 7;
 const ROW_ESTIMATE_PX = 41;
 
-function loadCryptos() {
-    return commands.loadCryptos();
+function loadCryptos(year: number | null) {
+    return commands.loadCryptos(year);
 }
 
 function CryptoPage() {
-    const [taxPromise, setTaxPromise] = useState(loadCryptos);
+    const { year } = useYear();
+    const [taxPromise, setTaxPromise] = useState(() => loadCryptos(year));
     const [, startTransition] = useTransition();
 
     const refresh = useCallback(() => {
         startTransition(() => {
-            setTaxPromise(loadCryptos());
+            setTaxPromise(loadCryptos(year));
         });
-    }, []);
+    }, [year]);
+
+    const initialYear = useRef(year);
+    useEffect(() => {
+        if (initialYear.current !== year) {
+            initialYear.current = year;
+            refresh();
+        }
+    }, [year, refresh]);
 
     return (
         <Suspense

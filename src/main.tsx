@@ -6,6 +6,7 @@ import { AppLayout } from "./components/app-layout";
 import { MainPage } from "./pages/main-page";
 import { RatesPage } from "./pages/rates-page";
 import { ThemeProvider } from "./components/theme-provider";
+import { YearProvider } from "./components/year-provider";
 import { TooltipProvider } from "./components/ui/tooltip";
 import "./index.css";
 import { CryptoPage } from "./pages/crypto-page";
@@ -30,9 +31,11 @@ const router = createHashRouter([
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
     <React.StrictMode>
         <ThemeProvider>
-            <TooltipProvider>
-                <RouterProvider router={router} />
-            </TooltipProvider>
+            <YearProvider>
+                <TooltipProvider>
+                    <RouterProvider router={router} />
+                </TooltipProvider>
+            </YearProvider>
         </ThemeProvider>
     </React.StrictMode>,
 );

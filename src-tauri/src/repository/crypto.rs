@@ -81,12 +81,17 @@ impl CryptoRepository {
         Ok(result.rows_affected())
     }
 
-    pub async fn get_all(&self) -> Result<Vec<Crypto>> {
-        let rows = sqlx::query(
-            "SELECT id, date, value, value_currency, fee, fee_currency, action, provider FROM cryptos",
-        )
-        .fetch_all(&self.db)
-        .await?;
+    pub async fn get_by_year(&self, year: Option<i32>) -> Result<Vec<Crypto>> {
+        const BASE: &str =
+            "SELECT id, date, value, value_currency, fee, fee_currency, action, provider FROM cryptos";
+        let rows = match year {
+            None => sqlx::query(BASE).fetch_all(&self.db).await?,
+            Some(y) => sqlx::query(&format!("{BASE} WHERE date BETWEEN ? AND ?"))
+                .bind(format!("{y:04}-01-01"))
+                .bind(format!("{y:04}-12-31"))
+                .fetch_all(&self.db)
+                .await?,
+        };
 
         rows.into_iter()
             .map(|row| {

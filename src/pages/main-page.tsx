@@ -1,4 +1,12 @@
-import { Suspense, use, useCallback, useState, useTransition } from "react";
+import {
+    Suspense,
+    use,
+    useCallback,
+    useEffect,
+    useRef,
+    useState,
+    useTransition,
+} from "react";
 import { TriangleAlert } from "lucide-react";
 import { Link } from "react-router-dom";
 
@@ -11,27 +19,42 @@ import {
 import { CurrencyValue } from "@/components/currency-value";
 import { ErrorState } from "@/components/error-state";
 import { LoadingState } from "@/components/loading-state";
+import { YearSelector } from "@/components/year-selector";
+import { useYear } from "@/components/year-provider";
 import { NO_RATES_AVAILABLE_ERROR } from "@/lib/utils";
 
-function loadWarnings() {
-    return commands.getWarnings();
+function loadWarnings(year: number | null) {
+    return commands.getWarnings(year);
 }
 
-function loadTaxSummary() {
-    return commands.loadTaxSummary();
+function loadTaxSummary(year: number | null) {
+    return commands.loadTaxSummary(year);
 }
 
 function MainPage() {
-    const [warningsPromise, setWarningsPromise] = useState(loadWarnings);
-    const [summaryPromise, setSummaryPromise] = useState(loadTaxSummary);
+    const { year } = useYear();
+    const [warningsPromise, setWarningsPromise] = useState(() =>
+        loadWarnings(year),
+    );
+    const [summaryPromise, setSummaryPromise] = useState(() =>
+        loadTaxSummary(year),
+    );
     const [, startTransition] = useTransition();
 
     const refresh = useCallback(() => {
         startTransition(() => {
-            setWarningsPromise(loadWarnings());
-            setSummaryPromise(loadTaxSummary());
+            setWarningsPromise(loadWarnings(year));
+            setSummaryPromise(loadTaxSummary(year));
         });
-    }, []);
+    }, [year]);
+
+    const initialYear = useRef(year);
+    useEffect(() => {
+        if (initialYear.current !== year) {
+            initialYear.current = year;
+            refresh();
+        }
+    }, [year, refresh]);
 
     return (
         <Suspense
@@ -85,7 +108,10 @@ function MainContent({
 
     return (
         <div className="flex flex-col gap-3">
-            {warnings.rates_empty && (
+            <div className="flex items-center gap-2">
+                <YearSelector />
+            </div>
+            {warnings.rates_empty && warnings.has_records_in_year && (
                 <Link
                     to="/rates"
                     className="flex items-center gap-2 rounded-lg border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive transition-colors hover:bg-destructive/20"

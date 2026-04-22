@@ -13,6 +13,7 @@ use crate::command::{
     rate::{list_rates, reset_rates, upload_rates},
     tax::load_tax_summary,
     warnings::get_warnings,
+    year::{add_year, delete_year, list_years},
 };
 use crate::repository::migration::{DB_URL, migrations};
 use crate::state::setup;
@@ -42,6 +43,9 @@ fn specta_builder() -> Builder<tauri::Wry> {
             run_import,
             get_warnings,
             load_tax_summary,
+            list_years,
+            add_year,
+            delete_year,
         ])
         .typ::<Importer>()
         .typ::<InputType>()

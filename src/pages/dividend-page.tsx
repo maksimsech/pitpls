@@ -2,6 +2,7 @@ import {
     Suspense,
     use,
     useCallback,
+    useEffect,
     useRef,
     useState,
     useTransition,
@@ -19,6 +20,7 @@ import { DividendFormModal } from "@/components/dividend-form-modal";
 import { ErrorState } from "@/components/error-state";
 import { LoadingState } from "@/components/loading-state";
 import { SelectionHeader } from "@/components/selection-header";
+import { useYear } from "@/components/year-provider";
 import { Button } from "@/components/ui/button";
 import {
     TableCell,
@@ -33,19 +35,28 @@ import { countryDisplay } from "@/lib/display";
 const COLUMN_COUNT = 8;
 const ROW_ESTIMATE_PX = 41;
 
-function loadDividends() {
-    return commands.loadDividends();
+function loadDividends(year: number | null) {
+    return commands.loadDividends(year);
 }
 
 function DividendPage() {
-    const [taxPromise, setTaxPromise] = useState(loadDividends);
+    const { year } = useYear();
+    const [taxPromise, setTaxPromise] = useState(() => loadDividends(year));
     const [, startTransition] = useTransition();
 
     const refresh = useCallback(() => {
         startTransition(() => {
-            setTaxPromise(loadDividends());
+            setTaxPromise(loadDividends(year));
         });
-    }, []);
+    }, [year]);
+
+    const initialYear = useRef(year);
+    useEffect(() => {
+        if (initialYear.current !== year) {
+            initialYear.current = year;
+            refresh();
+        }
+    }, [year, refresh]);
 
     return (
         <Suspense

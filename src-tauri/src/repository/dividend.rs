@@ -83,12 +83,17 @@ impl DividendRepository {
         Ok(result.rows_affected())
     }
 
-    pub async fn get_all(&self) -> Result<Vec<Dividend>> {
-        let rows = sqlx::query(
-            "SELECT id, date, ticker, value, value_currency, tax_paid, tax_paid_currency, country, provider FROM dividends",
-        )
-        .fetch_all(&self.db)
-        .await?;
+    pub async fn get_by_year(&self, year: Option<i32>) -> Result<Vec<Dividend>> {
+        const BASE: &str =
+            "SELECT id, date, ticker, value, value_currency, tax_paid, tax_paid_currency, country, provider FROM dividends";
+        let rows = match year {
+            None => sqlx::query(BASE).fetch_all(&self.db).await?,
+            Some(y) => sqlx::query(&format!("{BASE} WHERE date BETWEEN ? AND ?"))
+                .bind(format!("{y:04}-01-01"))
+                .bind(format!("{y:04}-12-31"))
+                .fetch_all(&self.db)
+                .await?,
+        };
 
         rows.into_iter()
             .map(|row| {
