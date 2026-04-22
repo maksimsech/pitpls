@@ -1,0 +1,14 @@
+[package]
+name = "pitpls-core"
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+chrono.workspace = true
+rust_decimal.workspace = true
+serde = { version = "1.0.228", features = ["derive"] }
+specta = { version = "=2.0.0-rc.22", features = ["derive", "rust_decimal", "chrono"] }
+thiserror = "2.0.18"
+tokio.workspace = true

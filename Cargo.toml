@@ -1,0 +1,18 @@
+[workspace]
+members = ["src-tauri", "crates/core", "crates/importers"]
+resolver = "3"
+
+[workspace.package]
+edition = "2024"
+license = "MIT"
+authors = ["Maksim Sech"]
+
+[workspace.dependencies]
+pitpls-core = { path = "crates/core" }
+pitpls-importers = { path = "crates/importers" }
+
+anyhow = "1.0"
+chrono = { version = "0.4.44", features = ["serde"] }
+rust_decimal = { version = "1.39.0", features = ["serde", "macros"] }
+tokio = { version = "1.52.0", features = ["fs"] }
+uuid = { version = "1", features = ["v4"] }
