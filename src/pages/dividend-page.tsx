@@ -2,7 +2,6 @@ import {
     Suspense,
     use,
     useCallback,
-    useEffect,
     useRef,
     useState,
     useTransition,
@@ -41,6 +40,11 @@ function loadDividends(year: number | null) {
 
 function DividendPage() {
     const { year } = useYear();
+
+    return <DividendPageForYear key={year ?? "all"} year={year} />;
+}
+
+function DividendPageForYear({ year }: { year: number | null }) {
     const [taxPromise, setTaxPromise] = useState(() => loadDividends(year));
     const [, startTransition] = useTransition();
 
@@ -49,14 +53,6 @@ function DividendPage() {
             setTaxPromise(loadDividends(year));
         });
     }, [year]);
-
-    const initialYear = useRef(year);
-    useEffect(() => {
-        if (initialYear.current !== year) {
-            initialYear.current = year;
-            refresh();
-        }
-    }, [year, refresh]);
 
     return (
         <Suspense

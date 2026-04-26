@@ -2,7 +2,6 @@ import {
     Suspense,
     use,
     useCallback,
-    useEffect,
     useRef,
     useState,
     useTransition,
@@ -40,6 +39,11 @@ function loadInterests(year: number | null) {
 
 function InterestPage() {
     const { year } = useYear();
+
+    return <InterestPageForYear key={year ?? "all"} year={year} />;
+}
+
+function InterestPageForYear({ year }: { year: number | null }) {
     const [taxPromise, setTaxPromise] = useState(() => loadInterests(year));
     const [, startTransition] = useTransition();
 
@@ -48,14 +52,6 @@ function InterestPage() {
             setTaxPromise(loadInterests(year));
         });
     }, [year]);
-
-    const initialYear = useRef(year);
-    useEffect(() => {
-        if (initialYear.current !== year) {
-            initialYear.current = year;
-            refresh();
-        }
-    }, [year, refresh]);
 
     return (
         <Suspense

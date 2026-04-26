@@ -34,24 +34,4 @@ impl YearRepository {
             .await?;
         Ok(result.rows_affected())
     }
-
-    pub async fn list_dropdown(&self) -> Result<Vec<i32>> {
-        let rows = sqlx::query(
-            r"
-                SELECT year FROM years
-                UNION
-                SELECT CAST(strftime('%Y', date) AS INTEGER) AS year FROM cryptos
-                UNION
-                SELECT CAST(strftime('%Y', date) AS INTEGER) AS year FROM dividends
-                UNION
-                SELECT CAST(strftime('%Y', date) AS INTEGER) AS year FROM interests
-                ORDER BY year DESC
-            ",
-        )
-        .fetch_all(&self.db)
-        .await?;
-        rows.into_iter()
-            .map(|row| Ok(row.try_get::<i32, _>("year")?))
-            .collect()
-    }
 }

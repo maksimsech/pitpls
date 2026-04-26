@@ -2,8 +2,6 @@ import {
     Suspense,
     use,
     useCallback,
-    useEffect,
-    useRef,
     useState,
     useTransition,
 } from "react";
@@ -33,6 +31,11 @@ function loadTaxSummary(year: number | null) {
 
 function MainPage() {
     const { year } = useYear();
+
+    return <MainPageForYear key={year ?? "all"} year={year} />;
+}
+
+function MainPageForYear({ year }: { year: number | null }) {
     const [warningsPromise, setWarningsPromise] = useState(() =>
         loadWarnings(year),
     );
@@ -47,14 +50,6 @@ function MainPage() {
             setSummaryPromise(loadTaxSummary(year));
         });
     }, [year]);
-
-    const initialYear = useRef(year);
-    useEffect(() => {
-        if (initialYear.current !== year) {
-            initialYear.current = year;
-            refresh();
-        }
-    }, [year, refresh]);
 
     return (
         <Suspense

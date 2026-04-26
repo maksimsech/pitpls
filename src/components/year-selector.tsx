@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Plus, Trash2 } from "lucide-react";
 
-import { commands, type YearOption } from "@/bindings";
+import { commands } from "@/bindings";
 import { useYear } from "@/components/year-provider";
 import { Button } from "@/components/ui/button";
 import {
@@ -29,7 +29,7 @@ const YEAR_MAX = 2100;
 
 function YearSelector() {
     const { year, setYear } = useYear();
-    const [options, setOptions] = useState<YearOption[]>([]);
+    const [options, setOptions] = useState<number[]>([]);
     const [open, setOpen] = useState(false);
     const [addOpen, setAddOpen] = useState(false);
 
@@ -54,12 +54,7 @@ function YearSelector() {
 
     const handleDelete = async (value: number) => {
         await commands.deleteYear(value);
-        if (year === value) {
-            const stillExists = options.some(
-                (o) => o.year === value && !o.explicit,
-            );
-            if (!stillExists) setYear(null);
-        }
+        if (year === value) setYear(null);
         await refresh();
     };
 
@@ -84,36 +79,36 @@ function YearSelector() {
                 onOpenChange={setOpen}
             >
                 <SelectTrigger className="min-w-28">
-                    <SelectValue />
+                    <SelectValue>
+                        {year === null ? "All" : String(year)}
+                    </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                     <SelectItem value={ALL}>All</SelectItem>
-                    {options.map((o) => (
+                    {options.map((y) => (
                         <SelectItem
-                            key={o.year}
-                            value={String(o.year)}
-                            className={o.explicit ? "pr-10" : undefined}
+                            key={y}
+                            value={String(y)}
+                            className="pr-10"
                         >
                             <span className="flex w-full items-center justify-between gap-2">
-                                <span>{o.year}</span>
-                                {o.explicit && (
-                                    <span
-                                        role="button"
-                                        aria-label={`Remove ${o.year} from list`}
-                                        className="ml-auto inline-flex size-5 items-center justify-center rounded-md text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
-                                        onPointerDown={(e) => {
-                                            e.preventDefault();
-                                            e.stopPropagation();
-                                        }}
-                                        onClick={(e) => {
-                                            e.preventDefault();
-                                            e.stopPropagation();
-                                            void handleDelete(o.year);
-                                        }}
-                                    >
-                                        <Trash2 className="size-3" />
-                                    </span>
-                                )}
+                                <span>{y}</span>
+                                <span
+                                    role="button"
+                                    aria-label={`Remove ${y} from list`}
+                                    className="ml-auto inline-flex size-5 items-center justify-center rounded-md text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                                    onPointerDown={(e) => {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                    }}
+                                    onClick={(e) => {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                        void handleDelete(y);
+                                    }}
+                                >
+                                    <Trash2 className="size-3" />
+                                </span>
                             </span>
                         </SelectItem>
                     ))}
@@ -130,11 +125,13 @@ function YearSelector() {
                 </SelectContent>
             </Select>
 
-            <AddYearDialog
-                open={addOpen}
-                onOpenChange={setAddOpen}
-                onAdded={handleAdded}
-            />
+            {addOpen && (
+                <AddYearDialog
+                    open={addOpen}
+                    onOpenChange={setAddOpen}
+                    onAdded={handleAdded}
+                />
+            )}
         </>
     );
 }
@@ -151,14 +148,6 @@ function AddYearDialog({
     const [value, setValue] = useState("");
     const [error, setError] = useState<string | null>(null);
     const [submitting, setSubmitting] = useState(false);
-
-    useEffect(() => {
-        if (open) {
-            setValue("");
-            setError(null);
-            setSubmitting(false);
-        }
-    }, [open]);
 
     const submit = async (e: React.FormEvent) => {
         e.preventDefault();

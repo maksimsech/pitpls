@@ -33,10 +33,7 @@ pub async fn get_warnings(
     })
 }
 
-async fn any_records_in_year(
-    state: &AppState,
-    year: Option<i32>,
-) -> Result<bool, sqlx::Error> {
+async fn any_records_in_year(state: &AppState, year: Option<i32>) -> Result<bool, sqlx::Error> {
     let pool = state.db_pool();
     let tables = ["cryptos", "dividends", "interests"];
     for table in tables {
@@ -54,11 +51,9 @@ async fn table_has_records(
 ) -> Result<bool, sqlx::Error> {
     let exists: i64 = match year {
         None => {
-            sqlx::query_scalar(&format!(
-                "SELECT EXISTS(SELECT 1 FROM {table}) AS e"
-            ))
-            .fetch_one(pool)
-            .await?
+            sqlx::query_scalar(&format!("SELECT EXISTS(SELECT 1 FROM {table}) AS e"))
+                .fetch_one(pool)
+                .await?
         }
         Some(y) => {
             sqlx::query_scalar(&format!(

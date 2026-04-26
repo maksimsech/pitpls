@@ -150,7 +150,7 @@ async loadTaxSummary(year: number | null) : Promise<Result<TaxSummary, string>> 
     else return { status: "error", error: e  as any };
 }
 },
-async listYears() : Promise<Result<YearOption[], string>> {
+async listYears() : Promise<Result<number[], string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("list_years") };
 } catch (e) {
@@ -212,7 +212,6 @@ export type UpdateCryptoInput = { id: string; date: string; action: Action; valu
 export type UpdateDividendInput = { id: string; date: string; ticker: string; value: string; value_currency: Currency; tax_paid: string; tax_paid_currency: Currency; country: Country; provider: string }
 export type UpdateInterestInput = { id: string; date: string; value: string; value_currency: Currency; provider: string }
 export type Warnings = { rates_empty: boolean; has_records_in_year: boolean }
-export type YearOption = { year: number; explicit: boolean }
 
 /** tauri-specta globals **/
 

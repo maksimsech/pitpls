@@ -2,7 +2,6 @@ import {
     Suspense,
     use,
     useCallback,
-    useEffect,
     useRef,
     useState,
     useTransition,
@@ -41,6 +40,11 @@ function loadCryptos(year: number | null) {
 
 function CryptoPage() {
     const { year } = useYear();
+
+    return <CryptoPageForYear key={year ?? "all"} year={year} />;
+}
+
+function CryptoPageForYear({ year }: { year: number | null }) {
     const [taxPromise, setTaxPromise] = useState(() => loadCryptos(year));
     const [, startTransition] = useTransition();
 
@@ -49,14 +53,6 @@ function CryptoPage() {
             setTaxPromise(loadCryptos(year));
         });
     }, [year]);
-
-    const initialYear = useRef(year);
-    useEffect(() => {
-        if (initialYear.current !== year) {
-            initialYear.current = year;
-            refresh();
-        }
-    }, [year, refresh]);
 
     return (
         <Suspense

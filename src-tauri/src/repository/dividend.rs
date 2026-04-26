@@ -1,7 +1,7 @@
 use std::str::FromStr;
 
 use anyhow::Result;
-use chrono::NaiveDate;
+use chrono::{Datelike, NaiveDate};
 use pitpls_core::{common::Amount, dividend::Dividend};
 use rust_decimal::Decimal;
 use sqlx::{Row, SqlitePool};
@@ -54,6 +54,11 @@ impl DividendRepository {
             .bind(dividend.provider.to_string())
             .execute(&mut *tx)
             .await?;
+
+            sqlx::query("INSERT OR IGNORE INTO years(year) VALUES (?)")
+                .bind(dividend.date.year())
+                .execute(&mut *tx)
+                .await?;
         }
 
         tx.commit().await?;
@@ -62,6 +67,7 @@ impl DividendRepository {
     }
 
     pub async fn update(&self, d: &Dividend) -> Result<u64> {
+        let mut tx = self.db.begin().await?;
         let result = sqlx::query(
             r"
                 UPDATE dividends
@@ -78,21 +84,29 @@ impl DividendRepository {
         .bind(serde_plain::to_string(&d.country)?)
         .bind(d.provider.to_string())
         .bind(d.id.to_string())
-        .execute(&self.db)
+        .execute(&mut *tx)
         .await?;
+
+        sqlx::query("INSERT OR IGNORE INTO years(year) VALUES (?)")
+            .bind(d.date.year())
+            .execute(&mut *tx)
+            .await?;
+
+        tx.commit().await?;
         Ok(result.rows_affected())
     }
 
     pub async fn get_by_year(&self, year: Option<i32>) -> Result<Vec<Dividend>> {
-        const BASE: &str =
-            "SELECT id, date, ticker, value, value_currency, tax_paid, tax_paid_currency, country, provider FROM dividends";
+        const BASE: &str = "SELECT id, date, ticker, value, value_currency, tax_paid, tax_paid_currency, country, provider FROM dividends";
         let rows = match year {
             None => sqlx::query(BASE).fetch_all(&self.db).await?,
-            Some(y) => sqlx::query(&format!("{BASE} WHERE date BETWEEN ? AND ?"))
-                .bind(NaiveDate::from_ymd_opt(y, 1, 1).unwrap())
-                .bind(NaiveDate::from_ymd_opt(y, 12, 31).unwrap())
-                .fetch_all(&self.db)
-                .await?,
+            Some(y) => {
+                sqlx::query(&format!("{BASE} WHERE date BETWEEN ? AND ?"))
+                    .bind(NaiveDate::from_ymd_opt(y, 1, 1).unwrap())
+                    .bind(NaiveDate::from_ymd_opt(y, 12, 31).unwrap())
+                    .fetch_all(&self.db)
+                    .await?
+            }
         };
 
         rows.into_iter()
