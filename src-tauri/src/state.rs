@@ -7,6 +7,7 @@ use crate::repository::dividend::DividendRepository;
 use crate::repository::interest::InterestRepository;
 use crate::repository::migration::DB_URL;
 use crate::repository::rate::RateRepository;
+use crate::repository::settings::SettingsRepository;
 use crate::repository::year::YearRepository;
 
 pub struct AppState {
@@ -36,6 +37,10 @@ impl AppState {
 
     pub fn year_repo(&self) -> YearRepository {
         YearRepository::new(self.db.clone())
+    }
+
+    pub fn settings_repo(&self) -> SettingsRepository {
+        SettingsRepository::new(self.db.clone())
     }
 }
 

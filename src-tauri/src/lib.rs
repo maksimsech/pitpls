@@ -11,6 +11,7 @@ use crate::command::{
     import::run_import,
     interest::{create_interest, delete_interests, load_interests, update_interest},
     rate::{list_rates, reset_rates, upload_rates},
+    settings::{load_settings, update_settings},
     tax::load_tax_summary,
     warnings::get_warnings,
     year::{add_year, delete_year, list_years},
@@ -46,6 +47,8 @@ fn specta_builder() -> Builder<tauri::Wry> {
             list_years,
             add_year,
             delete_year,
+            load_settings,
+            update_settings,
         ])
         .typ::<Importer>()
         .typ::<InputType>()

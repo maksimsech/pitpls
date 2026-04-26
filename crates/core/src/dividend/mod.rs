@@ -4,6 +4,7 @@ use rust_decimal::Decimal;
 use crate::{
     DecimalExt,
     rate::NbpRateProvider,
+    settings::DividendRounding,
     tax::{POLAND_TAX, get_treaty_tax},
 };
 
@@ -14,6 +15,7 @@ pub use model::{CalculatedDividend, Dividend, DividendTaxData};
 pub fn calculate(
     dividends: Vec<Dividend>,
     rate_provider: &NbpRateProvider,
+    rounding: DividendRounding,
 ) -> Result<DividendTaxData> {
     let mut to_pay_total = Decimal::ZERO;
     let mut paid_total = Decimal::ZERO;
@@ -21,8 +23,15 @@ pub fn calculate(
     let mut calculated = Vec::with_capacity(dividends.len());
 
     for dividend in dividends {
-        let (dividend_pln, nbp_date) = rate_provider.convert(&dividend.value, &dividend.date)?;
-        let to_pay = dividend_pln * POLAND_TAX;
+        let (mut dividend_pln, nbp_date) =
+            rate_provider.convert(&dividend.value, &dividend.date)?;
+        if matches!(rounding, DividendRounding::AllToZlote) {
+            dividend_pln = dividend_pln.round_zloty();
+        }
+        dividend_pln = dividend_pln.maybe_round_dividend(rounding);
+
+        let mut to_pay = dividend_pln * POLAND_TAX;
+        to_pay = to_pay.maybe_round_dividend(rounding);
 
         profit += dividend_pln;
         to_pay_total += to_pay;
@@ -31,7 +40,7 @@ pub fn calculate(
             calculated_tax_paid,
             max_tax_paid,
             used_tax_paid,
-        } = calculate_already_paid(&dividend, dividend_pln, rate_provider)?;
+        } = calculate_already_paid(&dividend, dividend_pln, rate_provider, rounding)?;
         paid_total += used_tax_paid;
 
         calculated.push(CalculatedDividend::build(
@@ -46,9 +55,13 @@ pub fn calculate(
     }
 
     Ok(DividendTaxData {
-        to_pay: to_pay_total.round_amount(),
-        paid: paid_total.round_amount(),
-        income: profit.round_amount(),
+        to_pay: if matches!(rounding, DividendRounding::SumToZlote) {
+            to_pay_total.round_zloty()
+        } else {
+            to_pay_total.round_groszy()
+        },
+        paid: paid_total.round_groszy(),
+        income: profit.round_groszy(),
         calculated,
     })
 }
@@ -57,10 +70,13 @@ fn calculate_already_paid(
     dividend: &Dividend,
     dividend_pln: Decimal,
     rate_provider: &NbpRateProvider,
+    rounding: DividendRounding,
 ) -> Result<AlreadyPaidData> {
-    let (paid_pln, _) = rate_provider.convert(&dividend.tax_paid, &dividend.date)?;
+    let (mut paid_pln, _) = rate_provider.convert(&dividend.tax_paid, &dividend.date)?;
+    paid_pln = paid_pln.maybe_round_dividend(rounding);
 
-    let max_paid_pln = get_treaty_tax(&dividend.country) * dividend_pln;
+    let mut max_paid_pln = get_treaty_tax(&dividend.country) * dividend_pln;
+    max_paid_pln = max_paid_pln.maybe_round_dividend(rounding);
 
     let used_tax_paid = if paid_pln > max_paid_pln {
         max_paid_pln

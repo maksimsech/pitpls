@@ -13,6 +13,7 @@ import { CryptoPage } from "./pages/crypto-page";
 import { DividendPage } from "./pages/dividend-page";
 import { ImportsPage } from "./pages/imports-page";
 import { InterestPage } from "./pages/interest-page";
+import { SettingsPage } from "./pages/settings-page";
 
 const router = createHashRouter([
     {
@@ -24,6 +25,7 @@ const router = createHashRouter([
             { path: "/crypto", element: <CryptoPage /> },
             { path: "/dividends", element: <DividendPage /> },
             { path: "/interests", element: <InterestPage /> },
+            { path: "/settings", element: <SettingsPage /> },
         ],
     },
 ]);

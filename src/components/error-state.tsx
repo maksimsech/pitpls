@@ -24,7 +24,8 @@ function ErrorState({
         <div
             className={cn(
                 "w-full",
-                centered && "flex h-[calc(100vh-5.5rem)] items-center justify-center",
+                centered &&
+                    "flex h-[calc(100vh-5.5rem)] items-center justify-center",
                 className,
             )}
         >
@@ -61,7 +62,7 @@ function ErrorState({
                             <h2 className="text-base font-semibold tracking-tight">
                                 {title}
                             </h2>
-                            <p className="max-w-md break-words text-sm leading-6 text-muted-foreground">
+                            <p className="max-w-md wrap-break-word text-sm leading-6 text-muted-foreground">
                                 {message}
                             </p>
                         </div>

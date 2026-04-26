@@ -4,6 +4,7 @@ pub mod dividend;
 pub mod interest;
 pub mod rate;
 pub mod rounding;
+pub mod settings;
 pub mod summary;
 pub mod tax;
 

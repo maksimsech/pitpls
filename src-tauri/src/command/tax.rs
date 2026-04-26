@@ -35,6 +35,18 @@ pub async fn load_tax_summary(
         .get_by_year(year)
         .await
         .map_err(|e| e.to_string())?;
+    let dividend_rounding = state
+        .settings_repo()
+        .load_dividend_rounding()
+        .await
+        .map_err(|e| e.to_string())?;
 
-    calculate(&rate_provider, cryptos, dividends, interests).map_err(|e| e.to_string())
+    calculate(
+        &rate_provider,
+        cryptos,
+        dividends,
+        interests,
+        dividend_rounding,
+    )
+    .map_err(|e| e.to_string())
 }

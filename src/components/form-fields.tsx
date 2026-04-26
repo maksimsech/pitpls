@@ -4,6 +4,7 @@ import { Label } from "@/components/ui/label";
 import {
     Select,
     SelectContent,
+    SelectGroup,
     SelectItem,
     SelectTrigger,
     SelectValue,
@@ -50,6 +51,7 @@ type EnumSelectProps<T extends string> = {
     value: T;
     onChange: (value: T) => void;
     options: Record<T, string>;
+    disabled?: boolean;
 };
 
 function EnumSelect<T extends string>({
@@ -57,20 +59,27 @@ function EnumSelect<T extends string>({
     value,
     onChange,
     options,
+    disabled,
 }: EnumSelectProps<T>) {
     return (
-        <Select value={value} onValueChange={(v) => onChange(v as T)}>
+        <Select
+            value={value}
+            onValueChange={(v) => onChange(v as T)}
+            disabled={disabled}
+        >
             <SelectTrigger id={id} className="w-full">
                 <SelectValue />
             </SelectTrigger>
             <SelectContent>
-                {(Object.entries(options) as [T, string][]).map(
-                    ([val, label]) => (
-                        <SelectItem key={val} value={val}>
-                            {label}
-                        </SelectItem>
-                    ),
-                )}
+                <SelectGroup>
+                    {(Object.entries(options) as [T, string][]).map(
+                        ([val, label]) => (
+                            <SelectItem key={val} value={val}>
+                                {label}
+                            </SelectItem>
+                        ),
+                    )}
+                </SelectGroup>
             </SelectContent>
         </Select>
     );

@@ -3,10 +3,11 @@ use tauri_plugin_sql::{Migration, MigrationKind};
 pub const DB_URL: &str = "sqlite:pitpls.db";
 
 pub fn migrations() -> Vec<Migration> {
-    vec![Migration {
-        version: 1,
-        description: "init",
-        sql: r"
+    vec![
+        Migration {
+            version: 1,
+            description: "init",
+            sql: r"
             CREATE TABLE IF NOT EXISTS rates(
                 date DATE NOT NULL,
                 currency TEXT NOT NULL,
@@ -45,6 +46,20 @@ pub fn migrations() -> Vec<Migration> {
                 year INTEGER PRIMARY KEY
             );
 ",
-        kind: MigrationKind::Up,
-    }]
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 2,
+            description: "settings",
+            sql: r"
+            CREATE TABLE IF NOT EXISTS settings(
+                name TEXT PRIMARY KEY,
+                value TEXT NOT NULL
+            );
+            INSERT OR IGNORE INTO settings(name, value)
+            VALUES ('dividend_rounding', 'SumToGroszy');
+",
+            kind: MigrationKind::Up,
+        },
+    ]
 }

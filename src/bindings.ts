@@ -173,6 +173,22 @@ async deleteYear(year: number) : Promise<Result<number, string>> {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
 }
+},
+async loadSettings() : Promise<Result<Settings, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("load_settings") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async updateSettings(settings: Settings) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("update_settings", { settings }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
 }
 }
 
@@ -198,6 +214,7 @@ export type CreateInterestInput = { id: string | null; date: string; value: stri
 export type CryptoTaxData = { income: string; costs: string; calculated: CalculatedCrypto[] }
 export type CryptoTaxSummary = { income: string; costs: string }
 export type Currency = "EUR" | "USD" | "PLN"
+export type DividendRounding = "SumToGroszy" | "SumToZlote" | "AllToZlote"
 export type DividendTaxData = { to_pay: string; paid: string; income: string; calculated: CalculatedDividend[] }
 export type ForeignTaxSummary = { income: string; tax_to_pay: string; tax_paid: string }
 export type ImportResult = { dividends: number; cryptos: number; interests: number }
@@ -207,6 +224,7 @@ export type InputType = "Csv" | "Pdf"
 export type InterestTaxData = { to_pay: string; income: string; calculated: CalculatedInterest[] }
 export type OutputType = "Dividend" | "Crypto" | "Interest"
 export type Rate = { date: string; currency: Currency; rate: string }
+export type Settings = { dividend_rounding: DividendRounding }
 export type TaxSummary = { crypto: CryptoTaxSummary; foreign: ForeignTaxSummary }
 export type UpdateCryptoInput = { id: string; date: string; action: Action; value: string; value_currency: Currency; fee: string; fee_currency: Currency; provider: string }
 export type UpdateDividendInput = { id: string; date: string; ticker: string; value: string; value_currency: Currency; tax_paid: string; tax_paid_currency: Currency; country: Country; provider: string }

@@ -173,6 +173,11 @@ pub async fn load_dividends(
         .await
         .map_err(|e| e.to_string())?;
     let rate_provider = NbpRateProvider::new(rates);
+    let dividend_rounding = state
+        .settings_repo()
+        .load_dividend_rounding()
+        .await
+        .map_err(|e| e.to_string())?;
 
-    calculate(dividends, &rate_provider).map_err(|e| e.to_string())
+    calculate(dividends, &rate_provider, dividend_rounding).map_err(|e| e.to_string())
 }

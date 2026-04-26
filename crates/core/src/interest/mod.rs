@@ -26,8 +26,8 @@ pub fn calculate(
     }
 
     Ok(InterestTaxData {
-        to_pay: to_pay_total.round_amount(),
-        income: profit.round_amount(),
+        to_pay: to_pay_total.round_groszy(),
+        income: profit.round_groszy(),
         calculated,
     })
 }

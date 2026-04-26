@@ -5,6 +5,7 @@ use crate::{
     dividend::{Dividend, calculate as calculate_dividends},
     interest::{Interest, calculate as calculate_interest},
     rate::NbpRateProvider,
+    settings::DividendRounding,
 };
 
 pub use model::{CryptoTaxSummary, ForeignTaxSummary, TaxSummary};
@@ -16,9 +17,10 @@ pub fn calculate(
     cryptos: Vec<Crypto>,
     dividends: Vec<Dividend>,
     interests: Vec<Interest>,
+    dividend_rounding: DividendRounding,
 ) -> Result<TaxSummary> {
     let crypto_tax = calculate_sell_buy_values(cryptos, rate_provider)?;
-    let dividend_tax = calculate_dividends(dividends, rate_provider)?;
+    let dividend_tax = calculate_dividends(dividends, rate_provider, dividend_rounding)?;
     let interest_tax = calculate_interest(interests, rate_provider)?;
 
     Ok(TaxSummary {
@@ -46,6 +48,7 @@ mod tests {
         dividend::Dividend,
         interest::Interest,
         rate::{NbpRateProvider, RateExport},
+        settings::DividendRounding,
     };
 
     fn date(year: i32, month: u32, day: u32) -> NaiveDate {
@@ -104,6 +107,7 @@ mod tests {
                 value: pln(dec!(50)),
                 provider: "bank".into(),
             }],
+            DividendRounding::SumToGroszy,
         )
         .unwrap();
 
@@ -130,6 +134,7 @@ mod tests {
                 provider: "broker".into(),
             }],
             Vec::new(),
+            DividendRounding::SumToGroszy,
         )
         .unwrap();
 
@@ -154,6 +159,7 @@ mod tests {
                 provider: "broker".into(),
             }],
             Vec::new(),
+            DividendRounding::SumToGroszy,
         )
         .unwrap();
 
@@ -183,6 +189,7 @@ mod tests {
                 provider: "broker".into(),
             }],
             Vec::new(),
+            DividendRounding::SumToGroszy,
         )
         .unwrap();
 

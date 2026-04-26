@@ -36,8 +36,8 @@ pub fn calculate_sell_buy_values(
     }
 
     Ok(CryptoTaxData {
-        income: income.round_amount(),
-        costs: costs.round_amount(),
+        income: income.round_groszy(),
+        costs: costs.round_groszy(),
         calculated,
     })
 }
