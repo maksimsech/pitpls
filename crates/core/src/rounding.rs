@@ -33,12 +33,12 @@ mod tests {
     use super::DecimalExt;
 
     #[test]
-    fn round_groszy_rounds_positive_midpoints_away_from_zero() {
+    fn round_groszy_rounds_midpoints_away_from_zero() {
         assert_eq!(dec!(1.005).round_groszy(), dec!(1.01));
     }
 
     #[test]
-    fn zloty_rounds_negative_midpoints_away_from_zero() {
+    fn zloty_rounds_midpoints_away_from_zero() {
         assert_eq!(dec!(1.5).round_zloty(), dec!(2));
     }
 }
