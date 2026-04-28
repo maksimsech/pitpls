@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Plus, Trash2 } from "lucide-react";
+import { Plus, Settings2, Trash2 } from "lucide-react";
 
 import { commands } from "@/bindings";
 import { useYear } from "@/components/year-provider";
@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import {
     Dialog,
     DialogContent,
+    DialogDescription,
     DialogFooter,
     DialogHeader,
     DialogTitle,
@@ -16,6 +17,7 @@ import { Label } from "@/components/ui/label";
 import {
     Select,
     SelectContent,
+    SelectGroup,
     SelectItem,
     SelectSeparator,
     SelectTrigger,
@@ -32,6 +34,10 @@ function YearSelector() {
     const [options, setOptions] = useState<number[]>([]);
     const [open, setOpen] = useState(false);
     const [addOpen, setAddOpen] = useState(false);
+    const [manageOpen, setManageOpen] = useState(false);
+    const [deleteTarget, setDeleteTarget] = useState<number | null>(null);
+    const [deleteError, setDeleteError] = useState<string | null>(null);
+    const [deleting, setDeleting] = useState(false);
 
     const refresh = useCallback(async () => {
         const result = await commands.listYears();
@@ -52,20 +58,46 @@ function YearSelector() {
         }
     };
 
-    const handleDelete = async (value: number) => {
-        await commands.deleteYear(value);
-        if (year === value) setYear(null);
-        await refresh();
-    };
-
     const openAddDialog = () => {
         setOpen(false);
+        setManageOpen(false);
         setTimeout(() => setAddOpen(true), 0);
+    };
+
+    const openManageDialog = () => {
+        setOpen(false);
+        setTimeout(() => setManageOpen(true), 0);
     };
 
     const handleAdded = async (newYear: number) => {
         await refresh();
         setYear(newYear);
+    };
+
+    const requestDelete = (value: number) => {
+        setDeleteError(null);
+        setDeleteTarget(value);
+    };
+
+    const confirmDelete = async () => {
+        if (deleteTarget === null) return;
+
+        setDeleting(true);
+        setDeleteError(null);
+        try {
+            const result = await commands.deleteYear(deleteTarget);
+            if (result.status === "error") {
+                setDeleteError(result.error);
+                return;
+            }
+            if (year === deleteTarget) setYear(null);
+            await refresh();
+            setDeleteTarget(null);
+        } catch (err) {
+            setDeleteError(formatError(err));
+        } finally {
+            setDeleting(false);
+        }
     };
 
     const currentValue = year === null ? ALL : String(year);
@@ -84,48 +116,38 @@ function YearSelector() {
                     </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
-                    <SelectItem value={ALL}>All</SelectItem>
-                    {options.map((y) => (
-                        <SelectItem
-                            key={y}
-                            value={String(y)}
-                            className="pr-10"
-                        >
-                            <span className="flex w-full items-center justify-between gap-2">
-                                <span>{y}</span>
-                                <span
-                                    role="button"
-                                    aria-label={`Remove ${y} from list`}
-                                    className="ml-auto inline-flex size-5 items-center justify-center rounded-md text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
-                                    onPointerDown={(e) => {
-                                        e.preventDefault();
-                                        e.stopPropagation();
-                                    }}
-                                    onPointerUp={(e) => {
-                                        e.preventDefault();
-                                        e.stopPropagation();
-                                        void handleDelete(y);
-                                    }}
-                                    onClick={(e) => {
-                                        e.preventDefault();
-                                        e.stopPropagation();
-                                    }}
-                                >
-                                    <Trash2 className="size-3" />
-                                </span>
-                            </span>
-                        </SelectItem>
-                    ))}
+                    <SelectGroup>
+                        <SelectItem value={ALL}>All</SelectItem>
+                        {options.map((y) => (
+                            <SelectItem key={y} value={String(y)}>
+                                {y}
+                            </SelectItem>
+                        ))}
+                    </SelectGroup>
                     <SelectSeparator />
-                    <Button
-                        variant="ghost"
-                        size="sm"
-                        className="w-full justify-start"
-                        onClick={openAddDialog}
-                    >
-                        <Plus className="size-3.5" />
-                        Add custom year…
-                    </Button>
+                    <div className="flex flex-col gap-1 p-1">
+                        <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="w-full justify-start"
+                            onClick={openAddDialog}
+                        >
+                            <Plus data-icon="inline-start" />
+                            Add custom year...
+                        </Button>
+                        <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="w-full justify-start"
+                            onClick={openManageDialog}
+                            disabled={options.length === 0}
+                        >
+                            <Settings2 data-icon="inline-start" />
+                            Manage years
+                        </Button>
+                    </div>
                 </SelectContent>
             </Select>
 
@@ -136,7 +158,146 @@ function YearSelector() {
                     onAdded={handleAdded}
                 />
             )}
+
+            {manageOpen && (
+                <ManageYearsDialog
+                    open={manageOpen}
+                    onOpenChange={setManageOpen}
+                    years={options}
+                    onAddYear={openAddDialog}
+                    onRequestDelete={requestDelete}
+                />
+            )}
+
+            {deleteTarget !== null && (
+                <DeleteYearDialog
+                    year={deleteTarget}
+                    open={deleteTarget !== null}
+                    error={deleteError}
+                    deleting={deleting}
+                    onOpenChange={(nextOpen) => {
+                        if (!nextOpen && !deleting) {
+                            setDeleteTarget(null);
+                            setDeleteError(null);
+                        }
+                    }}
+                    onConfirm={confirmDelete}
+                />
+            )}
         </>
+    );
+}
+
+function ManageYearsDialog({
+    open,
+    onOpenChange,
+    years,
+    onAddYear,
+    onRequestDelete,
+}: {
+    open: boolean;
+    onOpenChange: (open: boolean) => void;
+    years: number[];
+    onAddYear: () => void;
+    onRequestDelete: (year: number) => void;
+}) {
+    return (
+        <Dialog open={open} onOpenChange={onOpenChange}>
+            <DialogContent>
+                <DialogHeader>
+                    <DialogTitle>Manage years</DialogTitle>
+                </DialogHeader>
+                {years.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">
+                        No custom years yet.
+                    </p>
+                ) : (
+                    <div className="flex max-h-64 flex-col gap-1 overflow-y-auto">
+                        {years.map((year) => (
+                            <div
+                                key={year}
+                                className="flex items-center justify-between gap-3 rounded-lg border bg-background p-2"
+                            >
+                                <span className="text-sm font-medium">
+                                    {year}
+                                </span>
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => onRequestDelete(year)}
+                                >
+                                    <Trash2 data-icon="inline-start" />
+                                    Remove
+                                </Button>
+                            </div>
+                        ))}
+                    </div>
+                )}
+                <DialogFooter>
+                    <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => onOpenChange(false)}
+                    >
+                        Done
+                    </Button>
+                    <Button type="button" onClick={onAddYear}>
+                        <Plus data-icon="inline-start" />
+                        Add year
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+    );
+}
+
+function DeleteYearDialog({
+    year,
+    open,
+    error,
+    deleting,
+    onOpenChange,
+    onConfirm,
+}: {
+    year: number;
+    open: boolean;
+    error: string | null;
+    deleting: boolean;
+    onOpenChange: (open: boolean) => void;
+    onConfirm: () => void | Promise<void>;
+}) {
+    return (
+        <Dialog open={open} onOpenChange={onOpenChange}>
+            <DialogContent>
+                <DialogHeader>
+                    <DialogTitle>Remove {year}?</DialogTitle>
+                    <DialogDescription>
+                        This removes {year} from the year selector.
+                    </DialogDescription>
+                </DialogHeader>
+                {error && <p className="text-sm text-destructive">{error}</p>}
+                <DialogFooter>
+                    <Button
+                        type="button"
+                        variant="outline"
+                        disabled={deleting}
+                        onClick={() => onOpenChange(false)}
+                    >
+                        Cancel
+                    </Button>
+                    <Button
+                        type="button"
+                        variant="destructive"
+                        disabled={deleting}
+                        onClick={() => void onConfirm()}
+                    >
+                        <Trash2 data-icon="inline-start" />
+                        {deleting ? "Removing..." : "Remove"}
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
     );
 }
 
