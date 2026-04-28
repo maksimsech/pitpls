@@ -101,10 +101,14 @@ function YearSelector() {
                                         e.preventDefault();
                                         e.stopPropagation();
                                     }}
-                                    onClick={(e) => {
+                                    onPointerUp={(e) => {
                                         e.preventDefault();
                                         e.stopPropagation();
                                         void handleDelete(y);
+                                    }}
+                                    onClick={(e) => {
+                                        e.preventDefault();
+                                        e.stopPropagation();
                                     }}
                                 >
                                     <Trash2 className="size-3" />
