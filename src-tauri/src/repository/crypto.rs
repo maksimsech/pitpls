@@ -1,7 +1,7 @@
 use std::str::FromStr;
 
 use anyhow::Result;
-use chrono::NaiveDate;
+use chrono::{Datelike, NaiveDate};
 use pitpls_core::{common::Amount, crypto::Crypto};
 use rust_decimal::Decimal;
 use sqlx::{Row, SqlitePool};
@@ -44,7 +44,7 @@ impl CryptoRepository {
                 ",
             )
             .bind(crypto.id.to_string())
-            .bind(crypto.date.to_string())
+            .bind(crypto.date)
             .bind(crypto.value.value.to_string())
             .bind(serde_plain::to_string(&crypto.value.currency)?)
             .bind(crypto.fee.value.to_string())
@@ -53,6 +53,11 @@ impl CryptoRepository {
             .bind(crypto.provider.to_string())
             .execute(&mut *tx)
             .await?;
+
+            sqlx::query("INSERT OR IGNORE INTO years(year) VALUES (?)")
+                .bind(crypto.date.year())
+                .execute(&mut *tx)
+                .await?;
         }
 
         tx.commit().await?;
@@ -61,6 +66,7 @@ impl CryptoRepository {
     }
 
     pub async fn update(&self, c: &Crypto) -> Result<u64> {
+        let mut tx = self.db.begin().await?;
         let result = sqlx::query(
             r"
                 UPDATE cryptos
@@ -68,7 +74,7 @@ impl CryptoRepository {
                 WHERE id = ?
             ",
         )
-        .bind(c.date.to_string())
+        .bind(c.date)
         .bind(c.value.value.to_string())
         .bind(serde_plain::to_string(&c.value.currency)?)
         .bind(c.fee.value.to_string())
@@ -76,22 +82,35 @@ impl CryptoRepository {
         .bind(serde_plain::to_string(&c.action)?)
         .bind(c.provider.to_string())
         .bind(c.id.to_string())
-        .execute(&self.db)
+        .execute(&mut *tx)
         .await?;
+
+        sqlx::query("INSERT OR IGNORE INTO years(year) VALUES (?)")
+            .bind(c.date.year())
+            .execute(&mut *tx)
+            .await?;
+
+        tx.commit().await?;
         Ok(result.rows_affected())
     }
 
-    pub async fn get_all(&self) -> Result<Vec<Crypto>> {
-        let rows = sqlx::query(
-            "SELECT id, date, value, value_currency, fee, fee_currency, action, provider FROM cryptos",
-        )
-        .fetch_all(&self.db)
-        .await?;
+    pub async fn get_by_year(&self, year: Option<i32>) -> Result<Vec<Crypto>> {
+        const BASE: &str = "SELECT id, date, value, value_currency, fee, fee_currency, action, provider FROM cryptos";
+        let rows = match year {
+            None => sqlx::query(BASE).fetch_all(&self.db).await?,
+            Some(y) => {
+                sqlx::query(&format!("{BASE} WHERE date BETWEEN ? AND ?"))
+                    .bind(NaiveDate::from_ymd_opt(y, 1, 1).unwrap())
+                    .bind(NaiveDate::from_ymd_opt(y, 12, 31).unwrap())
+                    .fetch_all(&self.db)
+                    .await?
+            }
+        };
 
         rows.into_iter()
             .map(|row| {
                 let id: String = row.try_get("id")?;
-                let date: String = row.try_get("date")?;
+                let date: NaiveDate = row.try_get("date")?;
                 let value: String = row.try_get("value")?;
                 let value_currency: String = row.try_get("value_currency")?;
                 let fee: String = row.try_get("fee")?;
@@ -101,7 +120,7 @@ impl CryptoRepository {
 
                 Ok(Crypto {
                     id,
-                    date: NaiveDate::parse_from_str(&date, "%Y-%m-%d")?,
+                    date,
                     value: Amount {
                         value: Decimal::from_str(&value)?,
                         currency: serde_plain::from_str(&value_currency)?,

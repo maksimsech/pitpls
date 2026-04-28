@@ -30,9 +30,9 @@ async listRates() : Promise<Result<Rate[], string>> {
     else return { status: "error", error: e  as any };
 }
 },
-async loadCryptos() : Promise<Result<CryptoTaxData, string>> {
+async loadCryptos(year: number | null) : Promise<Result<CryptoTaxData, string>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("load_cryptos") };
+    return { status: "ok", data: await TAURI_INVOKE("load_cryptos", { year }) };
 } catch (e) {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
@@ -62,9 +62,9 @@ async updateCrypto(input: UpdateCryptoInput) : Promise<Result<null, string>> {
     else return { status: "error", error: e  as any };
 }
 },
-async loadDividends() : Promise<Result<DividendTaxData, string>> {
+async loadDividends(year: number | null) : Promise<Result<DividendTaxData, string>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("load_dividends") };
+    return { status: "ok", data: await TAURI_INVOKE("load_dividends", { year }) };
 } catch (e) {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
@@ -94,9 +94,9 @@ async updateDividend(input: UpdateDividendInput) : Promise<Result<null, string>>
     else return { status: "error", error: e  as any };
 }
 },
-async loadInterests() : Promise<Result<InterestTaxData, string>> {
+async loadInterests(year: number | null) : Promise<Result<InterestTaxData, string>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("load_interests") };
+    return { status: "ok", data: await TAURI_INVOKE("load_interests", { year }) };
 } catch (e) {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
@@ -134,17 +134,57 @@ async runImport(kind: ImporterKind, file: string) : Promise<Result<ImportResult,
     else return { status: "error", error: e  as any };
 }
 },
-async getWarnings() : Promise<Result<Warnings, string>> {
+async getWarnings(year: number | null) : Promise<Result<Warnings, string>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("get_warnings") };
+    return { status: "ok", data: await TAURI_INVOKE("get_warnings", { year }) };
 } catch (e) {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
 }
 },
-async loadTaxSummary() : Promise<Result<TaxSummary, string>> {
+async loadTaxSummary(year: number | null) : Promise<Result<TaxSummary, string>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("load_tax_summary") };
+    return { status: "ok", data: await TAURI_INVOKE("load_tax_summary", { year }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async listYears() : Promise<Result<number[], string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("list_years") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async addYear(year: number) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("add_year", { year }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async deleteYear(year: number) : Promise<Result<number, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("delete_year", { year }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async loadSettings() : Promise<Result<Settings, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("load_settings") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async updateSettings(settings: Settings) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("update_settings", { settings }) };
 } catch (e) {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
@@ -165,15 +205,15 @@ export const IMPORTERS = [{"input":["Csv"],"kind":"T212","name":"Trading 212","o
 export type Action = "FiatBuy" | "FiatSell"
 export type Amount = { value: string; currency: Currency }
 export type CalculatedCrypto = { id: string; value: Amount; calculated_value: string; fee: Amount; calculated_fee: string; action: Action; date: string; nbp_date: string; provider: string }
-export type CalculatedDividend = { id: string; date: string; nbp_date: string; ticker: string; value: Amount; calculated_value: string; calculated_to_pay: string; tax_paid: Amount; calculated_tax_paid: string; max_tax_paid: string; used_tax_paid: string; country: Country; provider: string }
+export type CalculatedDividend = { id: string; date: string; nbp_date: string; ticker: string; value: Amount; calculated_value: string; calculated_to_pay: string; tax_paid: Amount; calculated_tax_paid: string; max_tax_paid: string; used_tax_paid: string; country: string; provider: string }
 export type CalculatedInterest = { id: string; date: string; nbp_date: string; value: Amount; calculated_value: string; provider: string }
-export type Country = "Japan" | "USA"
 export type CreateCryptoInput = { id: string | null; date: string; action: Action; value: string; value_currency: Currency; fee: string; fee_currency: Currency; provider: string }
-export type CreateDividendInput = { id: string | null; date: string; ticker: string; value: string; value_currency: Currency; tax_paid: string; tax_paid_currency: Currency; country: Country; provider: string }
+export type CreateDividendInput = { id: string | null; date: string; ticker: string; value: string; value_currency: Currency; tax_paid: string; tax_paid_currency: Currency; country: string; provider: string }
 export type CreateInterestInput = { id: string | null; date: string; value: string; value_currency: Currency; provider: string }
 export type CryptoTaxData = { income: string; costs: string; calculated: CalculatedCrypto[] }
 export type CryptoTaxSummary = { income: string; costs: string }
 export type Currency = "EUR" | "USD" | "PLN"
+export type DividendRounding = "SumToGroszy" | "SumToZlote" | "AllToZlote"
 export type DividendTaxData = { to_pay: string; paid: string; income: string; calculated: CalculatedDividend[] }
 export type ForeignTaxSummary = { income: string; tax_to_pay: string; tax_paid: string }
 export type ImportResult = { dividends: number; cryptos: number; interests: number }
@@ -183,11 +223,12 @@ export type InputType = "Csv" | "Pdf"
 export type InterestTaxData = { to_pay: string; income: string; calculated: CalculatedInterest[] }
 export type OutputType = "Dividend" | "Crypto" | "Interest"
 export type Rate = { date: string; currency: Currency; rate: string }
+export type Settings = { dividend_rounding: DividendRounding }
 export type TaxSummary = { crypto: CryptoTaxSummary; foreign: ForeignTaxSummary }
 export type UpdateCryptoInput = { id: string; date: string; action: Action; value: string; value_currency: Currency; fee: string; fee_currency: Currency; provider: string }
-export type UpdateDividendInput = { id: string; date: string; ticker: string; value: string; value_currency: Currency; tax_paid: string; tax_paid_currency: Currency; country: Country; provider: string }
+export type UpdateDividendInput = { id: string; date: string; ticker: string; value: string; value_currency: Currency; tax_paid: string; tax_paid_currency: Currency; country: string; provider: string }
 export type UpdateInterestInput = { id: string; date: string; value: string; value_currency: Currency; provider: string }
-export type Warnings = { rates_empty: boolean }
+export type Warnings = { rates_empty: boolean; has_records_in_year: boolean }
 
 /** tauri-specta globals **/
 

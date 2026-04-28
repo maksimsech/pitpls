@@ -19,6 +19,7 @@ import { DividendFormModal } from "@/components/dividend-form-modal";
 import { ErrorState } from "@/components/error-state";
 import { LoadingState } from "@/components/loading-state";
 import { SelectionHeader } from "@/components/selection-header";
+import { useYear } from "@/components/year-provider";
 import { Button } from "@/components/ui/button";
 import {
     TableCell,
@@ -28,24 +29,29 @@ import {
 } from "@/components/ui/table";
 import { useSelection } from "@/hooks/use-selection";
 import { formatError } from "@/lib/utils";
-import { countryDisplay } from "@/lib/display";
 
 const COLUMN_COUNT = 8;
 const ROW_ESTIMATE_PX = 41;
 
-function loadDividends() {
-    return commands.loadDividends();
+function loadDividends(year: number | null) {
+    return commands.loadDividends(year);
 }
 
 function DividendPage() {
-    const [taxPromise, setTaxPromise] = useState(loadDividends);
+    const { year } = useYear();
+
+    return <DividendPageForYear key={year ?? "all"} year={year} />;
+}
+
+function DividendPageForYear({ year }: { year: number | null }) {
+    const [taxPromise, setTaxPromise] = useState(() => loadDividends(year));
     const [, startTransition] = useTransition();
 
     const refresh = useCallback(() => {
         startTransition(() => {
-            setTaxPromise(loadDividends());
+            setTaxPromise(loadDividends(year));
         });
-    }, []);
+    }, [year]);
 
     return (
         <Suspense
@@ -294,8 +300,8 @@ function DividendDataContent({
                                     </TableCell>
                                     <TableCell>{d.date}</TableCell>
                                     <TableCell>{d.ticker}</TableCell>
-                                    <TableCell>
-                                        {countryDisplay[d.country]}
+                                    <TableCell className="font-mono">
+                                        {d.country}
                                     </TableCell>
                                     <TableCell className="text-right font-mono">
                                         <CurrencyValue

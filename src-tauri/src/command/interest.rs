@@ -127,10 +127,13 @@ pub async fn delete_interests(state: State<'_, AppState>, ids: Vec<String>) -> R
 
 #[tauri::command]
 #[specta::specta]
-pub async fn load_interests(state: State<'_, AppState>) -> Result<InterestTaxData, String> {
+pub async fn load_interests(
+    state: State<'_, AppState>,
+    year: Option<i32>,
+) -> Result<InterestTaxData, String> {
     let mut interests = state
         .interest_repo()
-        .get_all()
+        .get_by_year(year)
         .await
         .map_err(|e| e.to_string())?;
 

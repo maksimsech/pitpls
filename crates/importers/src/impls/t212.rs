@@ -166,8 +166,7 @@ fn parse_dividend_row(fields: &[String], columns: &ColumnMap) -> Result<Option<D
     let date = NaiveDate::parse_from_str(timestamp.get(..10).unwrap_or(""), "%Y-%m-%d")
         .with_context(|| format!("invalid timestamp: {timestamp}"))?;
 
-    let country =
-        country_from_isin(isin).ok_or_else(|| anyhow!("unsupported ISIN country: {isin}"))?;
+    let country = Country::from_isin(isin).map_err(|e| anyhow!("{e} (ISIN {isin})"))?;
 
     let value_currency =
         Currency::from_str(&price_currency.to_ascii_lowercase()).map_err(|e| anyhow!(e))?;
@@ -209,14 +208,6 @@ fn parse_dividend_row(fields: &[String], columns: &ColumnMap) -> Result<Option<D
         country,
         provider: "Trading 212".to_owned(),
     }))
-}
-
-fn country_from_isin(isin: &str) -> Option<Country> {
-    match isin.get(..2)? {
-        "US" => Some(Country::USA),
-        "JP" => Some(Country::Japan),
-        _ => None,
-    }
 }
 
 fn parse_decimal(s: &str) -> Result<Decimal> {

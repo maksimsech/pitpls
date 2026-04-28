@@ -6,12 +6,14 @@ import { AppLayout } from "./components/app-layout";
 import { MainPage } from "./pages/main-page";
 import { RatesPage } from "./pages/rates-page";
 import { ThemeProvider } from "./components/theme-provider";
+import { YearProvider } from "./components/year-provider";
 import { TooltipProvider } from "./components/ui/tooltip";
 import "./index.css";
 import { CryptoPage } from "./pages/crypto-page";
 import { DividendPage } from "./pages/dividend-page";
 import { ImportsPage } from "./pages/imports-page";
 import { InterestPage } from "./pages/interest-page";
+import { SettingsPage } from "./pages/settings-page";
 
 const router = createHashRouter([
     {
@@ -23,6 +25,7 @@ const router = createHashRouter([
             { path: "/crypto", element: <CryptoPage /> },
             { path: "/dividends", element: <DividendPage /> },
             { path: "/interests", element: <InterestPage /> },
+            { path: "/settings", element: <SettingsPage /> },
         ],
     },
 ]);
@@ -30,9 +33,11 @@ const router = createHashRouter([
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
     <React.StrictMode>
         <ThemeProvider>
-            <TooltipProvider>
-                <RouterProvider router={router} />
-            </TooltipProvider>
+            <YearProvider>
+                <TooltipProvider>
+                    <RouterProvider router={router} />
+                </TooltipProvider>
+            </YearProvider>
         </ThemeProvider>
     </React.StrictMode>,
 );

@@ -1,8 +1,11 @@
 use std::str::FromStr;
 
-use anyhow::Result;
-use chrono::NaiveDate;
-use pitpls_core::{common::Amount, dividend::Dividend};
+use anyhow::{Error, Result};
+use chrono::{Datelike, NaiveDate};
+use pitpls_core::{
+    common::{Amount, Country},
+    dividend::Dividend,
+};
 use rust_decimal::Decimal;
 use sqlx::{Row, SqlitePool};
 
@@ -44,16 +47,21 @@ impl DividendRepository {
                 ",
             )
             .bind(dividend.id.to_string())
-            .bind(dividend.date.to_string())
+            .bind(dividend.date)
             .bind(dividend.ticker.to_string())
             .bind(dividend.value.value.to_string())
             .bind(serde_plain::to_string(&dividend.value.currency)?)
             .bind(dividend.tax_paid.value.to_string())
             .bind(serde_plain::to_string(&dividend.tax_paid.currency)?)
-            .bind(serde_plain::to_string(&dividend.country)?)
+            .bind(dividend.country.to_string())
             .bind(dividend.provider.to_string())
             .execute(&mut *tx)
             .await?;
+
+            sqlx::query("INSERT OR IGNORE INTO years(year) VALUES (?)")
+                .bind(dividend.date.year())
+                .execute(&mut *tx)
+                .await?;
         }
 
         tx.commit().await?;
@@ -62,6 +70,7 @@ impl DividendRepository {
     }
 
     pub async fn update(&self, d: &Dividend) -> Result<u64> {
+        let mut tx = self.db.begin().await?;
         let result = sqlx::query(
             r"
                 UPDATE dividends
@@ -69,31 +78,44 @@ impl DividendRepository {
                 WHERE id = ?
             ",
         )
-        .bind(d.date.to_string())
+        .bind(d.date)
         .bind(d.ticker.to_string())
         .bind(d.value.value.to_string())
         .bind(serde_plain::to_string(&d.value.currency)?)
         .bind(d.tax_paid.value.to_string())
         .bind(serde_plain::to_string(&d.tax_paid.currency)?)
-        .bind(serde_plain::to_string(&d.country)?)
+        .bind(d.country.to_string())
         .bind(d.provider.to_string())
         .bind(d.id.to_string())
-        .execute(&self.db)
+        .execute(&mut *tx)
         .await?;
+
+        sqlx::query("INSERT OR IGNORE INTO years(year) VALUES (?)")
+            .bind(d.date.year())
+            .execute(&mut *tx)
+            .await?;
+
+        tx.commit().await?;
         Ok(result.rows_affected())
     }
 
-    pub async fn get_all(&self) -> Result<Vec<Dividend>> {
-        let rows = sqlx::query(
-            "SELECT id, date, ticker, value, value_currency, tax_paid, tax_paid_currency, country, provider FROM dividends",
-        )
-        .fetch_all(&self.db)
-        .await?;
+    pub async fn get_by_year(&self, year: Option<i32>) -> Result<Vec<Dividend>> {
+        const BASE: &str = "SELECT id, date, ticker, value, value_currency, tax_paid, tax_paid_currency, country, provider FROM dividends";
+        let rows = match year {
+            None => sqlx::query(BASE).fetch_all(&self.db).await?,
+            Some(y) => {
+                sqlx::query(&format!("{BASE} WHERE date BETWEEN ? AND ?"))
+                    .bind(NaiveDate::from_ymd_opt(y, 1, 1).unwrap())
+                    .bind(NaiveDate::from_ymd_opt(y, 12, 31).unwrap())
+                    .fetch_all(&self.db)
+                    .await?
+            }
+        };
 
         rows.into_iter()
             .map(|row| {
                 let id: String = row.try_get("id")?;
-                let date: String = row.try_get("date")?;
+                let date: NaiveDate = row.try_get("date")?;
                 let ticker: String = row.try_get("ticker")?;
                 let value: String = row.try_get("value")?;
                 let value_currency: String = row.try_get("value_currency")?;
@@ -104,7 +126,7 @@ impl DividendRepository {
 
                 Ok(Dividend {
                     id,
-                    date: NaiveDate::parse_from_str(&date, "%Y-%m-%d")?,
+                    date,
                     ticker,
                     value: Amount {
                         value: Decimal::from_str(&value)?,
@@ -114,7 +136,7 @@ impl DividendRepository {
                         value: Decimal::from_str(&tax_paid)?,
                         currency: serde_plain::from_str(&tax_paid_currency)?,
                     },
-                    country: serde_plain::from_str(&country)?,
+                    country: Country::from_str(&country).map_err(Error::msg)?,
                     provider,
                 })
             })

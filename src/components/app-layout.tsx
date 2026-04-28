@@ -7,6 +7,7 @@ import {
     Home,
     Menu,
     Percent,
+    Settings,
     Upload,
 } from "lucide-react";
 import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
@@ -22,6 +23,7 @@ const menuItems = [
     { to: "/interests", label: "Interests", icon: Percent },
     { to: "/crypto", label: "Crypto", icon: Bitcoin },
     { to: "/rates", label: "Rates", icon: ChartLine },
+    { to: "/settings", label: "Settings", icon: Settings },
 ];
 
 function AppLayout() {

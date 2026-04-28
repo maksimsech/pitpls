@@ -155,10 +155,13 @@ pub async fn delete_dividends(state: State<'_, AppState>, ids: Vec<String>) -> R
 
 #[tauri::command]
 #[specta::specta]
-pub async fn load_dividends(state: State<'_, AppState>) -> Result<DividendTaxData, String> {
+pub async fn load_dividends(
+    state: State<'_, AppState>,
+    year: Option<i32>,
+) -> Result<DividendTaxData, String> {
     let mut dividends = state
         .dividend_repo()
-        .get_all()
+        .get_by_year(year)
         .await
         .map_err(|e| e.to_string())?;
 
@@ -170,6 +173,11 @@ pub async fn load_dividends(state: State<'_, AppState>) -> Result<DividendTaxDat
         .await
         .map_err(|e| e.to_string())?;
     let rate_provider = NbpRateProvider::new(rates);
+    let dividend_rounding = state
+        .settings_repo()
+        .load_dividend_rounding()
+        .await
+        .map_err(|e| e.to_string())?;
 
-    calculate(dividends, &rate_provider).map_err(|e| e.to_string())
+    calculate(dividends, &rate_provider, dividend_rounding).map_err(|e| e.to_string())
 }

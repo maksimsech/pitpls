@@ -5,7 +5,6 @@ import {
     CurrencyAmountField,
     IdField,
     LabeledInput,
-    LabeledSelect,
 } from "@/components/form-fields";
 import { Button } from "@/components/ui/button";
 import {
@@ -15,7 +14,6 @@ import {
     DialogHeader,
     DialogTitle,
 } from "@/components/ui/dialog";
-import { countryDisplay, type Country } from "@/lib/display";
 import { formatError, today } from "@/lib/utils";
 
 type Props = {
@@ -37,7 +35,7 @@ function DividendFormModal({ onClose, onCreated, dividend }: Props) {
     const [taxPaidCurrency, setTaxPaidCurrency] = useState<Currency>(
         dividend?.tax_paid.currency ?? "USD",
     );
-    const [country, setCountry] = useState<Country>(dividend?.country ?? "USA");
+    const [country, setCountry] = useState<string>(dividend?.country ?? "US");
     const [provider, setProvider] = useState(dividend?.provider ?? "");
     const [submitting, setSubmitting] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -54,7 +52,7 @@ function DividendFormModal({ onClose, onCreated, dividend }: Props) {
                 value_currency: valueCurrency,
                 tax_paid: taxPaid.trim(),
                 tax_paid_currency: taxPaidCurrency,
-                country,
+                country: country.trim().toUpperCase(),
                 provider: provider.trim(),
             };
             if (isEdit) {
@@ -131,12 +129,18 @@ function DividendFormModal({ onClose, onCreated, dividend }: Props) {
                         currency={taxPaidCurrency}
                         onCurrencyChange={setTaxPaidCurrency}
                     />
-                    <LabeledSelect
+                    <LabeledInput
                         id="dividend-country"
-                        label="Country"
+                        label="Country code"
                         value={country}
-                        onChange={setCountry}
-                        options={countryDisplay}
+                        onChange={(e) =>
+                            setCountry(e.target.value.toUpperCase().slice(0, 2))
+                        }
+                        className="font-mono uppercase"
+                        maxLength={2}
+                        pattern="[A-Za-z]{2}"
+                        autoCapitalize="characters"
+                        required
                     />
                     <LabeledInput
                         id="dividend-provider"

@@ -19,6 +19,7 @@ import { ErrorState } from "@/components/error-state";
 import { InterestFormModal } from "@/components/interest-form-modal";
 import { LoadingState } from "@/components/loading-state";
 import { SelectionHeader } from "@/components/selection-header";
+import { useYear } from "@/components/year-provider";
 import { Button } from "@/components/ui/button";
 import {
     TableCell,
@@ -32,19 +33,25 @@ import { formatError } from "@/lib/utils";
 const COLUMN_COUNT = 5;
 const ROW_ESTIMATE_PX = 41;
 
-function loadInterests() {
-    return commands.loadInterests();
+function loadInterests(year: number | null) {
+    return commands.loadInterests(year);
 }
 
 function InterestPage() {
-    const [taxPromise, setTaxPromise] = useState(loadInterests);
+    const { year } = useYear();
+
+    return <InterestPageForYear key={year ?? "all"} year={year} />;
+}
+
+function InterestPageForYear({ year }: { year: number | null }) {
+    const [taxPromise, setTaxPromise] = useState(() => loadInterests(year));
     const [, startTransition] = useTransition();
 
     const refresh = useCallback(() => {
         startTransition(() => {
-            setTaxPromise(loadInterests());
+            setTaxPromise(loadInterests(year));
         });
-    }, []);
+    }, [year]);
 
     return (
         <Suspense

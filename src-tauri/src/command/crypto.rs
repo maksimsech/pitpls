@@ -148,10 +148,13 @@ pub async fn delete_cryptos(state: State<'_, AppState>, ids: Vec<String>) -> Res
 
 #[tauri::command]
 #[specta::specta]
-pub async fn load_cryptos(state: State<'_, AppState>) -> Result<CryptoTaxData, String> {
+pub async fn load_cryptos(
+    state: State<'_, AppState>,
+    year: Option<i32>,
+) -> Result<CryptoTaxData, String> {
     let mut cryptos = state
         .crypto_repo()
-        .get_all()
+        .get_by_year(year)
         .await
         .map_err(|e| e.to_string())?;
 
