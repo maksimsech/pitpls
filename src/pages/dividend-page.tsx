@@ -369,7 +369,6 @@ function DividendDataContent({
                                                     <div>
                                                         <div className="text-xs text-muted-foreground">
                                                             Calculated value
-                                                            (PLN)
                                                         </div>
                                                         <div className="font-mono">
                                                             <CurrencyValue
@@ -383,7 +382,6 @@ function DividendDataContent({
                                                     <div>
                                                         <div className="text-xs text-muted-foreground">
                                                             Calculated to pay
-                                                            (PLN)
                                                         </div>
                                                         <div className="font-mono">
                                                             <CurrencyValue
@@ -397,7 +395,6 @@ function DividendDataContent({
                                                     <div>
                                                         <div className="text-xs text-muted-foreground">
                                                             Calculated tax paid
-                                                            (PLN)
                                                         </div>
                                                         <div className="font-mono">
                                                             <CurrencyValue
@@ -410,7 +407,7 @@ function DividendDataContent({
                                                     </div>
                                                     <div>
                                                         <div className="text-xs text-muted-foreground">
-                                                            Max tax paid (PLN)
+                                                            Max tax paid
                                                         </div>
                                                         <div className="font-mono">
                                                             <CurrencyValue
@@ -423,7 +420,7 @@ function DividendDataContent({
                                                     </div>
                                                     <div>
                                                         <div className="text-xs text-muted-foreground">
-                                                            Used tax paid (PLN)
+                                                            Used tax paid
                                                         </div>
                                                         <div className="font-mono">
                                                             <CurrencyValue

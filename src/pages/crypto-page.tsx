@@ -360,7 +360,6 @@ function CryptoDataContent({
                                                     <div>
                                                         <div className="text-xs text-muted-foreground">
                                                             Calculated value
-                                                            (PLN)
                                                         </div>
                                                         <div className="font-mono">
                                                             <CurrencyValue
@@ -373,7 +372,7 @@ function CryptoDataContent({
                                                     </div>
                                                     <div>
                                                         <div className="text-xs text-muted-foreground">
-                                                            Calculated fee (PLN)
+                                                            Calculated fee
                                                         </div>
                                                         <div className="font-mono">
                                                             <CurrencyValue

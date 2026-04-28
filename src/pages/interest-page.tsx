@@ -330,16 +330,28 @@ function InterestDataContent({
                                     >
                                         <TableCell colSpan={COLUMN_COUNT}>
                                             <div className="w-0 min-w-full overflow-hidden whitespace-normal">
-                                                <div className="grid grid-cols-2 gap-3">
+                                                <div className="grid grid-cols-3 gap-3">
                                                     <div>
                                                         <div className="text-xs text-muted-foreground">
                                                             Calculated value
-                                                            (PLN)
                                                         </div>
                                                         <div className="font-mono">
                                                             <CurrencyValue
                                                                 value={
                                                                     i.calculated_value
+                                                                }
+                                                                currency="pln"
+                                                            />
+                                                        </div>
+                                                    </div>
+                                                    <div>
+                                                        <div className="text-xs text-muted-foreground">
+                                                            To pay
+                                                        </div>
+                                                        <div className="font-mono">
+                                                            <CurrencyValue
+                                                                value={
+                                                                    i.to_pay
                                                                 }
                                                                 currency="pln"
                                                             />

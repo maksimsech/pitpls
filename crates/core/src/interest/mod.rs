@@ -22,7 +22,12 @@ pub fn calculate(
         profit += interest_pln;
         to_pay_total += to_pay;
 
-        calculated.push(CalculatedInterest::build(interest, nbp_date, to_pay));
+        calculated.push(CalculatedInterest::build(
+            interest,
+            nbp_date,
+            interest_pln,
+            to_pay,
+        ));
     }
 
     Ok(InterestTaxData {

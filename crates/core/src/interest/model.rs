@@ -19,17 +19,24 @@ pub struct CalculatedInterest {
     pub nbp_date: NaiveDate,
     pub value: Amount,
     pub calculated_value: Decimal,
+    pub to_pay: Decimal,
     pub provider: String,
 }
 
 impl CalculatedInterest {
-    pub fn build(interest: Interest, nbp_date: NaiveDate, calculated_value: Decimal) -> Self {
+    pub fn build(
+        interest: Interest,
+        nbp_date: NaiveDate,
+        calculated_value: Decimal,
+        to_pay: Decimal,
+    ) -> Self {
         Self {
             id: interest.id,
             date: interest.date,
             nbp_date,
             value: interest.value,
             calculated_value,
+            to_pay,
             provider: interest.provider,
         }
     }
