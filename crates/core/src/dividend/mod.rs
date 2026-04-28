@@ -25,9 +25,6 @@ pub fn calculate(
     for dividend in dividends {
         let (mut dividend_pln, nbp_date) =
             rate_provider.convert(&dividend.value, &dividend.date)?;
-        if matches!(rounding, DividendRounding::AllToZlote) {
-            dividend_pln = dividend_pln.round_zloty();
-        }
         dividend_pln = dividend_pln.maybe_round_dividend(rounding);
 
         let mut to_pay = dividend_pln * POLAND_TAX;

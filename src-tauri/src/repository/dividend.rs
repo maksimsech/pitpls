@@ -1,8 +1,11 @@
 use std::str::FromStr;
 
-use anyhow::Result;
+use anyhow::{Error, Result};
 use chrono::{Datelike, NaiveDate};
-use pitpls_core::{common::Amount, dividend::Dividend};
+use pitpls_core::{
+    common::{Amount, Country},
+    dividend::Dividend,
+};
 use rust_decimal::Decimal;
 use sqlx::{Row, SqlitePool};
 
@@ -50,7 +53,7 @@ impl DividendRepository {
             .bind(serde_plain::to_string(&dividend.value.currency)?)
             .bind(dividend.tax_paid.value.to_string())
             .bind(serde_plain::to_string(&dividend.tax_paid.currency)?)
-            .bind(serde_plain::to_string(&dividend.country)?)
+            .bind(dividend.country.to_string())
             .bind(dividend.provider.to_string())
             .execute(&mut *tx)
             .await?;
@@ -81,7 +84,7 @@ impl DividendRepository {
         .bind(serde_plain::to_string(&d.value.currency)?)
         .bind(d.tax_paid.value.to_string())
         .bind(serde_plain::to_string(&d.tax_paid.currency)?)
-        .bind(serde_plain::to_string(&d.country)?)
+        .bind(d.country.to_string())
         .bind(d.provider.to_string())
         .bind(d.id.to_string())
         .execute(&mut *tx)
@@ -133,7 +136,7 @@ impl DividendRepository {
                         value: Decimal::from_str(&tax_paid)?,
                         currency: serde_plain::from_str(&tax_paid_currency)?,
                     },
-                    country: serde_plain::from_str(&country)?,
+                    country: Country::from_str(&country).map_err(Error::msg)?,
                     provider,
                 })
             })

@@ -3184,6 +3184,7 @@ dependencies = [
  "chrono",
  "rust_decimal",
  "serde",
+ "serde_json",
  "specta",
  "thiserror 2.0.18",
  "tokio",

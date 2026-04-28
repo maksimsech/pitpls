@@ -146,4 +146,10 @@ function LabeledSelect<T extends string>({
     );
 }
 
-export { CurrencyAmountField, EnumSelect, IdField, LabeledInput, LabeledSelect };
+export {
+    CurrencyAmountField,
+    EnumSelect,
+    IdField,
+    LabeledInput,
+    LabeledSelect,
+};

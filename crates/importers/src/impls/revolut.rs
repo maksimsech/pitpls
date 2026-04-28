@@ -58,9 +58,9 @@ fn try_parse_dividend(tokens: &[&str]) -> Result<Option<(Dividend, usize)>> {
         return Ok(None);
     };
 
-    let country = country_from_isin(tokens[isin_idx]).ok_or_else(|| {
+    let country = Country::from_isin(tokens[isin_idx]).map_err(|e| {
         anyhow!(
-            "unsupported ISIN country: {} (ticker {ticker}, date {date})",
+            "{e} (ISIN {}, ticker {ticker}, date {date})",
             tokens[isin_idx]
         )
     })?;
@@ -141,14 +141,6 @@ fn is_isin(s: &str) -> bool {
     s.len() == 12
         && s.as_bytes()[..2].iter().all(|b| b.is_ascii_uppercase())
         && s.as_bytes()[2..].iter().all(|b| b.is_ascii_alphanumeric())
-}
-
-fn country_from_isin(isin: &str) -> Option<Country> {
-    match isin.get(..2)? {
-        "US" => Some(Country::USA),
-        "JP" => Some(Country::Japan),
-        _ => None,
-    }
 }
 
 fn parse_currency_amount(s: &str) -> Option<(Currency, Decimal)> {
