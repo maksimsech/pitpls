@@ -5,7 +5,8 @@ use specta::Type;
 pub enum DividendRounding {
     #[default]
     SumToGroszy,
-    SumToZlote,
+    SumToPayToZlote,
+    SumBothToZlote,
     AllToZlote,
 }
 

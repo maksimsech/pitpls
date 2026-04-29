@@ -52,12 +52,19 @@ pub fn calculate(
     }
 
     Ok(DividendTaxData {
-        to_pay: if matches!(rounding, DividendRounding::SumToZlote) {
+        to_pay: if matches!(
+            rounding,
+            DividendRounding::SumToPayToZlote | DividendRounding::SumBothToZlote
+        ) {
             to_pay_total.round_zloty()
         } else {
             to_pay_total.round_groszy()
         },
-        paid: paid_total.round_groszy(),
+        paid: if matches!(rounding, DividendRounding::SumBothToZlote) {
+            paid_total.round_zloty()
+        } else {
+            paid_total.round_groszy()
+        },
         income: profit.round_groszy(),
         calculated,
     })

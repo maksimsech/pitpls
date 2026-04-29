@@ -1,8 +1,4 @@
-import type {
-    Action,
-    Currency,
-    DividendRounding,
-} from "@/bindings";
+import type { Action, Currency, DividendRounding } from "@/bindings";
 
 export type { Action, Currency, DividendRounding };
 
@@ -19,6 +15,7 @@ export const currencyDisplay: Record<Currency, string> = {
 
 export const dividendRoundingDisplay: Record<DividendRounding, string> = {
     SumToGroszy: "Sum to groszy",
-    SumToZlote: "Sum to złote",
+    SumToPayToZlote: "Sum to pay to złote",
+    SumBothToZlote: "Sum both to złote",
     AllToZlote: "All to złote",
 };
