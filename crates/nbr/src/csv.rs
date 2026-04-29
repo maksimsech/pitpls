@@ -1,16 +1,56 @@
-use anyhow::{Result, anyhow, ensure};
 use std::collections::BTreeMap;
 use std::path::Path;
+
+use anyhow::{Result, anyhow, ensure};
+use chrono::NaiveDate;
+use pitpls_core::{common::Currency, rate::RateExport};
+use rust_decimal::Decimal;
 use tokio::fs::read;
 
-use rust_decimal::Decimal;
-
-pub struct RateCsv {
-    pub date: String,
-    pub rate_map: BTreeMap<String, Decimal>,
+struct RateCsv {
+    date: String,
+    rate_map: BTreeMap<String, Decimal>,
 }
 
-pub async fn read_csv(path: &str) -> Result<Vec<RateCsv>> {
+pub async fn load_csv_rates(path: &str) -> Result<Vec<RateExport>> {
+    let csv_rates = read_csv(path).await?;
+
+    let rates_by_date = csv_rates
+        .into_iter()
+        .map(|r| {
+            let date = NaiveDate::parse_from_str(&r.date, "%Y%m%d")?;
+            let rates = r
+                .rate_map
+                .into_iter()
+                .filter_map(|(code, rate)| {
+                    let symbol = code.trim_start_matches(|c: char| c.is_ascii_digit());
+                    let currency = match symbol {
+                        "USD" => Currency::USD,
+                        "EUR" => Currency::EUR,
+                        _ => return None,
+                    };
+
+                    Some(parse_unit(code.as_str()).map(|unit| (currency, rate / unit)))
+                })
+                .collect::<Result<BTreeMap<_, _>>>()?;
+
+            Ok((date, rates))
+        })
+        .collect::<Result<BTreeMap<_, _>>>()?;
+
+    Ok(rates_by_date
+        .into_iter()
+        .flat_map(|(date, rates)| {
+            rates.into_iter().map(move |(currency, rate)| RateExport {
+                date,
+                currency,
+                rate,
+            })
+        })
+        .collect())
+}
+
+async fn read_csv(path: &str) -> Result<Vec<RateCsv>> {
     let path = Path::new(path);
 
     ensure!(
@@ -78,4 +118,16 @@ fn parse_row(headers: &[&str], line: &str) -> Result<RateCsv> {
 
 fn split_fields(line: &str) -> Vec<&str> {
     line.trim().split_terminator(';').collect()
+}
+
+fn parse_unit(code: &str) -> Result<Decimal> {
+    let digits = code
+        .chars()
+        .take_while(|c| c.is_ascii_digit())
+        .collect::<String>();
+    if digits.is_empty() {
+        return Ok(Decimal::ONE);
+    }
+
+    Ok(digits.parse()?)
 }

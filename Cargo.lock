@@ -2647,6 +2647,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "nbr"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "pitpls-core",
+ "reqwest",
+ "rust_decimal",
+ "serde",
+ "tokio",
+]
+
+[[package]]
 name = "ndk"
 version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3268,9 +3281,9 @@ version = "0.0.0"
 dependencies = [
  "anyhow",
  "chrono",
+ "nbr",
  "pitpls-core",
  "pitpls-importers",
- "reqwest",
  "rust_decimal",
  "serde",
  "serde_json",
@@ -3300,7 +3313,6 @@ dependencies = [
  "serde_json",
  "specta",
  "thiserror 2.0.18",
- "tokio",
 ]
 
 [[package]]

@@ -1,5 +1,5 @@
 [workspace]
-members = ["src-tauri", "crates/core", "crates/importers"]
+members = ["src-tauri", "crates/core", "crates/importers", "crates/nbr"]
 resolver = "3"
 
 [workspace.package]
@@ -8,11 +8,13 @@ license = "MIT"
 authors = ["Maksim Sech"]
 
 [workspace.dependencies]
+nbr = { path = "crates/nbr" }
 pitpls-core = { path = "crates/core" }
 pitpls-importers = { path = "crates/importers" }
 
 anyhow = "1.0"
 chrono = { version = "0.4.44", features = ["serde"] }
+reqwest = { version = "0.13.2", features = ["json"] }
 rust_decimal = { version = "1.39.0", features = ["serde", "macros"] }
 tokio = { version = "1.52.0", features = ["fs"] }
 uuid = { version = "1", features = ["v4"] }

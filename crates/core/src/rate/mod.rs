@@ -1,16 +1,10 @@
-use anyhow::Result;
 use std::collections::BTreeMap;
 
 use chrono::NaiveDate;
 use rust_decimal::Decimal;
 use thiserror::Error;
 
-use crate::{
-    common::{Amount, Currency},
-    rate::csv::read_csv,
-};
-
-mod csv;
+use crate::common::{Amount, Currency};
 
 mod model;
 
@@ -35,35 +29,6 @@ pub struct NbpRateProvider {
 }
 
 impl NbpRateProvider {
-    pub async fn load(path: &str) -> Result<Self> {
-        let csv_rates = read_csv(path).await?;
-
-        let rates_by_date = csv_rates
-            .into_iter()
-            .map(|r| {
-                let date = NaiveDate::parse_from_str(&r.date, "%Y%m%d")?;
-                let rates = r
-                    .rate_map
-                    .into_iter()
-                    .filter_map(|(code, rate)| {
-                        let symbol = code.trim_start_matches(|c: char| c.is_ascii_digit());
-                        let currency = match symbol {
-                            "USD" => Currency::USD,
-                            "EUR" => Currency::EUR,
-                            _ => return None,
-                        };
-
-                        Some(parse_unit(code.as_str()).map(|unit| (currency, rate / unit)))
-                    })
-                    .collect::<Result<BTreeMap<_, _>>>()?;
-
-                Ok((date, rates))
-            })
-            .collect::<Result<BTreeMap<_, _>>>()?;
-
-        Ok(Self { rates_by_date })
-    }
-
     pub fn new(rates: Vec<RateExport>) -> Self {
         let mut rates_by_date: BTreeMap<_, BTreeMap<_, _>> = BTreeMap::new();
 
@@ -130,18 +95,6 @@ impl NbpRateProvider {
             date: *date,
         })
     }
-}
-
-fn parse_unit(code: &str) -> Result<Decimal> {
-    let digits = code
-        .chars()
-        .take_while(|c| c.is_ascii_digit())
-        .collect::<String>();
-    if digits.is_empty() {
-        return Ok(Decimal::ONE);
-    }
-
-    Ok(digits.parse()?)
 }
 
 #[cfg(test)]

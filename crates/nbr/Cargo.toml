@@ -1,0 +1,15 @@
+[package]
+name = "nbr"
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+pitpls-core.workspace = true
+
+anyhow.workspace = true
+chrono.workspace = true
+reqwest.workspace = true
+rust_decimal.workspace = true
+serde = { version = "1", features = ["derive"] }
+tokio.workspace = true
