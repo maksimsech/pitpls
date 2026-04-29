@@ -10,7 +10,7 @@ use crate::command::{
     dividend::{create_dividend, delete_dividends, load_dividends, update_dividend},
     import::run_import,
     interest::{create_interest, delete_interests, load_interests, update_interest},
-    rate::{list_rates, reset_rates, upload_rates},
+    rate::{import_npb, list_rates, reset_rates, upload_rates},
     settings::{load_settings, update_settings},
     tax::load_tax_summary,
     warnings::get_warnings,
@@ -27,6 +27,7 @@ fn specta_builder() -> Builder<tauri::Wry> {
     Builder::<tauri::Wry>::new()
         .commands(collect_commands![
             upload_rates,
+            import_npb,
             reset_rates,
             list_rates,
             load_cryptos,
