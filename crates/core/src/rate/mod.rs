@@ -8,7 +8,7 @@ use crate::common::{Amount, Currency};
 
 mod model;
 
-pub use model::RateExport;
+pub use model::Rate;
 
 const MAX_LOOKUP_STEPS: u8 = 10;
 
@@ -29,7 +29,7 @@ pub struct NbpRateProvider {
 }
 
 impl NbpRateProvider {
-    pub fn new(rates: Vec<RateExport>) -> Self {
+    pub fn new(rates: Vec<Rate>) -> Self {
         let mut rates_by_date: BTreeMap<_, BTreeMap<_, _>> = BTreeMap::new();
 
         for rate in rates {
@@ -42,9 +42,9 @@ impl NbpRateProvider {
         Self { rates_by_date }
     }
 
-    pub fn export(&self) -> impl Iterator<Item = RateExport> {
+    pub fn export(&self) -> impl Iterator<Item = Rate> {
         self.rates_by_date.iter().flat_map(|(date, rates)| {
-            rates.iter().map(|(currency, rate)| RateExport {
+            rates.iter().map(|(currency, rate)| Rate {
                 date: *date,
                 currency: *currency,
                 rate: *rate,
@@ -125,7 +125,7 @@ mod tests {
 
     #[test]
     fn convert_returns_error_when_lookup_exceeds_ten_steps() {
-        let provider = NbpRateProvider::new(vec![RateExport {
+        let provider = NbpRateProvider::new(vec![Rate {
             date: date(2024, 1, 1),
             currency: Currency::USD,
             rate: Decimal::ONE,
@@ -143,7 +143,7 @@ mod tests {
 
     #[test]
     fn convert_returns_rate_when_lookup_takes_ten_steps() {
-        let provider = NbpRateProvider::new(vec![RateExport {
+        let provider = NbpRateProvider::new(vec![Rate {
             date: date(2024, 1, 1),
             currency: Currency::USD,
             rate: Decimal::ONE,

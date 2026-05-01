@@ -1,6 +1,6 @@
 use anyhow::{Result, anyhow, bail, ensure};
 use chrono::{Datelike, Duration, Local, NaiveDate};
-use pitpls_core::{common::Currency, rate::RateExport};
+use pitpls_core::{common::Currency, rate::Rate};
 use reqwest::StatusCode;
 use rust_decimal::Decimal;
 use serde::Deserialize;
@@ -22,7 +22,7 @@ struct NbpRate {
     mid: Decimal,
 }
 
-pub async fn load_nbp_rates(year: i32) -> Result<Vec<RateExport>> {
+pub async fn load_api_rates(year: i32) -> Result<Vec<Rate>> {
     let ranges = nbp_year_ranges(year)?;
     let client = reqwest::Client::new();
     let mut rates = Vec::new();
@@ -84,7 +84,7 @@ async fn fetch_nbp_rates(
     currency: Currency,
     start_date: NaiveDate,
     end_date: NaiveDate,
-) -> Result<Vec<RateExport>> {
+) -> Result<Vec<Rate>> {
     let code = nbp_currency_code(currency)?;
     let url = format!(
         "{NBP_API_BASE_URL}/exchangerates/rates/a/{code}/{start_date}/{end_date}/?format=json",
@@ -104,7 +104,7 @@ async fn fetch_nbp_rates(
     Ok(response
         .rates
         .into_iter()
-        .map(|rate| RateExport {
+        .map(|rate| Rate {
             date: rate.effective_date,
             currency,
             rate: rate.mid,

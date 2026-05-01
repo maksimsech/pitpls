@@ -1,56 +1,18 @@
-use std::collections::BTreeMap;
 use std::path::Path;
 
 use anyhow::{Result, anyhow, ensure};
 use chrono::NaiveDate;
-use pitpls_core::{common::Currency, rate::RateExport};
+use pitpls_core::{common::Currency, rate::Rate};
 use rust_decimal::Decimal;
 use tokio::fs::read;
 
-struct RateCsv {
-    date: String,
-    rate_map: BTreeMap<String, Decimal>,
+struct RateColumn {
+    index: usize,
+    currency: Currency,
+    unit: Decimal,
 }
 
-pub async fn load_csv_rates(path: &str) -> Result<Vec<RateExport>> {
-    let csv_rates = read_csv(path).await?;
-
-    let rates_by_date = csv_rates
-        .into_iter()
-        .map(|r| {
-            let date = NaiveDate::parse_from_str(&r.date, "%Y%m%d")?;
-            let rates = r
-                .rate_map
-                .into_iter()
-                .filter_map(|(code, rate)| {
-                    let symbol = code.trim_start_matches(|c: char| c.is_ascii_digit());
-                    let currency = match symbol {
-                        "USD" => Currency::USD,
-                        "EUR" => Currency::EUR,
-                        _ => return None,
-                    };
-
-                    Some(parse_unit(code.as_str()).map(|unit| (currency, rate / unit)))
-                })
-                .collect::<Result<BTreeMap<_, _>>>()?;
-
-            Ok((date, rates))
-        })
-        .collect::<Result<BTreeMap<_, _>>>()?;
-
-    Ok(rates_by_date
-        .into_iter()
-        .flat_map(|(date, rates)| {
-            rates.into_iter().map(move |(currency, rate)| RateExport {
-                date,
-                currency,
-                rate,
-            })
-        })
-        .collect())
-}
-
-async fn read_csv(path: &str) -> Result<Vec<RateCsv>> {
+pub async fn load_csv_rates(path: &str) -> Result<Vec<Rate>> {
     let path = Path::new(path);
 
     ensure!(
@@ -59,10 +21,6 @@ async fn read_csv(path: &str) -> Result<Vec<RateCsv>> {
         "Invalid extension"
     );
 
-    parse_file(path).await
-}
-
-async fn parse_file(path: &Path) -> Result<Vec<RateCsv>> {
     let bytes = read(path).await?;
     let content = String::from_utf8_lossy(&bytes);
 
@@ -74,46 +32,88 @@ async fn parse_file(path: &Path) -> Result<Vec<RateCsv>> {
     let (_, header_line) = lines.next().ok_or_else(|| anyhow!("empty rates CSV"))?;
 
     let headers = split_fields(header_line.trim_start_matches('\u{feff}'));
+    let rate_columns = rate_columns(&headers)?;
 
     ensure!(lines.next().is_some(), "invalid format");
 
     let mut rates = vec![];
 
-    for (_number, line) in lines {
-        let is_rate_row = split_fields(line)
+    for (line_number, line) in lines {
+        let fields = split_fields(line);
+        let is_rate_row = fields
             .first()
             .is_some_and(|f| f.len() == 8 && f.chars().all(|c| c.is_ascii_digit()));
         if !is_rate_row {
             continue;
         }
 
-        rates.push(parse_row(&headers, line)?);
+        parse_row(&headers, &rate_columns, &fields, line_number, &mut rates)?;
     }
 
     Ok(rates)
 }
 
-fn parse_row(headers: &[&str], line: &str) -> Result<RateCsv> {
-    let fields = split_fields(line);
-
-    ensure!(fields.len() == headers.len(), "invalid format");
+fn rate_columns(headers: &[&str]) -> Result<Vec<RateColumn>> {
+    ensure!(headers.len() >= 3, "invalid format");
 
     let table_number_index = headers.len() - 2;
-    let mut rate_map = BTreeMap::new();
+    let mut rate_columns = Vec::new();
 
-    for (header, value) in headers[1..table_number_index]
-        .iter()
-        .zip(&fields[1..table_number_index])
-    {
-        let rate: Decimal = value.replace(',', ".").parse()?;
+    for (index, header) in headers[1..table_number_index].iter().enumerate() {
+        let Some(currency) = parse_currency(header) else {
+            continue;
+        };
 
-        rate_map.insert((*header).to_string(), rate);
+        rate_columns.push(RateColumn {
+            index: index + 1,
+            currency,
+            unit: parse_unit(header)?,
+        });
     }
 
-    Ok(RateCsv {
-        date: fields[0].to_string(),
-        rate_map,
-    })
+    Ok(rate_columns)
+}
+
+fn parse_row(
+    headers: &[&str],
+    rate_columns: &[RateColumn],
+    fields: &[&str],
+    line_number: usize,
+    rates: &mut Vec<Rate>,
+) -> Result<()> {
+    ensure!(fields.len() == headers.len(), "invalid format");
+
+    let date = NaiveDate::parse_from_str(fields[0], "%Y%m%d")?;
+
+    for column in rate_columns {
+        let currency = column.currency;
+
+        ensure!(
+            !rates
+                .iter()
+                .any(|r| r.date == date && r.currency == currency),
+            "duplicate rate for {currency} on {date} at line {line_number}"
+        );
+
+        let rate: Decimal = fields[column.index].replace(',', ".").parse()?;
+        rates.push(Rate {
+            date,
+            currency,
+            rate: rate / column.unit,
+        });
+    }
+
+    Ok(())
+}
+
+fn parse_currency(code: &str) -> Option<Currency> {
+    let symbol = code.trim_start_matches(|c: char| c.is_ascii_digit());
+
+    match symbol {
+        "USD" => Some(Currency::USD),
+        "EUR" => Some(Currency::EUR),
+        _ => None,
+    }
 }
 
 fn split_fields(line: &str) -> Vec<&str> {

@@ -2,7 +2,7 @@ use std::str::FromStr;
 
 use anyhow::Result;
 use chrono::NaiveDate;
-use pitpls_core::rate::RateExport;
+use pitpls_core::rate::Rate;
 use rust_decimal::Decimal;
 use sqlx::{Row, SqlitePool};
 
@@ -20,7 +20,7 @@ impl RateRepository {
         Ok(result.rows_affected())
     }
 
-    pub async fn upload(&self, rates: impl Iterator<Item = RateExport>) -> Result<u64> {
+    pub async fn upload(&self, rates: impl Iterator<Item = Rate>) -> Result<u64> {
         let mut rows = 0;
         let mut tx = self.db.begin().await?;
         for rate in rates {
@@ -38,7 +38,7 @@ impl RateRepository {
         Ok(rows)
     }
 
-    pub async fn load_all(&self) -> Result<Vec<RateExport>> {
+    pub async fn load_all(&self) -> Result<Vec<Rate>> {
         let rows = sqlx::query("SELECT date, currency, rate FROM rates")
             .fetch_all(&self.db)
             .await?;
@@ -49,7 +49,7 @@ impl RateRepository {
                 let currency: String = row.try_get("currency")?;
                 let rate: String = row.try_get("rate")?;
 
-                Ok(RateExport {
+                Ok(Rate {
                     date,
                     currency: serde_plain::from_str(&currency)?,
                     rate: Decimal::from_str(&rate)?,
