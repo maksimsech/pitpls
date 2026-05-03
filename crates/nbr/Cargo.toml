@@ -1,5 +1,5 @@
 [package]
-name = "nbr"
+name = "pitpls-nbr"
 edition.workspace = true
 authors.workspace = true
 license.workspace = true

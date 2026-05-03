@@ -3,8 +3,38 @@ use pitpls_core::{common::Currency, rate::Rate};
 use reqwest::{Client, StatusCode};
 use rust_decimal::Decimal;
 use serde::Deserialize;
+use thiserror::Error;
 
-use crate::ApiImportError;
+#[derive(Debug, Error)]
+pub enum ApiImportError {
+    #[error("NBP rates are available from {min_year}")]
+    YearTooEarly { min_year: i32 },
+    #[error("Cannot import NBP rates for a future year")]
+    FutureYear,
+    #[error("Invalid date")]
+    InvalidDate,
+    #[error("Invalid NBP date range")]
+    InvalidDateRange,
+    #[error("{currency} rates are not imported from NBP")]
+    UnsupportedCurrency { currency: String },
+    #[error("Failed to request NBP rates: {source}")]
+    Request {
+        #[source]
+        source: reqwest::Error,
+    },
+    #[error("NBP API returned {status} for {code} rates from {start_date} to {end_date}")]
+    HttpStatus {
+        status: StatusCode,
+        code: &'static str,
+        start_date: NaiveDate,
+        end_date: NaiveDate,
+    },
+    #[error("Failed to parse NBP response: {source}")]
+    Response {
+        #[source]
+        source: reqwest::Error,
+    },
+}
 
 const NBP_API_BASE_URL: &str = "https://api.nbp.pl/api";
 const NBP_MIN_YEAR: i32 = 2002;

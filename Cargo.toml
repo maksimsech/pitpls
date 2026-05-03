@@ -8,9 +8,9 @@ license = "MIT"
 authors = ["Maksim Sech"]
 
 [workspace.dependencies]
-nbr = { path = "crates/nbr" }
 pitpls-core = { path = "crates/core" }
 pitpls-importers = { path = "crates/importers" }
+pitpls-nbr = { path = "crates/nbr" }
 
 anyhow = "1.0"
 thiserror = "2.0.18"

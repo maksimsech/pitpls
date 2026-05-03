@@ -1,6 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use pitpls_core::{common::Currency, rate::Rate};
+use pitpls_nbr::{load_api_rates, load_csv_rates};
 use serde::Serialize;
 use specta::Type;
 use tauri::State;
@@ -28,9 +29,7 @@ pub struct RateValue {
 #[tauri::command]
 #[specta::specta]
 pub async fn import_csv(state: State<'_, AppState>, file: String) -> Result<u64, String> {
-    let rates = nbr::load_csv_rates(&file)
-        .await
-        .map_err(|e| e.to_string())?;
+    let rates = load_csv_rates(&file).await.map_err(|e| e.to_string())?;
 
     state
         .rate_repo()
@@ -42,7 +41,7 @@ pub async fn import_csv(state: State<'_, AppState>, file: String) -> Result<u64,
 #[tauri::command]
 #[specta::specta]
 pub async fn import_api(state: State<'_, AppState>, year: i32) -> Result<u64, String> {
-    let rates = nbr::load_api_rates(state.api_client(), year)
+    let rates = load_api_rates(state.api_client(), year)
         .await
         .map_err(|e| e.to_string())?;
 

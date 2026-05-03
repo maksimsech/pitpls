@@ -3,9 +3,45 @@ use std::{path::Path, str::FromStr};
 use chrono::NaiveDate;
 use pitpls_core::{common::Currency, rate::Rate};
 use rust_decimal::Decimal;
+use thiserror::Error;
 use tokio::fs::read;
 
-use crate::CsvImportError;
+#[derive(Debug, Error)]
+pub enum CsvImportError {
+    #[error("Invalid extension")]
+    InvalidExtension,
+    #[error("Empty rates CSV")]
+    Empty,
+    #[error("Invalid format")]
+    InvalidFormat,
+    #[error("Failed to read rates CSV: {0}")]
+    Read(#[from] std::io::Error),
+    #[error("Invalid date at line {line}: {source}")]
+    InvalidDate {
+        line: usize,
+        #[source]
+        source: chrono::ParseError,
+    },
+    #[error("Invalid rate unit in header `{header}`: {source}")]
+    InvalidUnit {
+        header: String,
+        #[source]
+        source: rust_decimal::Error,
+    },
+    #[error("Invalid rate in column `{column}` at line {line}: {source}")]
+    InvalidRate {
+        line: usize,
+        column: String,
+        #[source]
+        source: rust_decimal::Error,
+    },
+    #[error("Duplicate rate for {currency} on {date} at line {line}")]
+    DuplicateRate {
+        currency: String,
+        date: NaiveDate,
+        line: usize,
+    },
+}
 
 struct RateColumn {
     index: usize,
