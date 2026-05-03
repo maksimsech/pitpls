@@ -2650,12 +2650,12 @@ dependencies = [
 name = "nbr"
 version = "0.0.0"
 dependencies = [
- "anyhow",
  "chrono",
  "pitpls-core",
  "reqwest",
  "rust_decimal",
  "serde",
+ "thiserror 2.0.18",
  "tokio",
 ]
 

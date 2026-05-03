@@ -6,17 +6,17 @@
 
 
 export const commands = {
-async uploadRates(file: string) : Promise<Result<number, string>> {
+async importCsv(file: string) : Promise<Result<number, string>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("upload_rates", { file }) };
+    return { status: "ok", data: await TAURI_INVOKE("import_csv", { file }) };
 } catch (e) {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
 }
 },
-async importNpb(year: number) : Promise<Result<number, string>> {
+async importApi(year: number) : Promise<Result<number, string>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("import_npb", { year }) };
+    return { status: "ok", data: await TAURI_INVOKE("import_api", { year }) };
 } catch (e) {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };

@@ -118,7 +118,7 @@ function RatesContent({
         setUploading(true);
         setError(null);
         try {
-            const result = await commands.uploadRates(file);
+            const result = await commands.importCsv(file);
             if (result.status === "error") {
                 setError(result.error);
                 return;
@@ -276,7 +276,7 @@ function NbpImportModal({
         setSubmitting(true);
         setError(null);
         try {
-            const result = await commands.importNpb(parsed);
+            const result = await commands.importApi(parsed);
             if (result.status === "error") {
                 setError(result.error);
                 return;

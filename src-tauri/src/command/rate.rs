@@ -27,7 +27,7 @@ struct RateValues {
 
 #[tauri::command]
 #[specta::specta]
-pub async fn upload_rates(state: State<'_, AppState>, file: String) -> Result<u64, String> {
+pub async fn import_csv(state: State<'_, AppState>, file: String) -> Result<u64, String> {
     let rates = nbr::load_csv_rates(&file)
         .await
         .map_err(|e| e.to_string())?;
@@ -41,7 +41,7 @@ pub async fn upload_rates(state: State<'_, AppState>, file: String) -> Result<u6
 
 #[tauri::command]
 #[specta::specta]
-pub async fn import_npb(state: State<'_, AppState>, year: i32) -> Result<u64, String> {
+pub async fn import_api(state: State<'_, AppState>, year: i32) -> Result<u64, String> {
     let rates = nbr::load_api_rates(year).await.map_err(|e| e.to_string())?;
 
     state

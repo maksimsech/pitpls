@@ -1,10 +1,11 @@
 use std::path::Path;
 
-use anyhow::{Result, anyhow, ensure};
 use chrono::NaiveDate;
 use pitpls_core::{common::Currency, rate::Rate};
 use rust_decimal::Decimal;
 use tokio::fs::read;
+
+use crate::CsvImportError;
 
 struct RateColumn {
     index: usize,
@@ -12,14 +13,15 @@ struct RateColumn {
     unit: Decimal,
 }
 
-pub async fn load_csv_rates(path: &str) -> Result<Vec<Rate>> {
+pub async fn load_csv_rates(path: &str) -> Result<Vec<Rate>, CsvImportError> {
     let path = Path::new(path);
 
-    ensure!(
-        path.extension()
-            .is_some_and(|e| e.eq_ignore_ascii_case("csv")),
-        "Invalid extension"
-    );
+    if !path
+        .extension()
+        .is_some_and(|e| e.eq_ignore_ascii_case("csv"))
+    {
+        return Err(CsvImportError::InvalidExtension);
+    }
 
     let bytes = read(path).await?;
     let content = String::from_utf8_lossy(&bytes);
@@ -29,12 +31,14 @@ pub async fn load_csv_rates(path: &str) -> Result<Vec<Rate>> {
         (!line.is_empty()).then_some((i + 1, line))
     });
 
-    let (_, header_line) = lines.next().ok_or_else(|| anyhow!("empty rates CSV"))?;
+    let (_, header_line) = lines.next().ok_or(CsvImportError::Empty)?;
 
     let headers = split_fields(header_line.trim_start_matches('\u{feff}'));
     let rate_columns = rate_columns(&headers)?;
 
-    ensure!(lines.next().is_some(), "invalid format");
+    if lines.next().is_none() {
+        return Err(CsvImportError::InvalidFormat);
+    }
 
     let mut rates = vec![];
 
@@ -53,8 +57,10 @@ pub async fn load_csv_rates(path: &str) -> Result<Vec<Rate>> {
     Ok(rates)
 }
 
-fn rate_columns(headers: &[&str]) -> Result<Vec<RateColumn>> {
-    ensure!(headers.len() >= 3, "invalid format");
+fn rate_columns(headers: &[&str]) -> Result<Vec<RateColumn>, CsvImportError> {
+    if headers.len() < 3 {
+        return Err(CsvImportError::InvalidFormat);
+    }
 
     let table_number_index = headers.len() - 2;
     let mut rate_columns = Vec::new();
@@ -67,7 +73,10 @@ fn rate_columns(headers: &[&str]) -> Result<Vec<RateColumn>> {
         rate_columns.push(RateColumn {
             index: index + 1,
             currency,
-            unit: parse_unit(header)?,
+            unit: parse_unit(header).map_err(|source| CsvImportError::InvalidUnit {
+                header: (*header).to_string(),
+                source,
+            })?,
         });
     }
 
@@ -80,22 +89,40 @@ fn parse_row(
     fields: &[&str],
     line_number: usize,
     rates: &mut Vec<Rate>,
-) -> Result<()> {
-    ensure!(fields.len() == headers.len(), "invalid format");
+) -> Result<(), CsvImportError> {
+    if fields.len() != headers.len() {
+        return Err(CsvImportError::InvalidFormat);
+    }
 
-    let date = NaiveDate::parse_from_str(fields[0], "%Y%m%d")?;
+    let date = NaiveDate::parse_from_str(fields[0], "%Y%m%d").map_err(|source| {
+        CsvImportError::InvalidDate {
+            line: line_number,
+            source,
+        }
+    })?;
 
     for column in rate_columns {
         let currency = column.currency;
 
-        ensure!(
-            !rates
-                .iter()
-                .any(|r| r.date == date && r.currency == currency),
-            "duplicate rate for {currency} on {date} at line {line_number}"
-        );
+        if rates
+            .iter()
+            .any(|r| r.date == date && r.currency == currency)
+        {
+            return Err(CsvImportError::DuplicateRate {
+                currency: currency.to_string(),
+                date,
+                line: line_number,
+            });
+        }
 
-        let rate: Decimal = fields[column.index].replace(',', ".").parse()?;
+        let rate: Decimal = fields[column.index]
+            .replace(',', ".")
+            .parse()
+            .map_err(|source| CsvImportError::InvalidRate {
+                line: line_number,
+                column: headers[column.index].to_string(),
+                source,
+            })?;
         rates.push(Rate {
             date,
             currency,
@@ -120,7 +147,7 @@ fn split_fields(line: &str) -> Vec<&str> {
     line.trim().split_terminator(';').collect()
 }
 
-fn parse_unit(code: &str) -> Result<Decimal> {
+fn parse_unit(code: &str) -> Result<Decimal, rust_decimal::Error> {
     let digits = code
         .chars()
         .take_while(|c| c.is_ascii_digit())
@@ -129,5 +156,5 @@ fn parse_unit(code: &str) -> Result<Decimal> {
         return Ok(Decimal::ONE);
     }
 
-    Ok(digits.parse()?)
+    digits.parse()
 }

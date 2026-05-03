@@ -1,9 +1,10 @@
-use anyhow::{Result, anyhow, bail, ensure};
 use chrono::{Datelike, Duration, Local, NaiveDate};
 use pitpls_core::{common::Currency, rate::Rate};
 use reqwest::StatusCode;
 use rust_decimal::Decimal;
 use serde::Deserialize;
+
+use crate::ApiImportError;
 
 const NBP_API_BASE_URL: &str = "https://api.nbp.pl/api";
 const NBP_MIN_YEAR: i32 = 2002;
@@ -22,7 +23,7 @@ struct NbpRate {
     mid: Decimal,
 }
 
-pub async fn load_api_rates(year: i32) -> Result<Vec<Rate>> {
+pub async fn load_api_rates(year: i32) -> Result<Vec<Rate>, ApiImportError> {
     let ranges = nbp_year_ranges(year)?;
     let client = reqwest::Client::new();
     let mut rates = Vec::new();
@@ -36,14 +37,18 @@ pub async fn load_api_rates(year: i32) -> Result<Vec<Rate>> {
     Ok(rates)
 }
 
-fn nbp_year_ranges(year: i32) -> Result<Vec<(NaiveDate, NaiveDate)>> {
+fn nbp_year_ranges(year: i32) -> Result<Vec<(NaiveDate, NaiveDate)>, ApiImportError> {
     let today = Local::now().date_naive();
 
-    ensure!(year >= NBP_MIN_YEAR, "NBP rates are available from 2002");
-    ensure!(
-        year <= today.year(),
-        "Cannot import NBP rates for a future year"
-    );
+    if year < NBP_MIN_YEAR {
+        return Err(ApiImportError::YearTooEarly {
+            min_year: NBP_MIN_YEAR,
+        });
+    }
+
+    if year > today.year() {
+        return Err(ApiImportError::FutureYear);
+    }
 
     let mut cursor = if year == NBP_MIN_YEAR {
         date(year, 1, 2)?
@@ -62,7 +67,7 @@ fn nbp_year_ranges(year: i32) -> Result<Vec<(NaiveDate, NaiveDate)>> {
         let range_end = std::cmp::min(
             cursor
                 .checked_add_signed(Duration::days(NBP_MAX_RANGE_DAYS - 1))
-                .ok_or_else(|| anyhow!("Invalid NBP date range"))?,
+                .ok_or(ApiImportError::InvalidDateRange)?,
             end_date,
         );
         ranges.push((cursor, range_end));
@@ -73,7 +78,7 @@ fn nbp_year_ranges(year: i32) -> Result<Vec<(NaiveDate, NaiveDate)>> {
 
         cursor = range_end
             .succ_opt()
-            .ok_or_else(|| anyhow!("Invalid NBP date range"))?;
+            .ok_or(ApiImportError::InvalidDateRange)?;
     }
 
     Ok(ranges)
@@ -84,12 +89,16 @@ async fn fetch_nbp_rates(
     currency: Currency,
     start_date: NaiveDate,
     end_date: NaiveDate,
-) -> Result<Vec<Rate>> {
+) -> Result<Vec<Rate>, ApiImportError> {
     let code = nbp_currency_code(currency)?;
     let url = format!(
         "{NBP_API_BASE_URL}/exchangerates/rates/a/{code}/{start_date}/{end_date}/?format=json",
     );
-    let response = client.get(url).send().await?;
+    let response = client
+        .get(url)
+        .send()
+        .await
+        .map_err(|source| ApiImportError::Request { source })?;
     let status = response.status();
 
     if status == StatusCode::NOT_FOUND {
@@ -97,10 +106,18 @@ async fn fetch_nbp_rates(
     }
 
     if !status.is_success() {
-        bail!("NBP API returned {status} for {code} rates from {start_date} to {end_date}");
+        return Err(ApiImportError::HttpStatus {
+            status,
+            code,
+            start_date,
+            end_date,
+        });
     }
 
-    let response: NbpRateResponse = response.json().await?;
+    let response: NbpRateResponse = response
+        .json()
+        .await
+        .map_err(|source| ApiImportError::Response { source })?;
     Ok(response
         .rates
         .into_iter()
@@ -112,14 +129,16 @@ async fn fetch_nbp_rates(
         .collect())
 }
 
-fn nbp_currency_code(currency: Currency) -> Result<&'static str> {
+fn nbp_currency_code(currency: Currency) -> Result<&'static str, ApiImportError> {
     match currency {
         Currency::USD => Ok("usd"),
         Currency::EUR => Ok("eur"),
-        Currency::PLN => bail!("PLN rates are not imported from NBP"),
+        Currency::PLN => Err(ApiImportError::UnsupportedCurrency {
+            currency: currency.to_string(),
+        }),
     }
 }
 
-fn date(year: i32, month: u32, day: u32) -> Result<NaiveDate> {
-    NaiveDate::from_ymd_opt(year, month, day).ok_or_else(|| anyhow!("Invalid date"))
+fn date(year: i32, month: u32, day: u32) -> Result<NaiveDate, ApiImportError> {
+    NaiveDate::from_ymd_opt(year, month, day).ok_or(ApiImportError::InvalidDate)
 }
