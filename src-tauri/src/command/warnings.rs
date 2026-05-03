@@ -17,9 +17,7 @@ pub async fn get_warnings(
     state: State<'_, AppState>,
     year: Option<i32>,
 ) -> Result<Warnings, String> {
-    let rates = state
-        .rate_repo()
-        .load_all()
+    let has_rates = table_has_records(state.db_pool(), "rates", year)
         .await
         .map_err(|e| e.to_string())?;
 
@@ -28,7 +26,7 @@ pub async fn get_warnings(
         .map_err(|e| e.to_string())?;
 
     Ok(Warnings {
-        rates_empty: rates.is_empty(),
+        rates_empty: !has_rates,
         has_records_in_year: has_records,
     })
 }

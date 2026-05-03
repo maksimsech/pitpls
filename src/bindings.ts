@@ -6,9 +6,17 @@
 
 
 export const commands = {
-async uploadRates(file: string) : Promise<Result<number, string>> {
+async importCsv(file: string) : Promise<Result<number, string>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("upload_rates", { file }) };
+    return { status: "ok", data: await TAURI_INVOKE("import_csv", { file }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async importApi(year: number) : Promise<Result<number, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("import_api", { year }) };
 } catch (e) {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
@@ -22,7 +30,7 @@ async resetRates() : Promise<Result<number, string>> {
     else return { status: "error", error: e  as any };
 }
 },
-async listRates() : Promise<Result<Rate[], string>> {
+async listRates() : Promise<Result<RatesViewModel, string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("list_rates") };
 } catch (e) {
@@ -212,8 +220,8 @@ export type CreateDividendInput = { id: string | null; date: string; ticker: str
 export type CreateInterestInput = { id: string | null; date: string; value: string; value_currency: Currency; provider: string }
 export type CryptoTaxData = { income: string; costs: string; calculated: CalculatedCrypto[] }
 export type CryptoTaxSummary = { income: string; costs: string }
-export type Currency = "EUR" | "USD" | "PLN"
-export type DividendRounding = "SumToGroszy" | "SumToZlote" | "AllToZlote"
+export type Currency = "THB" | "USD" | "AUD" | "HKD" | "CAD" | "NZD" | "SGD" | "EUR" | "HUF" | "CHF" | "GBP" | "UAH" | "JPY" | "CZK" | "DKK" | "ISK" | "NOK" | "SEK" | "RON" | "BGN" | "TRY" | "ILS" | "CLP" | "PHP" | "MXN" | "ZAR" | "BRL" | "MYR" | "IDR" | "INR" | "KRW" | "CNY" | "XDR" | "PLN"
+export type DividendRounding = "SumToGroszy" | "SumToPayToZlote" | "SumBothToZlote" | "AllToZlote"
 export type DividendTaxData = { to_pay: string; paid: string; income: string; calculated: CalculatedDividend[] }
 export type ForeignTaxSummary = { income: string; tax_to_pay: string; tax_paid: string }
 export type ImportResult = { dividends: number; cryptos: number; interests: number }
@@ -222,7 +230,9 @@ export type ImporterKind = "T212" | "Revolut" | "Coinbase"
 export type InputType = "Csv" | "Pdf"
 export type InterestTaxData = { to_pay: string; income: string; calculated: CalculatedInterest[] }
 export type OutputType = "Dividend" | "Crypto" | "Interest"
-export type Rate = { date: string; currency: Currency; rate: string }
+export type RateDay = { date: string; rates: RateValue[] }
+export type RateValue = { currency: Currency; rate: string }
+export type RatesViewModel = { currencies: Currency[]; rows: RateDay[] }
 export type Settings = { dividend_rounding: DividendRounding }
 export type TaxSummary = { crypto: CryptoTaxSummary; foreign: ForeignTaxSummary }
 export type UpdateCryptoInput = { id: string; date: string; action: Action; value: string; value_currency: Currency; fee: string; fee_currency: Currency; provider: string }
