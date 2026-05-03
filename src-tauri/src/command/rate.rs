@@ -42,7 +42,9 @@ pub async fn import_csv(state: State<'_, AppState>, file: String) -> Result<u64,
 #[tauri::command]
 #[specta::specta]
 pub async fn import_api(state: State<'_, AppState>, year: i32) -> Result<u64, String> {
-    let rates = nbr::load_api_rates(year).await.map_err(|e| e.to_string())?;
+    let rates = nbr::load_api_rates(state.api_client(), year)
+        .await
+        .map_err(|e| e.to_string())?;
 
     state
         .rate_repo()

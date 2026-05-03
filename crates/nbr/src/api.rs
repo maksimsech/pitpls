@@ -199,13 +199,12 @@ struct NbpTableRate {
     mid: Decimal,
 }
 
-pub async fn load_api_rates(year: i32) -> Result<Vec<Rate>, ApiImportError> {
+pub async fn load_api_rates(client: &Client, year: i32) -> Result<Vec<Rate>, ApiImportError> {
     let ranges = nbp_year_ranges(year)?;
-    let client = Client::new();
     let mut rates = Vec::new();
 
     for (start_date, end_date) in &ranges {
-        rates.extend(fetch_nbp_rates(&client, *start_date, *end_date).await?);
+        rates.extend(fetch_nbp_rates(client, *start_date, *end_date).await?);
     }
 
     Ok(rates)

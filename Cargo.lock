@@ -3284,6 +3284,7 @@ dependencies = [
  "nbr",
  "pitpls-core",
  "pitpls-importers",
+ "reqwest",
  "rust_decimal",
  "serde",
  "serde_json",

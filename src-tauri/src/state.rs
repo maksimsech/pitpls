@@ -1,3 +1,6 @@
+use std::sync::LazyLock;
+
+use reqwest::Client;
 use sqlx::SqlitePool;
 use tauri::{AppHandle, Manager as _};
 use tauri_plugin_sql::{DbInstances, DbPool};
@@ -12,11 +15,16 @@ use crate::repository::year::YearRepository;
 
 pub struct AppState {
     db: SqlitePool,
+    api_client: LazyLock<Client>,
 }
 
 impl AppState {
     pub fn db_pool(&self) -> &SqlitePool {
         &self.db
+    }
+
+    pub fn api_client(&self) -> &Client {
+        &self.api_client
     }
 
     pub fn rate_repo(&self) -> RateRepository {
@@ -50,7 +58,10 @@ pub fn setup(handle: AppHandle) -> std::result::Result<(), Box<dyn std::error::E
         let map = instances.0.read().await;
         let DbPool::Sqlite(pool) = map.get(DB_URL).ok_or("db not loaded")?;
 
-        handle.manage(AppState { db: pool.clone() });
+        handle.manage(AppState {
+            db: pool.clone(),
+            api_client: LazyLock::new(Client::new),
+        });
         Ok(())
     })
 }
