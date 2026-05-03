@@ -41,6 +41,11 @@ impl InterestRepository {
                 r"
                     INSERT INTO interests(id, date, value, value_currency, provider)
                     VALUES (?, ?, ?, ?, ?)
+                    ON CONFLICT(id) DO UPDATE SET
+                        date = excluded.date,
+                        value = excluded.value,
+                        value_currency = excluded.value_currency,
+                        provider = excluded.provider
                 ",
             )
             .bind(interest.id.to_string())

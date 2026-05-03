@@ -5,10 +5,10 @@ use sqlx::SqlitePool;
 use tauri::{AppHandle, Manager as _};
 use tauri_plugin_sql::{DbInstances, DbPool};
 
+use crate::db::DB_URL;
 use crate::repository::crypto::CryptoRepository;
 use crate::repository::dividend::DividendRepository;
 use crate::repository::interest::InterestRepository;
-use crate::repository::migration::DB_URL;
 use crate::repository::rate::RateRepository;
 use crate::repository::settings::SettingsRepository;
 use crate::repository::year::YearRepository;

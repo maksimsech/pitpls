@@ -1,11 +1,8 @@
 use std::str::FromStr;
 
-use anyhow::{Error, Result};
+use anyhow::Result;
 use chrono::{Datelike, NaiveDate};
-use pitpls_core::{
-    common::{Amount, Country},
-    dividend::Dividend,
-};
+use pitpls_core::{common::Amount, dividend::Dividend};
 use rust_decimal::Decimal;
 use sqlx::{Row, SqlitePool};
 
@@ -44,6 +41,15 @@ impl DividendRepository {
                 r"
                     INSERT INTO dividends(id, date, ticker, value, value_currency, tax_paid, tax_paid_currency, country, provider)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(id) DO UPDATE SET
+                        date = excluded.date,
+                        ticker = excluded.ticker,
+                        value = excluded.value,
+                        value_currency = excluded.value_currency,
+                        tax_paid = excluded.tax_paid,
+                        tax_paid_currency = excluded.tax_paid_currency,
+                        country = excluded.country,
+                        provider = excluded.provider
                 ",
             )
             .bind(dividend.id.to_string())
@@ -53,7 +59,7 @@ impl DividendRepository {
             .bind(serde_plain::to_string(&dividend.value.currency)?)
             .bind(dividend.tax_paid.value.to_string())
             .bind(serde_plain::to_string(&dividend.tax_paid.currency)?)
-            .bind(dividend.country.to_string())
+            .bind(serde_plain::to_string(&dividend.country)?)
             .bind(dividend.provider.to_string())
             .execute(&mut *tx)
             .await?;
@@ -84,7 +90,7 @@ impl DividendRepository {
         .bind(serde_plain::to_string(&d.value.currency)?)
         .bind(d.tax_paid.value.to_string())
         .bind(serde_plain::to_string(&d.tax_paid.currency)?)
-        .bind(d.country.to_string())
+        .bind(serde_plain::to_string(&d.country)?)
         .bind(d.provider.to_string())
         .bind(d.id.to_string())
         .execute(&mut *tx)
@@ -136,7 +142,7 @@ impl DividendRepository {
                         value: Decimal::from_str(&tax_paid)?,
                         currency: serde_plain::from_str(&tax_paid_currency)?,
                     },
-                    country: Country::from_str(&country).map_err(Error::msg)?,
+                    country: serde_plain::from_str(&country)?,
                     provider,
                 })
             })

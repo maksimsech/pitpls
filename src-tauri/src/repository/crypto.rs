@@ -41,6 +41,14 @@ impl CryptoRepository {
                 r"
                     INSERT INTO cryptos(id, date, value, value_currency, fee, fee_currency, action, provider)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(id) DO UPDATE SET
+                        date = excluded.date,
+                        value = excluded.value,
+                        value_currency = excluded.value_currency,
+                        fee = excluded.fee,
+                        fee_currency = excluded.fee_currency,
+                        action = excluded.action,
+                        provider = excluded.provider
                 ",
             )
             .bind(crypto.id.to_string())
