@@ -29,8 +29,8 @@ pub fn calculate(
             costs: crypto_tax.costs,
         },
         foreign: ForeignTaxSummary {
-            income: (dividend_tax.income + interest_tax.income),
-            tax_to_pay: (dividend_tax.to_pay + interest_tax.to_pay),
+            income: dividend_tax.income + interest_tax.income,
+            tax_to_pay: dividend_tax.to_pay + interest_tax.to_pay,
             tax_paid: dividend_tax.paid,
         },
     })
