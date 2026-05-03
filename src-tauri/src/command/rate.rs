@@ -1,6 +1,6 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
-use pitpls_core::common::Currency;
+use pitpls_core::{common::Currency, rate::Rate};
 use serde::Serialize;
 use specta::Type;
 use tauri::State;
@@ -9,20 +9,20 @@ use crate::state::AppState;
 
 #[derive(Serialize, Type)]
 pub struct RatesViewModel {
+    currencies: Vec<Currency>,
     rows: Vec<RateDay>,
 }
 
 #[derive(Serialize, Type)]
 pub struct RateDay {
     date: String,
-    usd: Option<String>,
-    eur: Option<String>,
+    rates: Vec<RateValue>,
 }
 
-#[derive(Default)]
-struct RateValues {
-    usd: Option<String>,
-    eur: Option<String>,
+#[derive(Serialize, Type)]
+pub struct RateValue {
+    currency: Currency,
+    rate: String,
 }
 
 #[tauri::command]
@@ -66,13 +66,12 @@ pub async fn list_rates(state: State<'_, AppState>) -> Result<RatesViewModel, St
         .await
         .map_err(|e| e.to_string())?;
 
-    let mut rates_by_day = BTreeMap::<_, RateValues>::new();
+    let mut currencies = BTreeSet::new();
+    let mut rates_by_day = BTreeMap::<_, Vec<RateValue>>::new();
     for rate in rates {
-        let day = rates_by_day.entry(rate.date).or_default();
-        match rate.currency {
-            Currency::USD => day.usd = Some(rate.rate.to_string()),
-            Currency::EUR => day.eur = Some(rate.rate.to_string()),
-            Currency::PLN => {}
+        if let Some(rate_value) = rate_value(&rate) {
+            currencies.insert(rate_value.currency);
+            rates_by_day.entry(rate.date).or_default().push(rate_value);
         }
     }
 
@@ -80,10 +79,31 @@ pub async fn list_rates(state: State<'_, AppState>) -> Result<RatesViewModel, St
         .into_iter()
         .map(|(date, rates)| RateDay {
             date: date.to_string(),
-            usd: rates.usd,
-            eur: rates.eur,
+            rates,
         })
         .collect();
 
-    Ok(RatesViewModel { rows })
+    let mut currencies = currencies.into_iter().collect::<Vec<_>>();
+    currencies.sort_by_key(|currency| currency_priority(*currency));
+
+    Ok(RatesViewModel { currencies, rows })
+}
+
+fn rate_value(rate: &Rate) -> Option<RateValue> {
+    if matches!(rate.currency, Currency::PLN) {
+        return None;
+    }
+
+    Some(RateValue {
+        currency: rate.currency,
+        rate: rate.rate.to_string(),
+    })
+}
+
+fn currency_priority(currency: Currency) -> (u8, Currency) {
+    match currency {
+        Currency::USD => (0, currency),
+        Currency::EUR => (1, currency),
+        _ => (2, currency),
+    }
 }

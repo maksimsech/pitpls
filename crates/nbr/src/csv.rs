@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::{path::Path, str::FromStr};
 
 use chrono::NaiveDate;
 use pitpls_core::{common::Currency, rate::Rate};
@@ -135,12 +135,9 @@ fn parse_row(
 
 fn parse_currency(code: &str) -> Option<Currency> {
     let symbol = code.trim_start_matches(|c: char| c.is_ascii_digit());
-
-    match symbol {
-        "USD" => Some(Currency::USD),
-        "EUR" => Some(Currency::EUR),
-        _ => None,
-    }
+    Currency::from_str(symbol)
+        .ok()
+        .filter(|currency| !matches!(currency, Currency::PLN))
 }
 
 fn split_fields(line: &str) -> Vec<&str> {

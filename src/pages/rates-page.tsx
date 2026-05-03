@@ -9,7 +9,13 @@ import {
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { open } from "@tauri-apps/plugin-dialog";
 
-import { commands, type RatesViewModel, type Result } from "@/bindings";
+import {
+    commands,
+    type Currency,
+    type RateDay,
+    type RatesViewModel,
+    type Result,
+} from "@/bindings";
 import { ErrorState } from "@/components/error-state";
 import { LoadingState } from "@/components/loading-state";
 import { Button } from "@/components/ui/button";
@@ -30,7 +36,6 @@ import {
 } from "@/components/ui/table";
 import { formatError } from "@/lib/utils";
 
-const COLUMN_COUNT = 3;
 const ROW_ESTIMATE_PX = 41;
 const EMPTY_RATE = "—";
 const NBP_MIN_YEAR = 2002;
@@ -77,6 +82,8 @@ function RatesContent({
     const [importModalOpen, setImportModalOpen] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const rates = result.status === "ok" ? result.data.rows : [];
+    const currencies = result.status === "ok" ? result.data.currencies : [];
+    const columnCount = currencies.length + 1;
 
     const scrollRef = useRef<HTMLDivElement>(null);
     const rowVirtualizer = useVirtualizer({
@@ -182,19 +189,27 @@ function RatesContent({
                 ref={scrollRef}
                 className="min-h-0 flex-1 overflow-auto rounded-lg border"
             >
-                <table className="w-full caption-bottom text-sm">
+                <table className="w-full min-w-max caption-bottom text-sm">
                     <TableHeader className="sticky top-0 z-10 bg-muted">
                         <TableRow>
-                            <TableHead>Date</TableHead>
-                            <TableHead className="text-right">USD</TableHead>
-                            <TableHead className="text-right">EUR</TableHead>
+                            <TableHead className="whitespace-nowrap">
+                                Date
+                            </TableHead>
+                            {currencies.map((currency) => (
+                                <TableHead
+                                    key={currency}
+                                    className="whitespace-nowrap text-right"
+                                >
+                                    {currency}
+                                </TableHead>
+                            ))}
                         </TableRow>
                     </TableHeader>
                     {rates.length === 0 && (
                         <tbody>
                             <TableRow>
                                 <TableCell
-                                    colSpan={COLUMN_COUNT}
+                                    colSpan={columnCount}
                                     className="py-6 text-center text-muted-foreground"
                                 >
                                     No rates yet. Upload a CSV to get started.
@@ -205,12 +220,13 @@ function RatesContent({
                     {paddingTop > 0 && (
                         <tbody>
                             <tr style={{ height: paddingTop }}>
-                                <td colSpan={COLUMN_COUNT} />
+                                <td colSpan={columnCount} />
                             </tr>
                         </tbody>
                     )}
                     {virtualItems.map((virtualRow) => {
                         const r = rates[virtualRow.index];
+                        const ratesByCurrency = rateLookup(r);
                         return (
                             <tbody
                                 key={r.date}
@@ -218,13 +234,18 @@ function RatesContent({
                                 ref={rowVirtualizer.measureElement}
                             >
                                 <TableRow>
-                                    <TableCell>{r.date}</TableCell>
-                                    <TableCell className="text-right font-mono">
-                                        {r.usd ?? EMPTY_RATE}
+                                    <TableCell className="whitespace-nowrap">
+                                        {r.date}
                                     </TableCell>
-                                    <TableCell className="text-right font-mono">
-                                        {r.eur ?? EMPTY_RATE}
-                                    </TableCell>
+                                    {currencies.map((currency) => (
+                                        <TableCell
+                                            key={currency}
+                                            className="whitespace-nowrap text-right font-mono"
+                                        >
+                                            {ratesByCurrency.get(currency) ??
+                                                EMPTY_RATE}
+                                        </TableCell>
+                                    ))}
                                 </TableRow>
                             </tbody>
                         );
@@ -232,7 +253,7 @@ function RatesContent({
                     {paddingBottom > 0 && (
                         <tbody>
                             <tr style={{ height: paddingBottom }}>
-                                <td colSpan={COLUMN_COUNT} />
+                                <td colSpan={columnCount} />
                             </tr>
                         </tbody>
                     )}
@@ -246,6 +267,12 @@ function RatesContent({
                 />
             )}
         </div>
+    );
+}
+
+function rateLookup(row: RateDay) {
+    return new Map<Currency, string>(
+        row.rates.map((rate) => [rate.currency, rate.rate]),
     );
 }
 

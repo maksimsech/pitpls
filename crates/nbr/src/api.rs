@@ -1,6 +1,6 @@
 use chrono::{Datelike, Duration, Local, NaiveDate};
 use pitpls_core::{common::Currency, rate::Rate};
-use reqwest::StatusCode;
+use reqwest::{Client, StatusCode};
 use rust_decimal::Decimal;
 use serde::Deserialize;
 
@@ -9,29 +9,203 @@ use crate::ApiImportError;
 const NBP_API_BASE_URL: &str = "https://api.nbp.pl/api";
 const NBP_MIN_YEAR: i32 = 2002;
 const NBP_MAX_RANGE_DAYS: i64 = 93;
-const NBP_CURRENCIES: [Currency; 2] = [Currency::USD, Currency::EUR];
+const NBP_TABLE_A: &str = "a";
+
+#[derive(Clone, Copy)]
+struct NbpCurrency {
+    currency: Currency,
+    code: &'static str,
+    unit: u32,
+}
+
+const NBP_CURRENCIES: [NbpCurrency; 33] = [
+    NbpCurrency {
+        currency: Currency::THB,
+        code: "THB",
+        unit: 1,
+    },
+    NbpCurrency {
+        currency: Currency::USD,
+        code: "USD",
+        unit: 1,
+    },
+    NbpCurrency {
+        currency: Currency::AUD,
+        code: "AUD",
+        unit: 1,
+    },
+    NbpCurrency {
+        currency: Currency::HKD,
+        code: "HKD",
+        unit: 1,
+    },
+    NbpCurrency {
+        currency: Currency::CAD,
+        code: "CAD",
+        unit: 1,
+    },
+    NbpCurrency {
+        currency: Currency::NZD,
+        code: "NZD",
+        unit: 1,
+    },
+    NbpCurrency {
+        currency: Currency::SGD,
+        code: "SGD",
+        unit: 1,
+    },
+    NbpCurrency {
+        currency: Currency::EUR,
+        code: "EUR",
+        unit: 1,
+    },
+    NbpCurrency {
+        currency: Currency::HUF,
+        code: "HUF",
+        unit: 100,
+    },
+    NbpCurrency {
+        currency: Currency::CHF,
+        code: "CHF",
+        unit: 1,
+    },
+    NbpCurrency {
+        currency: Currency::GBP,
+        code: "GBP",
+        unit: 1,
+    },
+    NbpCurrency {
+        currency: Currency::UAH,
+        code: "UAH",
+        unit: 1,
+    },
+    NbpCurrency {
+        currency: Currency::JPY,
+        code: "JPY",
+        unit: 100,
+    },
+    NbpCurrency {
+        currency: Currency::CZK,
+        code: "CZK",
+        unit: 1,
+    },
+    NbpCurrency {
+        currency: Currency::DKK,
+        code: "DKK",
+        unit: 1,
+    },
+    NbpCurrency {
+        currency: Currency::ISK,
+        code: "ISK",
+        unit: 100,
+    },
+    NbpCurrency {
+        currency: Currency::NOK,
+        code: "NOK",
+        unit: 1,
+    },
+    NbpCurrency {
+        currency: Currency::SEK,
+        code: "SEK",
+        unit: 1,
+    },
+    NbpCurrency {
+        currency: Currency::RON,
+        code: "RON",
+        unit: 1,
+    },
+    NbpCurrency {
+        currency: Currency::BGN,
+        code: "BGN",
+        unit: 1,
+    },
+    NbpCurrency {
+        currency: Currency::TRY,
+        code: "TRY",
+        unit: 1,
+    },
+    NbpCurrency {
+        currency: Currency::ILS,
+        code: "ILS",
+        unit: 1,
+    },
+    NbpCurrency {
+        currency: Currency::CLP,
+        code: "CLP",
+        unit: 100,
+    },
+    NbpCurrency {
+        currency: Currency::PHP,
+        code: "PHP",
+        unit: 1,
+    },
+    NbpCurrency {
+        currency: Currency::MXN,
+        code: "MXN",
+        unit: 1,
+    },
+    NbpCurrency {
+        currency: Currency::ZAR,
+        code: "ZAR",
+        unit: 1,
+    },
+    NbpCurrency {
+        currency: Currency::BRL,
+        code: "BRL",
+        unit: 1,
+    },
+    NbpCurrency {
+        currency: Currency::MYR,
+        code: "MYR",
+        unit: 1,
+    },
+    NbpCurrency {
+        currency: Currency::IDR,
+        code: "IDR",
+        unit: 10000,
+    },
+    NbpCurrency {
+        currency: Currency::INR,
+        code: "INR",
+        unit: 100,
+    },
+    NbpCurrency {
+        currency: Currency::KRW,
+        code: "KRW",
+        unit: 100,
+    },
+    NbpCurrency {
+        currency: Currency::CNY,
+        code: "CNY",
+        unit: 1,
+    },
+    NbpCurrency {
+        currency: Currency::XDR,
+        code: "XDR",
+        unit: 1,
+    },
+];
 
 #[derive(Deserialize)]
-struct NbpRateResponse {
-    rates: Vec<NbpRate>,
+struct NbpTableResponse {
+    #[serde(rename = "effectiveDate")]
+    effective_date: NaiveDate,
+    rates: Vec<NbpTableRate>,
 }
 
 #[derive(Deserialize)]
-struct NbpRate {
-    #[serde(rename = "effectiveDate")]
-    effective_date: NaiveDate,
+struct NbpTableRate {
+    code: String,
     mid: Decimal,
 }
 
 pub async fn load_api_rates(year: i32) -> Result<Vec<Rate>, ApiImportError> {
     let ranges = nbp_year_ranges(year)?;
-    let client = reqwest::Client::new();
+    let client = Client::new();
     let mut rates = Vec::new();
 
-    for currency in NBP_CURRENCIES {
-        for (start_date, end_date) in &ranges {
-            rates.extend(fetch_nbp_rates(&client, currency, *start_date, *end_date).await?);
-        }
+    for (start_date, end_date) in &ranges {
+        rates.extend(fetch_nbp_rates(&client, *start_date, *end_date).await?);
     }
 
     Ok(rates)
@@ -85,14 +259,12 @@ fn nbp_year_ranges(year: i32) -> Result<Vec<(NaiveDate, NaiveDate)>, ApiImportEr
 }
 
 async fn fetch_nbp_rates(
-    client: &reqwest::Client,
-    currency: Currency,
+    client: &Client,
     start_date: NaiveDate,
     end_date: NaiveDate,
 ) -> Result<Vec<Rate>, ApiImportError> {
-    let code = nbp_currency_code(currency)?;
     let url = format!(
-        "{NBP_API_BASE_URL}/exchangerates/rates/a/{code}/{start_date}/{end_date}/?format=json",
+        "{NBP_API_BASE_URL}/exchangerates/tables/{NBP_TABLE_A}/{start_date}/{end_date}/?format=json",
     );
     let response = client
         .get(url)
@@ -108,35 +280,36 @@ async fn fetch_nbp_rates(
     if !status.is_success() {
         return Err(ApiImportError::HttpStatus {
             status,
-            code,
+            code: "table A",
             start_date,
             end_date,
         });
     }
 
-    let response: NbpRateResponse = response
+    let response: Vec<NbpTableResponse> = response
         .json()
         .await
         .map_err(|source| ApiImportError::Response { source })?;
     Ok(response
-        .rates
         .into_iter()
-        .map(|rate| Rate {
-            date: rate.effective_date,
-            currency,
-            rate: rate.mid,
+        .flat_map(|table| {
+            table.rates.into_iter().filter_map(move |rate| {
+                let currency = nbp_currency(&rate.code)?;
+
+                Some(Rate {
+                    date: table.effective_date,
+                    currency: currency.currency,
+                    rate: rate.mid / Decimal::from(currency.unit),
+                })
+            })
         })
         .collect())
 }
 
-fn nbp_currency_code(currency: Currency) -> Result<&'static str, ApiImportError> {
-    match currency {
-        Currency::USD => Ok("usd"),
-        Currency::EUR => Ok("eur"),
-        Currency::PLN => Err(ApiImportError::UnsupportedCurrency {
-            currency: currency.to_string(),
-        }),
-    }
+fn nbp_currency(code: &str) -> Option<&'static NbpCurrency> {
+    NBP_CURRENCIES
+        .iter()
+        .find(|currency| currency.code.eq_ignore_ascii_case(code))
 }
 
 fn date(year: i32, month: u32, day: u32) -> Result<NaiveDate, ApiImportError> {
