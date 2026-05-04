@@ -6,6 +6,7 @@ use serde::Serialize;
 use specta::Type;
 use tauri::State;
 
+use super::error_message;
 use crate::state::AppState;
 
 #[derive(Serialize, Type)]
@@ -29,13 +30,13 @@ pub struct RateValue {
 #[tauri::command]
 #[specta::specta]
 pub async fn import_csv(state: State<'_, AppState>, file: String) -> Result<u64, String> {
-    let rates = load_csv_rates(&file).await.map_err(|e| e.to_string())?;
+    let rates = load_csv_rates(&file).await.map_err(error_message)?;
 
     state
         .rate_repo()
         .upload(rates.into_iter())
         .await
-        .map_err(|e| e.to_string())
+        .map_err(error_message)
 }
 
 #[tauri::command]
@@ -43,29 +44,25 @@ pub async fn import_csv(state: State<'_, AppState>, file: String) -> Result<u64,
 pub async fn import_api(state: State<'_, AppState>, year: i32) -> Result<u64, String> {
     let rates = load_api_rates(state.api_client(), year)
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(error_message)?;
 
     state
         .rate_repo()
         .upload(rates.into_iter())
         .await
-        .map_err(|e| e.to_string())
+        .map_err(error_message)
 }
 
 #[tauri::command]
 #[specta::specta]
 pub async fn reset_rates(state: State<'_, AppState>) -> Result<u64, String> {
-    state.rate_repo().reset().await.map_err(|e| e.to_string())
+    state.rate_repo().reset().await.map_err(error_message)
 }
 
 #[tauri::command]
 #[specta::specta]
 pub async fn list_rates(state: State<'_, AppState>) -> Result<RatesViewModel, String> {
-    let rates = state
-        .rate_repo()
-        .load_all()
-        .await
-        .map_err(|e| e.to_string())?;
+    let rates = state.rate_repo().load_all().await.map_err(error_message)?;
 
     let mut currencies = BTreeSet::new();
     let mut rates_by_day = BTreeMap::<_, Vec<RateValue>>::new();

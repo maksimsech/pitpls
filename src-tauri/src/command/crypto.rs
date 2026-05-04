@@ -11,6 +11,7 @@ use serde::Deserialize;
 use specta::Type;
 use tauri::State;
 
+use super::{duplicate_id_error, error_message};
 use crate::state::AppState;
 
 #[derive(Deserialize, Type)]
@@ -90,17 +91,13 @@ pub async fn create_crypto(
         input.provider,
     )?;
 
-    match state.crypto_repo().save(&[crypto]).await {
-        Ok(_) => Ok(id),
-        Err(e) => {
-            let msg = e.to_string();
-            if msg.contains("UNIQUE constraint failed") {
-                Err(format!("Crypto with ID '{id}' already exists"))
-            } else {
-                Err(msg)
-            }
-        }
-    }
+    state
+        .crypto_repo()
+        .insert(&crypto)
+        .await
+        .map_err(|error| duplicate_id_error(error, "Crypto", &id))?;
+
+    Ok(id)
 }
 
 #[tauri::command]
@@ -129,7 +126,7 @@ pub async fn update_crypto(
         .crypto_repo()
         .update(&crypto)
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(error_message)?;
     if rows == 0 {
         return Err(format!("Crypto with ID '{id}' not found"));
     }
@@ -143,7 +140,7 @@ pub async fn delete_cryptos(state: State<'_, AppState>, ids: Vec<String>) -> Res
         .crypto_repo()
         .delete_by_ids(&ids)
         .await
-        .map_err(|e| e.to_string())
+        .map_err(error_message)
 }
 
 #[tauri::command]
@@ -156,16 +153,12 @@ pub async fn load_cryptos(
         .crypto_repo()
         .get_by_year(year)
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(error_message)?;
 
     cryptos.sort_unstable_by(|a, b| a.date.cmp(&b.date));
 
-    let rates = state
-        .rate_repo()
-        .load_all()
-        .await
-        .map_err(|e| e.to_string())?;
+    let rates = state.rate_repo().load_all().await.map_err(error_message)?;
     let rate_provider = NbpRateProvider::new(rates);
 
-    calculate_sell_buy_values(cryptos, &rate_provider).map_err(|e| e.to_string())
+    calculate_sell_buy_values(cryptos, &rate_provider).map_err(error_message)
 }

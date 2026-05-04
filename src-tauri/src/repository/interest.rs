@@ -1,10 +1,11 @@
 use std::str::FromStr;
 
-use anyhow::Result;
 use chrono::{Datelike, NaiveDate};
 use pitpls_core::{common::Amount, interest::Interest};
 use rust_decimal::Decimal;
 use sqlx::{Row, SqlitePool};
+
+use super::Result;
 
 pub struct InterestRepository {
     db: SqlitePool,
@@ -30,6 +31,33 @@ impl InterestRepository {
         }
         tx.commit().await?;
         Ok(rows)
+    }
+
+    pub async fn insert(&self, interest: &Interest) -> Result<()> {
+        let mut tx = self.db.begin().await?;
+
+        sqlx::query(
+            r"
+                INSERT INTO interests(id, date, value, value_currency, provider)
+                VALUES (?, ?, ?, ?, ?)
+            ",
+        )
+        .bind(interest.id.to_string())
+        .bind(interest.date)
+        .bind(interest.value.value.to_string())
+        .bind(serde_plain::to_string(&interest.value.currency)?)
+        .bind(interest.provider.to_string())
+        .execute(&mut *tx)
+        .await?;
+
+        sqlx::query("INSERT OR IGNORE INTO years(year) VALUES (?)")
+            .bind(interest.date.year())
+            .execute(&mut *tx)
+            .await?;
+
+        tx.commit().await?;
+
+        Ok(())
     }
 
     pub async fn save(&self, interests: &[Interest]) -> Result<u64> {

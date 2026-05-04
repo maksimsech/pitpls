@@ -11,6 +11,7 @@ use serde::Deserialize;
 use specta::Type;
 use tauri::State;
 
+use super::{duplicate_id_error, error_message};
 use crate::state::AppState;
 
 #[derive(Deserialize, Type)]
@@ -72,17 +73,13 @@ pub async fn create_interest(
         input.provider,
     )?;
 
-    match state.interest_repo().save(&[interest]).await {
-        Ok(_) => Ok(id),
-        Err(e) => {
-            let msg = e.to_string();
-            if msg.contains("UNIQUE constraint failed") {
-                Err(format!("Interest with ID '{id}' already exists"))
-            } else {
-                Err(msg)
-            }
-        }
-    }
+    state
+        .interest_repo()
+        .insert(&interest)
+        .await
+        .map_err(|error| duplicate_id_error(error, "Interest", &id))?;
+
+    Ok(id)
 }
 
 #[tauri::command]
@@ -108,7 +105,7 @@ pub async fn update_interest(
         .interest_repo()
         .update(&interest)
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(error_message)?;
     if rows == 0 {
         return Err(format!("Interest with ID '{id}' not found"));
     }
@@ -122,7 +119,7 @@ pub async fn delete_interests(state: State<'_, AppState>, ids: Vec<String>) -> R
         .interest_repo()
         .delete_by_ids(&ids)
         .await
-        .map_err(|e| e.to_string())
+        .map_err(error_message)
 }
 
 #[tauri::command]
@@ -135,16 +132,12 @@ pub async fn load_interests(
         .interest_repo()
         .get_by_year(year)
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(error_message)?;
 
     interests.sort_unstable_by(|a, b| a.date.cmp(&b.date));
 
-    let rates = state
-        .rate_repo()
-        .load_all()
-        .await
-        .map_err(|e| e.to_string())?;
+    let rates = state.rate_repo().load_all().await.map_err(error_message)?;
     let rate_provider = NbpRateProvider::new(rates);
 
-    calculate(interests, &rate_provider).map_err(|e| e.to_string())
+    calculate(interests, &rate_provider).map_err(error_message)
 }

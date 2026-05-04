@@ -1,10 +1,11 @@
 use std::str::FromStr;
 
-use anyhow::Result;
 use chrono::{Datelike, NaiveDate};
 use pitpls_core::{common::Amount, crypto::Crypto};
 use rust_decimal::Decimal;
 use sqlx::{Row, SqlitePool};
+
+use super::Result;
 
 pub struct CryptoRepository {
     db: SqlitePool,
@@ -30,6 +31,36 @@ impl CryptoRepository {
         }
         tx.commit().await?;
         Ok(rows)
+    }
+
+    pub async fn insert(&self, crypto: &Crypto) -> Result<()> {
+        let mut tx = self.db.begin().await?;
+
+        sqlx::query(
+            r"
+                INSERT INTO cryptos(id, date, value, value_currency, fee, fee_currency, action, provider)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ",
+        )
+        .bind(crypto.id.to_string())
+        .bind(crypto.date)
+        .bind(crypto.value.value.to_string())
+        .bind(serde_plain::to_string(&crypto.value.currency)?)
+        .bind(crypto.fee.value.to_string())
+        .bind(serde_plain::to_string(&crypto.fee.currency)?)
+        .bind(serde_plain::to_string(&crypto.action)?)
+        .bind(crypto.provider.to_string())
+        .execute(&mut *tx)
+        .await?;
+
+        sqlx::query("INSERT OR IGNORE INTO years(year) VALUES (?)")
+            .bind(crypto.date.year())
+            .execute(&mut *tx)
+            .await?;
+
+        tx.commit().await?;
+
+        Ok(())
     }
 
     pub async fn save(&self, cryptos: &[Crypto]) -> Result<u64> {

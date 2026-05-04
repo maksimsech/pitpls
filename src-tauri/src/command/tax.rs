@@ -4,6 +4,7 @@ use pitpls_core::{
 };
 use tauri::State;
 
+use super::error_message;
 use crate::state::AppState;
 
 #[tauri::command]
@@ -12,34 +13,30 @@ pub async fn load_tax_summary(
     state: State<'_, AppState>,
     year: Option<i32>,
 ) -> Result<TaxSummary, String> {
-    let rates = state
-        .rate_repo()
-        .load_all()
-        .await
-        .map_err(|e| e.to_string())?;
+    let rates = state.rate_repo().load_all().await.map_err(error_message)?;
     let rate_provider = NbpRateProvider::new(rates);
     let cryptos = state
         .crypto_repo()
         .get_by_year(year)
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(error_message)?;
 
     let dividends = state
         .dividend_repo()
         .get_by_year(year)
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(error_message)?;
 
     let interests = state
         .interest_repo()
         .get_by_year(year)
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(error_message)?;
     let dividend_rounding = state
         .settings_repo()
         .load_dividend_rounding()
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(error_message)?;
 
     calculate(
         &rate_provider,
@@ -48,5 +45,5 @@ pub async fn load_tax_summary(
         interests,
         dividend_rounding,
     )
-    .map_err(|e| e.to_string())
+    .map_err(error_message)
 }

@@ -11,6 +11,7 @@ use serde::Deserialize;
 use specta::Type;
 use tauri::State;
 
+use super::{duplicate_id_error, error_message};
 use crate::state::AppState;
 
 #[derive(Deserialize, Type)]
@@ -96,17 +97,13 @@ pub async fn create_dividend(
         input.provider,
     )?;
 
-    match state.dividend_repo().save(&[dividend]).await {
-        Ok(_) => Ok(id),
-        Err(e) => {
-            let msg = e.to_string();
-            if msg.contains("UNIQUE constraint failed") {
-                Err(format!("Dividend with ID '{id}' already exists"))
-            } else {
-                Err(msg)
-            }
-        }
-    }
+    state
+        .dividend_repo()
+        .insert(&dividend)
+        .await
+        .map_err(|error| duplicate_id_error(error, "Dividend", &id))?;
+
+    Ok(id)
 }
 
 #[tauri::command]
@@ -136,7 +133,7 @@ pub async fn update_dividend(
         .dividend_repo()
         .update(&dividend)
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(error_message)?;
     if rows == 0 {
         return Err(format!("Dividend with ID '{id}' not found"));
     }
@@ -150,7 +147,7 @@ pub async fn delete_dividends(state: State<'_, AppState>, ids: Vec<String>) -> R
         .dividend_repo()
         .delete_by_ids(&ids)
         .await
-        .map_err(|e| e.to_string())
+        .map_err(error_message)
 }
 
 #[tauri::command]
@@ -163,21 +160,17 @@ pub async fn load_dividends(
         .dividend_repo()
         .get_by_year(year)
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(error_message)?;
 
     dividends.sort_unstable_by(|a, b| a.date.cmp(&b.date));
 
-    let rates = state
-        .rate_repo()
-        .load_all()
-        .await
-        .map_err(|e| e.to_string())?;
+    let rates = state.rate_repo().load_all().await.map_err(error_message)?;
     let rate_provider = NbpRateProvider::new(rates);
     let dividend_rounding = state
         .settings_repo()
         .load_dividend_rounding()
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(error_message)?;
 
-    calculate(dividends, &rate_provider, dividend_rounding).map_err(|e| e.to_string())
+    calculate(dividends, &rate_provider, dividend_rounding).map_err(error_message)
 }
