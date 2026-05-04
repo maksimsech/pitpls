@@ -67,8 +67,7 @@ impl CryptoRepository {
         let mut rows = 0;
         let mut tx = self.db.begin().await?;
         for crypto in cryptos {
-            rows += 1;
-            sqlx::query(
+            let result = sqlx::query(
                 r"
                     INSERT INTO cryptos(id, date, value, value_currency, fee, fee_currency, action, provider)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
@@ -80,6 +79,7 @@ impl CryptoRepository {
                         fee_currency = excluded.fee_currency,
                         action = excluded.action,
                         provider = excluded.provider
+                    WHERE cryptos.provider = excluded.provider
                 ",
             )
             .bind(crypto.id.to_string())
@@ -93,10 +93,15 @@ impl CryptoRepository {
             .execute(&mut *tx)
             .await?;
 
-            sqlx::query("INSERT OR IGNORE INTO years(year) VALUES (?)")
-                .bind(crypto.date.year())
-                .execute(&mut *tx)
-                .await?;
+            let affected = result.rows_affected();
+            rows += affected;
+
+            if affected > 0 {
+                sqlx::query("INSERT OR IGNORE INTO years(year) VALUES (?)")
+                    .bind(crypto.date.year())
+                    .execute(&mut *tx)
+                    .await?;
+            }
         }
 
         tx.commit().await?;

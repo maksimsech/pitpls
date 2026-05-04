@@ -64,8 +64,7 @@ impl InterestRepository {
         let mut rows = 0;
         let mut tx = self.db.begin().await?;
         for interest in interests {
-            rows += 1;
-            sqlx::query(
+            let result = sqlx::query(
                 r"
                     INSERT INTO interests(id, date, value, value_currency, provider)
                     VALUES (?, ?, ?, ?, ?)
@@ -74,6 +73,7 @@ impl InterestRepository {
                         value = excluded.value,
                         value_currency = excluded.value_currency,
                         provider = excluded.provider
+                    WHERE interests.provider = excluded.provider
                 ",
             )
             .bind(interest.id.to_string())
@@ -84,10 +84,15 @@ impl InterestRepository {
             .execute(&mut *tx)
             .await?;
 
-            sqlx::query("INSERT OR IGNORE INTO years(year) VALUES (?)")
-                .bind(interest.date.year())
-                .execute(&mut *tx)
-                .await?;
+            let affected = result.rows_affected();
+            rows += affected;
+
+            if affected > 0 {
+                sqlx::query("INSERT OR IGNORE INTO years(year) VALUES (?)")
+                    .bind(interest.date.year())
+                    .execute(&mut *tx)
+                    .await?;
+            }
         }
 
         tx.commit().await?;

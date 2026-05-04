@@ -68,8 +68,7 @@ impl DividendRepository {
         let mut rows = 0;
         let mut tx = self.db.begin().await?;
         for dividend in dividends {
-            rows += 1;
-            sqlx::query(
+            let result = sqlx::query(
                 r"
                     INSERT INTO dividends(id, date, ticker, value, value_currency, tax_paid, tax_paid_currency, country, provider)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -82,6 +81,7 @@ impl DividendRepository {
                         tax_paid_currency = excluded.tax_paid_currency,
                         country = excluded.country,
                         provider = excluded.provider
+                    WHERE dividends.provider = excluded.provider
                 ",
             )
             .bind(dividend.id.to_string())
@@ -96,10 +96,15 @@ impl DividendRepository {
             .execute(&mut *tx)
             .await?;
 
-            sqlx::query("INSERT OR IGNORE INTO years(year) VALUES (?)")
-                .bind(dividend.date.year())
-                .execute(&mut *tx)
-                .await?;
+            let affected = result.rows_affected();
+            rows += affected;
+
+            if affected > 0 {
+                sqlx::query("INSERT OR IGNORE INTO years(year) VALUES (?)")
+                    .bind(dividend.date.year())
+                    .execute(&mut *tx)
+                    .await?;
+            }
         }
 
         tx.commit().await?;
