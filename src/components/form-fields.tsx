@@ -1,6 +1,6 @@
-import { type Currency } from "@/bindings";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import type { Currency } from '@/bindings'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import {
     Select,
     SelectContent,
@@ -8,51 +8,51 @@ import {
     SelectItem,
     SelectTrigger,
     SelectValue,
-} from "@/components/ui/select";
-import { currencyDisplay } from "@/lib/display";
+} from '@/components/ui/select'
+import { currencyDisplay } from '@/lib/display'
 
 type LabeledInputProps = React.ComponentProps<typeof Input> & {
-    id: string;
-    label: string;
-};
+    id: string
+    label: string
+}
 
 function LabeledInput({ id, label, ...props }: LabeledInputProps) {
     return (
-        <div className="flex flex-col gap-1">
+        <div className='flex flex-col gap-1'>
             <Label htmlFor={id}>{label}</Label>
             <Input id={id} {...props} />
         </div>
-    );
+    )
 }
 
 type IdFieldProps = {
-    id: string;
-    value: string;
-    onChange: (value: string) => void;
-    isEdit: boolean;
-};
+    id: string
+    value: string
+    onChange: (value: string) => void
+    isEdit: boolean
+}
 
 function IdField({ id, value, onChange, isEdit }: IdFieldProps) {
     return (
         <LabeledInput
             id={id}
-            label="ID"
+            label='ID'
             value={value}
             onChange={(e) => onChange(e.target.value)}
-            placeholder={isEdit ? "" : "Leave blank to auto-generate"}
+            placeholder={isEdit ? '' : 'Leave blank to auto-generate'}
             disabled={isEdit}
             readOnly={isEdit}
         />
-    );
+    )
 }
 
 type EnumSelectProps<T extends string> = {
-    id?: string;
-    value: T;
-    onChange: (value: T) => void;
-    options: Record<T, string>;
-    disabled?: boolean;
-};
+    id?: string
+    value: T
+    onChange: (value: T) => void
+    options: Record<T, string>
+    disabled?: boolean
+}
 
 function EnumSelect<T extends string>({
     id,
@@ -67,7 +67,7 @@ function EnumSelect<T extends string>({
             onValueChange={(v) => onChange(v as T)}
             disabled={disabled}
         >
-            <SelectTrigger id={id} className="w-full">
+            <SelectTrigger id={id} className='w-full'>
                 <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -82,18 +82,18 @@ function EnumSelect<T extends string>({
                 </SelectGroup>
             </SelectContent>
         </Select>
-    );
+    )
 }
 
 type CurrencyAmountFieldProps = {
-    id: string;
-    label: string;
-    value: string;
-    onValueChange: (value: string) => void;
-    currency: Currency;
-    onCurrencyChange: (value: Currency) => void;
-    currencies?: Record<Currency, string>;
-};
+    id: string
+    label: string
+    value: string
+    onValueChange: (value: string) => void
+    currency: Currency
+    onCurrencyChange: (value: Currency) => void
+    currencies?: Record<Currency, string>
+}
 
 function CurrencyAmountField({
     id,
@@ -104,19 +104,19 @@ function CurrencyAmountField({
     onCurrencyChange,
     currencies = currencyDisplay,
 }: CurrencyAmountFieldProps) {
-    const currencyId = `${id}-currency`;
+    const currencyId = `${id}-currency`
     return (
-        <div className="grid grid-cols-[1fr_auto] gap-2">
+        <div className='grid grid-cols-[1fr_auto] gap-2'>
             <LabeledInput
                 id={id}
                 label={label}
-                inputMode="decimal"
+                inputMode='decimal'
                 value={value}
                 onChange={(e) => onValueChange(e.target.value)}
-                placeholder="0.00"
+                placeholder='0.00'
                 required
             />
-            <div className="flex flex-col gap-1">
+            <div className='flex flex-col gap-1'>
                 <Label htmlFor={currencyId}>Currency</Label>
                 <EnumSelect
                     id={currencyId}
@@ -126,12 +126,12 @@ function CurrencyAmountField({
                 />
             </div>
         </div>
-    );
+    )
 }
 
 type LabeledSelectProps<T extends string> = EnumSelectProps<T> & {
-    label: string;
-};
+    label: string
+}
 
 function LabeledSelect<T extends string>({
     id,
@@ -139,17 +139,11 @@ function LabeledSelect<T extends string>({
     ...rest
 }: LabeledSelectProps<T>) {
     return (
-        <div className="flex flex-col gap-1">
+        <div className='flex flex-col gap-1'>
             <Label htmlFor={id}>{label}</Label>
             <EnumSelect id={id} {...rest} />
         </div>
-    );
+    )
 }
 
-export {
-    CurrencyAmountField,
-    EnumSelect,
-    IdField,
-    LabeledInput,
-    LabeledSelect,
-};
+export { CurrencyAmountField, EnumSelect, IdField, LabeledInput, LabeledSelect }

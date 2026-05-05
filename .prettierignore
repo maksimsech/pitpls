@@ -1,0 +1,10 @@
+node_modules
+.agents
+dist
+dist-ssr
+target
+test_export
+src/bindings.ts
+src-tauri/gen
+package-lock.json
+skills-lock.json
