@@ -16,10 +16,11 @@ use crate::command::{
     warnings::get_warnings,
     year::{add_year, delete_year, list_years},
 };
-use crate::repository::migration::{DB_URL, migrations};
+use crate::db::{DB_URL, migrations};
 use crate::state::setup;
 
 mod command;
+mod db;
 mod repository;
 mod state;
 

@@ -1,6 +1,7 @@
-use anyhow::Result;
 use pitpls_core::settings::{DividendRounding, Settings};
 use sqlx::{Row, SqlitePool};
+
+use super::Result;
 
 const DIVIDEND_ROUNDING_SETTING: &str = "dividend_rounding";
 

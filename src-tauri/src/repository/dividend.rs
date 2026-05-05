@@ -1,13 +1,11 @@
 use std::str::FromStr;
 
-use anyhow::{Error, Result};
 use chrono::{Datelike, NaiveDate};
-use pitpls_core::{
-    common::{Amount, Country},
-    dividend::Dividend,
-};
+use pitpls_core::{common::Amount, dividend::Dividend};
 use rust_decimal::Decimal;
 use sqlx::{Row, SqlitePool};
+
+use super::Result;
 
 pub struct DividendRepository {
     db: SqlitePool,
@@ -35,15 +33,55 @@ impl DividendRepository {
         Ok(rows)
     }
 
+    pub async fn insert(&self, dividend: &Dividend) -> Result<()> {
+        let mut tx = self.db.begin().await?;
+
+        sqlx::query(
+            r"
+                INSERT INTO dividends(id, date, ticker, value, value_currency, tax_paid, tax_paid_currency, country, provider)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ",
+        )
+        .bind(dividend.id.to_string())
+        .bind(dividend.date)
+        .bind(dividend.ticker.to_string())
+        .bind(dividend.value.value.to_string())
+        .bind(serde_plain::to_string(&dividend.value.currency)?)
+        .bind(dividend.tax_paid.value.to_string())
+        .bind(serde_plain::to_string(&dividend.tax_paid.currency)?)
+        .bind(serde_plain::to_string(&dividend.country)?)
+        .bind(dividend.provider.to_string())
+        .execute(&mut *tx)
+        .await?;
+
+        sqlx::query("INSERT OR IGNORE INTO years(year) VALUES (?)")
+            .bind(dividend.date.year())
+            .execute(&mut *tx)
+            .await?;
+
+        tx.commit().await?;
+
+        Ok(())
+    }
+
     pub async fn save(&self, dividends: &[Dividend]) -> Result<u64> {
         let mut rows = 0;
         let mut tx = self.db.begin().await?;
         for dividend in dividends {
-            rows += 1;
-            sqlx::query(
+            let result = sqlx::query(
                 r"
                     INSERT INTO dividends(id, date, ticker, value, value_currency, tax_paid, tax_paid_currency, country, provider)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(id) DO UPDATE SET
+                        date = excluded.date,
+                        ticker = excluded.ticker,
+                        value = excluded.value,
+                        value_currency = excluded.value_currency,
+                        tax_paid = excluded.tax_paid,
+                        tax_paid_currency = excluded.tax_paid_currency,
+                        country = excluded.country,
+                        provider = excluded.provider
+                    WHERE dividends.provider = excluded.provider
                 ",
             )
             .bind(dividend.id.to_string())
@@ -53,15 +91,20 @@ impl DividendRepository {
             .bind(serde_plain::to_string(&dividend.value.currency)?)
             .bind(dividend.tax_paid.value.to_string())
             .bind(serde_plain::to_string(&dividend.tax_paid.currency)?)
-            .bind(dividend.country.to_string())
+            .bind(serde_plain::to_string(&dividend.country)?)
             .bind(dividend.provider.to_string())
             .execute(&mut *tx)
             .await?;
 
-            sqlx::query("INSERT OR IGNORE INTO years(year) VALUES (?)")
-                .bind(dividend.date.year())
-                .execute(&mut *tx)
-                .await?;
+            let affected = result.rows_affected();
+            rows += affected;
+
+            if affected > 0 {
+                sqlx::query("INSERT OR IGNORE INTO years(year) VALUES (?)")
+                    .bind(dividend.date.year())
+                    .execute(&mut *tx)
+                    .await?;
+            }
         }
 
         tx.commit().await?;
@@ -84,7 +127,7 @@ impl DividendRepository {
         .bind(serde_plain::to_string(&d.value.currency)?)
         .bind(d.tax_paid.value.to_string())
         .bind(serde_plain::to_string(&d.tax_paid.currency)?)
-        .bind(d.country.to_string())
+        .bind(serde_plain::to_string(&d.country)?)
         .bind(d.provider.to_string())
         .bind(d.id.to_string())
         .execute(&mut *tx)
@@ -136,7 +179,7 @@ impl DividendRepository {
                         value: Decimal::from_str(&tax_paid)?,
                         currency: serde_plain::from_str(&tax_paid_currency)?,
                     },
-                    country: Country::from_str(&country).map_err(Error::msg)?,
+                    country: serde_plain::from_str(&country)?,
                     provider,
                 })
             })

@@ -3,6 +3,7 @@ use specta::Type;
 use sqlx::SqlitePool;
 use tauri::State;
 
+use super::error_message;
 use crate::state::AppState;
 
 #[derive(Serialize, Type)]
@@ -19,11 +20,11 @@ pub async fn get_warnings(
 ) -> Result<Warnings, String> {
     let has_rates = table_has_records(state.db_pool(), "rates", year)
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(error_message)?;
 
     let has_records = any_records_in_year(&state, year)
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(error_message)?;
 
     Ok(Warnings {
         rates_empty: !has_rates,

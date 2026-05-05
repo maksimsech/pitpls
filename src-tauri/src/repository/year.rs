@@ -1,5 +1,6 @@
-use anyhow::Result;
 use sqlx::{Row, SqlitePool};
+
+use super::Result;
 
 pub struct YearRepository {
     db: SqlitePool,

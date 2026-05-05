@@ -1,10 +1,11 @@
 use std::str::FromStr;
 
-use anyhow::Result;
 use chrono::{Datelike, NaiveDate};
 use pitpls_core::{common::Amount, interest::Interest};
 use rust_decimal::Decimal;
 use sqlx::{Row, SqlitePool};
+
+use super::Result;
 
 pub struct InterestRepository {
     db: SqlitePool,
@@ -32,15 +33,47 @@ impl InterestRepository {
         Ok(rows)
     }
 
+    pub async fn insert(&self, interest: &Interest) -> Result<()> {
+        let mut tx = self.db.begin().await?;
+
+        sqlx::query(
+            r"
+                INSERT INTO interests(id, date, value, value_currency, provider)
+                VALUES (?, ?, ?, ?, ?)
+            ",
+        )
+        .bind(interest.id.to_string())
+        .bind(interest.date)
+        .bind(interest.value.value.to_string())
+        .bind(serde_plain::to_string(&interest.value.currency)?)
+        .bind(interest.provider.to_string())
+        .execute(&mut *tx)
+        .await?;
+
+        sqlx::query("INSERT OR IGNORE INTO years(year) VALUES (?)")
+            .bind(interest.date.year())
+            .execute(&mut *tx)
+            .await?;
+
+        tx.commit().await?;
+
+        Ok(())
+    }
+
     pub async fn save(&self, interests: &[Interest]) -> Result<u64> {
         let mut rows = 0;
         let mut tx = self.db.begin().await?;
         for interest in interests {
-            rows += 1;
-            sqlx::query(
+            let result = sqlx::query(
                 r"
                     INSERT INTO interests(id, date, value, value_currency, provider)
                     VALUES (?, ?, ?, ?, ?)
+                    ON CONFLICT(id) DO UPDATE SET
+                        date = excluded.date,
+                        value = excluded.value,
+                        value_currency = excluded.value_currency,
+                        provider = excluded.provider
+                    WHERE interests.provider = excluded.provider
                 ",
             )
             .bind(interest.id.to_string())
@@ -51,10 +84,15 @@ impl InterestRepository {
             .execute(&mut *tx)
             .await?;
 
-            sqlx::query("INSERT OR IGNORE INTO years(year) VALUES (?)")
-                .bind(interest.date.year())
-                .execute(&mut *tx)
-                .await?;
+            let affected = result.rows_affected();
+            rows += affected;
+
+            if affected > 0 {
+                sqlx::query("INSERT OR IGNORE INTO years(year) VALUES (?)")
+                    .bind(interest.date.year())
+                    .execute(&mut *tx)
+                    .await?;
+            }
         }
 
         tx.commit().await?;

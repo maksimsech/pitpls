@@ -1,10 +1,11 @@
 use std::str::FromStr;
 
-use anyhow::Result;
 use chrono::NaiveDate;
 use pitpls_core::rate::Rate;
 use rust_decimal::Decimal;
 use sqlx::{Row, SqlitePool};
+
+use super::Result;
 
 pub struct RateRepository {
     db: SqlitePool,

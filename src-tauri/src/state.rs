@@ -1,17 +1,17 @@
+use std::error::Error;
 use std::sync::LazyLock;
 
 use reqwest::Client;
 use sqlx::SqlitePool;
+use tauri::async_runtime::block_on;
 use tauri::{AppHandle, Manager as _};
 use tauri_plugin_sql::{DbInstances, DbPool};
 
-use crate::repository::crypto::CryptoRepository;
-use crate::repository::dividend::DividendRepository;
-use crate::repository::interest::InterestRepository;
-use crate::repository::migration::DB_URL;
-use crate::repository::rate::RateRepository;
-use crate::repository::settings::SettingsRepository;
-use crate::repository::year::YearRepository;
+use crate::db::DB_URL;
+use crate::repository::{
+    crypto::CryptoRepository, dividend::DividendRepository, interest::InterestRepository,
+    rate::RateRepository, settings::SettingsRepository, year::YearRepository,
+};
 
 pub struct AppState {
     db: SqlitePool,
@@ -52,8 +52,8 @@ impl AppState {
     }
 }
 
-pub fn setup(handle: AppHandle) -> std::result::Result<(), Box<dyn std::error::Error>> {
-    tauri::async_runtime::block_on(async move {
+pub fn setup(handle: AppHandle) -> Result<(), Box<dyn Error>> {
+    block_on(async move {
         let instances = handle.state::<DbInstances>();
         let map = instances.0.read().await;
         let DbPool::Sqlite(pool) = map.get(DB_URL).ok_or("db not loaded")?;
