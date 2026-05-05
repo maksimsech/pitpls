@@ -5,185 +5,181 @@ import {
     useRef,
     useState,
     useTransition,
-} from "react";
-import { useVirtualizer } from "@tanstack/react-virtual";
+} from 'react'
+import { useVirtualizer } from '@tanstack/react-virtual'
 
 import {
-    commands,
     type CalculatedCrypto,
+    commands,
     type CryptoTaxData,
     type Result,
-} from "@/bindings";
-import { CryptoFormModal } from "@/components/crypto-form-modal";
-import { CurrencyValue } from "@/components/currency-value";
-import { ErrorState } from "@/components/error-state";
-import { LoadingState } from "@/components/loading-state";
-import { SelectionHeader } from "@/components/selection-header";
-import { useYear } from "@/components/year-provider";
-import { Button } from "@/components/ui/button";
+} from '@/bindings'
+import { CryptoFormModal } from '@/components/crypto-form-modal'
+import { CurrencyValue } from '@/components/currency-value'
+import { ErrorState } from '@/components/error-state'
+import { LoadingState } from '@/components/loading-state'
+import { SelectionHeader } from '@/components/selection-header'
+import { Button } from '@/components/ui/button'
 import {
     TableCell,
     TableHead,
     TableHeader,
     TableRow,
-} from "@/components/ui/table";
-import { useSelection } from "@/hooks/use-selection";
-import { formatError } from "@/lib/utils";
-import { cryptoActionDisplay } from "@/lib/display";
+} from '@/components/ui/table'
+import { useYear } from '@/components/year-provider'
+import { useSelection } from '@/hooks/use-selection'
+import { cryptoActionDisplay } from '@/lib/display'
+import { formatError } from '@/lib/utils'
 
-const COLUMN_COUNT = 7;
-const ROW_ESTIMATE_PX = 41;
+const COLUMN_COUNT = 7
+const ROW_ESTIMATE_PX = 41
 
 function loadCryptos(year: number | null) {
-    return commands.loadCryptos(year);
+    return commands.loadCryptos(year)
 }
 
 function CryptoPage() {
-    const { year } = useYear();
+    const { year } = useYear()
 
-    return <CryptoPageForYear key={year ?? "all"} year={year} />;
+    return <CryptoPageForYear key={year ?? 'all'} year={year} />
 }
 
 function CryptoPageForYear({ year }: { year: number | null }) {
-    const [taxPromise, setTaxPromise] = useState(() => loadCryptos(year));
-    const [, startTransition] = useTransition();
+    const [taxPromise, setTaxPromise] = useState(() => loadCryptos(year))
+    const [, startTransition] = useTransition()
 
     const refresh = useCallback(() => {
         startTransition(() => {
-            setTaxPromise(loadCryptos(year));
-        });
-    }, [year]);
+            setTaxPromise(loadCryptos(year))
+        })
+    }, [year])
 
     return (
         <Suspense
             fallback={
                 <LoadingState
-                    title="Loading crypto transactions"
-                    message="Preparing your tax calculations."
+                    title='Loading crypto transactions'
+                    message='Preparing your tax calculations.'
                 />
             }
         >
             <CryptoContent taxPromise={taxPromise} refresh={refresh} />
         </Suspense>
-    );
+    )
 }
 
 function CryptoContent({
     taxPromise,
     refresh,
 }: {
-    taxPromise: Promise<Result<CryptoTaxData, string>>;
-    refresh: () => void;
+    taxPromise: Promise<Result<CryptoTaxData, string>>
+    refresh: () => void
 }) {
-    const result = use(taxPromise);
+    const result = use(taxPromise)
 
-    if (result.status === "error") {
+    if (result.status === 'error') {
         return (
             <ErrorState
                 centered
                 title="Couldn't load crypto transactions"
                 message={result.error}
                 onAction={refresh}
-                actionLabel="Retry"
+                actionLabel='Retry'
             />
-        );
+        )
     }
 
-    return <CryptoDataContent tax={result.data} refresh={refresh} />;
+    return <CryptoDataContent tax={result.data} refresh={refresh} />
 }
 
 function CryptoDataContent({
     tax,
     refresh,
 }: {
-    tax: CryptoTaxData;
-    refresh: () => void;
+    tax: CryptoTaxData
+    refresh: () => void
 }) {
-    const cryptos = tax.calculated;
-    const [deleting, setDeleting] = useState(false);
-    const [error, setError] = useState<string | null>(null);
-    const [modalOpen, setModalOpen] = useState(false);
-    const [editing, setEditing] = useState<CalculatedCrypto | null>(null);
-    const [expandedIds, setExpandedIds] = useState<Set<string>>(
-        () => new Set(),
-    );
+    const cryptos = tax.calculated
+    const [deleting, setDeleting] = useState(false)
+    const [error, setError] = useState<string | null>(null)
+    const [modalOpen, setModalOpen] = useState(false)
+    const [editing, setEditing] = useState<CalculatedCrypto | null>(null)
+    const [expandedIds, setExpandedIds] = useState<Set<string>>(() => new Set())
     const { selectMode, selectedIds, toggleRow, selectAll, clear } =
-        useSelection(cryptos, (c) => c.id);
+        useSelection(cryptos, (c) => c.id)
 
-    const scrollRef = useRef<HTMLDivElement>(null);
+    const scrollRef = useRef<HTMLDivElement>(null)
     const rowVirtualizer = useVirtualizer({
         count: cryptos.length,
         getScrollElement: () => scrollRef.current,
         estimateSize: () => ROW_ESTIMATE_PX,
         getItemKey: (index) => cryptos[index].id,
         overscan: 8,
-    });
+    })
 
     function toggleExpanded(id: string) {
         setExpandedIds((prev) => {
-            const next = new Set(prev);
+            const next = new Set(prev)
             if (next.has(id)) {
-                next.delete(id);
+                next.delete(id)
             } else {
-                next.add(id);
+                next.add(id)
             }
-            return next;
-        });
+            return next
+        })
     }
 
     async function handleRemoveSelected() {
-        setDeleting(true);
-        setError(null);
+        setDeleting(true)
+        setError(null)
         try {
-            const result = await commands.deleteCryptos(
-                Array.from(selectedIds),
-            );
-            if (result.status === "error") {
-                setError(result.error);
-                return;
+            const result = await commands.deleteCryptos(Array.from(selectedIds))
+            if (result.status === 'error') {
+                setError(result.error)
+                return
             }
-            clear();
-            refresh();
+            clear()
+            refresh()
         } catch (e) {
-            setError(formatError(e));
+            setError(formatError(e))
         } finally {
-            setDeleting(false);
+            setDeleting(false)
         }
     }
 
     async function handleDelete(id: string) {
-        setDeleting(true);
-        setError(null);
+        setDeleting(true)
+        setError(null)
         try {
-            const result = await commands.deleteCryptos([id]);
-            if (result.status === "error") {
-                setError(result.error);
-                return;
+            const result = await commands.deleteCryptos([id])
+            if (result.status === 'error') {
+                setError(result.error)
+                return
             }
-            refresh();
+            refresh()
         } catch (e) {
-            setError(formatError(e));
+            setError(formatError(e))
         } finally {
-            setDeleting(false);
+            setDeleting(false)
         }
     }
 
-    const virtualItems = rowVirtualizer.getVirtualItems();
-    const totalSize = rowVirtualizer.getTotalSize();
-    const paddingTop = virtualItems[0]?.start ?? 0;
+    const virtualItems = rowVirtualizer.getVirtualItems()
+    const totalSize = rowVirtualizer.getTotalSize()
+    const paddingTop = virtualItems[0]?.start ?? 0
     const paddingBottom =
         virtualItems.length > 0
             ? totalSize - virtualItems[virtualItems.length - 1].end
-            : 0;
+            : 0
 
     return (
-        <div className="flex h-[calc(100vh-5.5rem)] flex-col gap-3">
-            <div className="flex items-center justify-between gap-2">
+        <div className='flex h-[calc(100vh-5.5rem)] flex-col gap-3'>
+            <div className='flex items-center justify-between gap-2'>
                 <Button onClick={() => setModalOpen(true)}>Add new</Button>
-                <div className="flex items-center justify-between gap-2">
+                <div className='flex items-center justify-between gap-2'>
                     {expandedIds.size > 0 && (
                         <Button
-                            variant="outline"
+                            variant='outline'
                             onClick={() => setExpandedIds(new Set())}
                         >
                             Collapse all
@@ -208,41 +204,41 @@ function CryptoDataContent({
                 />
             )}
 
-            <div className="grid grid-cols-2 gap-3">
-                <div className="rounded-lg border p-3">
-                    <div className="text-xs text-muted-foreground">
+            <div className='grid grid-cols-2 gap-3'>
+                <div className='rounded-lg border p-3'>
+                    <div className='text-muted-foreground text-xs'>
                         Income (E-36)
                     </div>
-                    <div className="font-mono text-lg">
-                        <CurrencyValue value={tax.income} currency={"pln"} />
+                    <div className='font-mono text-lg'>
+                        <CurrencyValue value={tax.income} currency='pln' />
                     </div>
                 </div>
-                <div className="rounded-lg border p-3">
-                    <div className="text-xs text-muted-foreground">
+                <div className='rounded-lg border p-3'>
+                    <div className='text-muted-foreground text-xs'>
                         Costs (E-37)
                     </div>
-                    <div className="font-mono text-lg">
-                        <CurrencyValue value={tax.costs} currency={"pln"} />
+                    <div className='font-mono text-lg'>
+                        <CurrencyValue value={tax.costs} currency='pln' />
                     </div>
                 </div>
             </div>
 
             <div
                 ref={scrollRef}
-                className="min-h-0 flex-1 overflow-auto rounded-lg border"
+                className='min-h-0 flex-1 overflow-auto rounded-lg border'
             >
-                <table className="w-full caption-bottom text-sm">
-                    <TableHeader className="sticky top-0 z-10 bg-muted">
+                <table className='w-full caption-bottom text-sm'>
+                    <TableHeader className='bg-muted sticky top-0 z-10'>
                         <TableRow>
                             <TableHead>ID</TableHead>
                             <TableHead>Date</TableHead>
                             <TableHead>Action</TableHead>
-                            <TableHead className="text-right">Value</TableHead>
-                            <TableHead className="text-right">Fee</TableHead>
-                            <TableHead className="text-right">
+                            <TableHead className='text-right'>Value</TableHead>
+                            <TableHead className='text-right'>Fee</TableHead>
+                            <TableHead className='text-right'>
                                 Provider
                             </TableHead>
-                            <TableHead className="text-right">
+                            <TableHead className='text-right'>
                                 Actions
                             </TableHead>
                         </TableRow>
@@ -252,7 +248,7 @@ function CryptoDataContent({
                             <TableRow>
                                 <TableCell
                                     colSpan={COLUMN_COUNT}
-                                    className="py-6 text-center text-muted-foreground"
+                                    className='text-muted-foreground py-6 text-center'
                                 >
                                     No records yet. Use the Imports page to add
                                     crypto transactions.
@@ -268,9 +264,9 @@ function CryptoDataContent({
                         </tbody>
                     )}
                     {virtualItems.map((virtualRow) => {
-                        const c = cryptos[virtualRow.index];
-                        const selected = selectedIds.has(c.id);
-                        const expanded = expandedIds.has(c.id);
+                        const c = cryptos[virtualRow.index]
+                        const selected = selectedIds.has(c.id)
+                        const expanded = expandedIds.has(c.id)
                         return (
                             <tbody
                                 key={c.id}
@@ -279,13 +275,13 @@ function CryptoDataContent({
                             >
                                 <TableRow
                                     data-state={
-                                        selected ? "selected" : undefined
+                                        selected ? 'selected' : undefined
                                     }
-                                    className="cursor-pointer"
+                                    className='cursor-pointer'
                                     onClick={() => toggleRow(c.id)}
                                 >
                                     <TableCell
-                                        className="font-mono text-xs text-muted-foreground"
+                                        className='text-muted-foreground font-mono text-xs'
                                         title={c.id}
                                     >
                                         {c.id.slice(0, 8)}
@@ -294,53 +290,53 @@ function CryptoDataContent({
                                     <TableCell>
                                         {cryptoActionDisplay[c.action]}
                                     </TableCell>
-                                    <TableCell className="text-right font-mono">
+                                    <TableCell className='text-right font-mono'>
                                         <CurrencyValue
                                             value={c.value.value}
                                             currency={c.value.currency}
                                         />
                                     </TableCell>
-                                    <TableCell className="text-right font-mono">
+                                    <TableCell className='text-right font-mono'>
                                         <CurrencyValue
                                             value={c.fee.value}
                                             currency={c.fee.currency}
                                         />
                                     </TableCell>
-                                    <TableCell className="text-right font-mono text-xs font-semibold uppercase tracking-widest">
+                                    <TableCell className='text-right font-mono text-xs font-semibold tracking-widest uppercase'>
                                         {c.provider}
                                     </TableCell>
-                                    <TableCell className="text-right">
-                                        <div className="flex justify-end gap-1">
+                                    <TableCell className='text-right'>
+                                        <div className='flex justify-end gap-1'>
                                             <Button
-                                                variant="outline"
-                                                size="sm"
+                                                variant='outline'
+                                                size='sm'
                                                 onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    toggleExpanded(c.id);
+                                                    e.stopPropagation()
+                                                    toggleExpanded(c.id)
                                                 }}
                                             >
                                                 {expanded
-                                                    ? "Collapse"
-                                                    : "Expand"}
+                                                    ? 'Collapse'
+                                                    : 'Expand'}
                                             </Button>
                                             <Button
-                                                variant="outline"
-                                                size="sm"
+                                                variant='outline'
+                                                size='sm'
                                                 onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    setEditing(c);
-                                                    setModalOpen(true);
+                                                    e.stopPropagation()
+                                                    setEditing(c)
+                                                    setModalOpen(true)
                                                 }}
                                             >
                                                 Edit
                                             </Button>
                                             <Button
-                                                variant="destructive"
-                                                size="sm"
+                                                variant='destructive'
+                                                size='sm'
                                                 disabled={deleting}
                                                 onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    handleDelete(c.id);
+                                                    e.stopPropagation()
+                                                    handleDelete(c.id)
                                                 }}
                                             >
                                                 Delete
@@ -351,43 +347,43 @@ function CryptoDataContent({
                                 {expanded && (
                                     <TableRow
                                         data-state={
-                                            selected ? "selected" : undefined
+                                            selected ? 'selected' : undefined
                                         }
                                     >
                                         <TableCell colSpan={COLUMN_COUNT}>
-                                            <div className="w-0 min-w-full overflow-hidden whitespace-normal">
-                                                <div className="grid grid-cols-3 gap-3">
+                                            <div className='w-0 min-w-full overflow-hidden whitespace-normal'>
+                                                <div className='grid grid-cols-3 gap-3'>
                                                     <div>
-                                                        <div className="text-xs text-muted-foreground">
+                                                        <div className='text-muted-foreground text-xs'>
                                                             Calculated value
                                                         </div>
-                                                        <div className="font-mono">
+                                                        <div className='font-mono'>
                                                             <CurrencyValue
                                                                 value={
                                                                     c.calculated_value
                                                                 }
-                                                                currency="pln"
+                                                                currency='pln'
                                                             />
                                                         </div>
                                                     </div>
                                                     <div>
-                                                        <div className="text-xs text-muted-foreground">
+                                                        <div className='text-muted-foreground text-xs'>
                                                             Calculated fee
                                                         </div>
-                                                        <div className="font-mono">
+                                                        <div className='font-mono'>
                                                             <CurrencyValue
                                                                 value={
                                                                     c.calculated_fee
                                                                 }
-                                                                currency="pln"
+                                                                currency='pln'
                                                             />
                                                         </div>
                                                     </div>
                                                     <div>
-                                                        <div className="text-xs text-muted-foreground">
+                                                        <div className='text-muted-foreground text-xs'>
                                                             NBP date
                                                         </div>
-                                                        <div className="font-mono">
+                                                        <div className='font-mono'>
                                                             {c.nbp_date}
                                                         </div>
                                                     </div>
@@ -397,7 +393,7 @@ function CryptoDataContent({
                                     </TableRow>
                                 )}
                             </tbody>
-                        );
+                        )
                     })}
                     {paddingBottom > 0 && (
                         <tbody>
@@ -412,15 +408,15 @@ function CryptoDataContent({
             {modalOpen && (
                 <CryptoFormModal
                     onClose={() => {
-                        setModalOpen(false);
-                        setEditing(null);
+                        setModalOpen(false)
+                        setEditing(null)
                     }}
                     onCreated={refresh}
                     crypto={editing}
                 />
             )}
         </div>
-    );
+    )
 }
 
-export { CryptoPage };
+export { CryptoPage }
