@@ -1,6 +1,5 @@
 use std::str::FromStr;
 
-use anyhow::{Context, Result, anyhow};
 use chrono::NaiveDate;
 use rust_decimal::Decimal;
 
@@ -9,9 +8,10 @@ use pitpls_core::{
     dividend::Dividend,
 };
 
+use crate::{ImportError, Result};
+
 pub fn parse(pdf_bytes: Vec<u8>) -> Result<Vec<Dividend>> {
-    let text =
-        pdf_extract::extract_text_from_mem(&pdf_bytes).context("failed to extract PDF text")?;
+    let text = pdf_extract::extract_text_from_mem(&pdf_bytes)?;
 
     let tokens: Vec<&str> = text.split_whitespace().collect();
     let mut out = Vec::new();
@@ -58,12 +58,8 @@ fn try_parse_dividend(tokens: &[&str]) -> Result<Option<(Dividend, usize)>> {
         return Ok(None);
     };
 
-    let country = Country::from_isin(tokens[isin_idx]).map_err(|e| {
-        anyhow!(
-            "{e} (ISIN {}, ticker {ticker}, date {date})",
-            tokens[isin_idx]
-        )
-    })?;
+    let country = Country::from_isin(tokens[isin_idx])
+        .map_err(|source| ImportError::invalid_isin(tokens[isin_idx], source))?;
 
     let mut i = isin_idx + 1;
 
@@ -71,11 +67,14 @@ fn try_parse_dividend(tokens: &[&str]) -> Result<Option<(Dividend, usize)>> {
         i += 1;
     }
 
-    let gross_token = tokens
-        .get(i)
-        .ok_or_else(|| anyhow!("missing gross amount for {ticker} on {date}"))?;
-    let (currency, gross) = parse_currency_amount(gross_token)
-        .with_context(|| format!("invalid gross amount for {ticker} on {date}: {gross_token}"))?;
+    let gross_token = tokens.get(i).ok_or_else(|| {
+        ImportError::other(format!("missing gross amount for {ticker} on {date}"))
+    })?;
+    let (currency, gross) = parse_currency_amount(gross_token).ok_or_else(|| {
+        ImportError::other(format!(
+            "invalid gross amount for {ticker} on {date}: {gross_token}"
+        ))
+    })?;
     i += 1;
 
     if tokens.get(i + 1).copied() == Some("PLN") {
@@ -94,9 +93,9 @@ fn try_parse_dividend(tokens: &[&str]) -> Result<Option<(Dividend, usize)>> {
         Some(t) => match parse_currency_amount(t) {
             Some((tax_currency, value)) => {
                 if tax_currency != currency {
-                    return Err(anyhow!(
+                    return Err(ImportError::other(format!(
                         "tax currency mismatch for {ticker} on {date}: {currency} vs {tax_currency}"
-                    ));
+                    )));
                 }
                 i += 1;
                 value

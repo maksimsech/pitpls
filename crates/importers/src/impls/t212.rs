@@ -1,6 +1,5 @@
 use std::str::FromStr;
 
-use anyhow::{Context, Result, anyhow};
 use chrono::NaiveDate;
 use rust_decimal::Decimal;
 
@@ -9,6 +8,8 @@ use pitpls_core::{
     dividend::Dividend,
     interest::Interest,
 };
+
+use crate::{ImportError, Result};
 
 struct ColumnMap {
     action: usize,
@@ -32,7 +33,7 @@ impl ColumnMap {
             columns
                 .iter()
                 .position(|c| c == name)
-                .ok_or_else(|| anyhow!("missing column: {name}"))
+                .ok_or_else(|| ImportError::MissingColumn(name.to_string()))
         };
 
         Ok(Self {
@@ -74,11 +75,11 @@ pub fn parse(csv_content: String) -> Result<(Vec<Dividend>, Vec<Interest>)> {
 
     let header = lines
         .next()
-        .ok_or_else(|| anyhow!("missing header row"))?
+        .ok_or(ImportError::MissingHeader)?
         .trim_start_matches('\u{feff}');
 
     if !header.starts_with("Action,") {
-        return Err(anyhow!("unexpected header: {header}"));
+        return Err(ImportError::UnexpectedHeader(header.to_string()));
     }
 
     let columns = ColumnMap::from_header(header)?;
@@ -95,10 +96,7 @@ pub fn parse(csv_content: String) -> Result<(Vec<Dividend>, Vec<Interest>)> {
 
         let fields = split_row(line);
         if fields.len() < min_fields {
-            return Err(anyhow!(
-                "malformed row: expected at least {min_fields} fields, got {}: {line}",
-                fields.len()
-            ));
+            return Err(ImportError::malformed_row(min_fields, fields.len(), line));
         }
 
         if let Some(dividend) = parse_dividend_row(&fields, &columns)? {
@@ -122,10 +120,10 @@ fn parse_interest_row(fields: &[String], columns: &ColumnMap) -> Result<Option<I
     let total_currency = &fields[columns.total_currency];
 
     let date = NaiveDate::parse_from_str(timestamp.get(..10).unwrap_or(""), "%Y-%m-%d")
-        .with_context(|| format!("invalid timestamp: {timestamp}"))?;
+        .map_err(|source| ImportError::invalid_timestamp(timestamp, source))?;
 
-    let value_price_currency =
-        Currency::from_str(&total_currency.to_ascii_lowercase()).map_err(|e| anyhow!(e))?;
+    let value_price_currency = Currency::from_str(total_currency)
+        .map_err(|source| ImportError::invalid_currency(total_currency, source))?;
 
     let value = Amount {
         value: parse_decimal(total)?,
@@ -164,19 +162,20 @@ fn parse_dividend_row(fields: &[String], columns: &ColumnMap) -> Result<Option<D
     let tax_currency = &fields[columns.tax_currency];
 
     let date = NaiveDate::parse_from_str(timestamp.get(..10).unwrap_or(""), "%Y-%m-%d")
-        .with_context(|| format!("invalid timestamp: {timestamp}"))?;
+        .map_err(|source| ImportError::invalid_timestamp(timestamp, source))?;
 
-    let country = Country::from_isin(isin).map_err(|e| anyhow!("{e} (ISIN {isin})"))?;
+    let country =
+        Country::from_isin(isin).map_err(|source| ImportError::invalid_isin(isin, source))?;
 
-    let value_currency =
-        Currency::from_str(&price_currency.to_ascii_lowercase()).map_err(|e| anyhow!(e))?;
-    let tax_currency =
-        Currency::from_str(&tax_currency.to_ascii_lowercase()).map_err(|e| anyhow!(e))?;
+    let value_currency = Currency::from_str(price_currency)
+        .map_err(|source| ImportError::invalid_currency(price_currency, source))?;
+    let tax_currency = Currency::from_str(tax_currency)
+        .map_err(|source| ImportError::invalid_currency(tax_currency, source))?;
 
     if value_currency != tax_currency {
-        return Err(anyhow!(
+        return Err(ImportError::other(format!(
             "price and tax currency mismatch: {price_currency} vs {tax_currency}"
-        ));
+        )));
     }
 
     let tax_value = parse_decimal(tax)?;
@@ -215,7 +214,7 @@ fn parse_decimal(s: &str) -> Result<Decimal> {
     if trimmed.is_empty() {
         return Ok(Decimal::ZERO);
     }
-    Decimal::from_str(trimmed).with_context(|| format!("invalid decimal: {s}"))
+    Decimal::from_str(trimmed).map_err(|source| ImportError::invalid_decimal(s, source))
 }
 
 fn split_row(line: &str) -> Vec<String> {

@@ -1,6 +1,5 @@
 use std::str::FromStr;
 
-use anyhow::{Context, Result, anyhow};
 use chrono::NaiveDate;
 use rust_decimal::Decimal;
 
@@ -8,6 +7,8 @@ use pitpls_core::{
     common::{Amount, Currency},
     crypto::{Action, Crypto},
 };
+
+use crate::{ImportError, Result};
 
 const FIAT_SYMBOLS: &[&str] = &["EUR", "USD", "PLN"];
 
@@ -17,7 +18,7 @@ pub fn parse(csv_content: String) -> Result<Vec<Crypto>> {
     loop {
         let line = lines
             .next()
-            .ok_or_else(|| anyhow!("missing header row"))?
+            .ok_or(ImportError::MissingHeader)?
             .trim_start_matches('\u{feff}');
 
         if line.starts_with("ID,") {
@@ -35,10 +36,7 @@ pub fn parse(csv_content: String) -> Result<Vec<Crypto>> {
 
         let fields = split_row(line);
         if fields.len() < 10 {
-            return Err(anyhow!(
-                "malformed row: expected at least 10 fields, got {}: {line}",
-                fields.len()
-            ));
+            return Err(ImportError::malformed_row(10, fields.len(), line));
         }
 
         if let Some(crypto) = parse_row(&fields)? {
@@ -63,11 +61,11 @@ fn parse_row(fields: &[&str]) -> Result<Option<Crypto>> {
         return Ok(None);
     };
 
-    let currency =
-        Currency::from_str(&price_currency.to_ascii_lowercase()).map_err(|e| anyhow!(e))?;
+    let currency = Currency::from_str(price_currency)
+        .map_err(|source| ImportError::invalid_currency(price_currency, source))?;
 
     let date = NaiveDate::parse_from_str(timestamp.get(..10).unwrap_or(""), "%Y-%m-%d")
-        .with_context(|| format!("invalid timestamp: {timestamp}"))?;
+        .map_err(|source| ImportError::invalid_timestamp(timestamp, source))?;
 
     let value = Amount {
         value: parse_decimal(subtotal)?.abs(),
@@ -127,7 +125,7 @@ fn parse_decimal(s: &str) -> Result<Decimal> {
         return Ok(Decimal::ZERO);
     }
 
-    Decimal::from_str(&cleaned).with_context(|| format!("invalid decimal: {s}"))
+    Decimal::from_str(&cleaned).map_err(|source| ImportError::invalid_decimal(s, source))
 }
 
 fn split_row(line: &str) -> Vec<&str> {

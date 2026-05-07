@@ -1,9 +1,9 @@
-use anyhow::Result;
 use rust_decimal::Decimal;
+use thiserror::Error;
 
 use crate::{
     DecimalExt,
-    rate::NbpRateProvider,
+    rate::{NbpRateProvider, RateConverterError},
     settings::DividendRounding,
     tax::{POLAND_TAX, get_treaty_tax},
 };
@@ -12,11 +12,19 @@ mod model;
 
 pub use model::{CalculatedDividend, Dividend, DividendTaxData};
 
+#[derive(Debug, Error)]
+pub enum CalculateDividendTaxError {
+    #[error("Failed to convert dividend value to PLN: {0}")]
+    DividendConversion(#[source] RateConverterError),
+    #[error("Failed to convert paid dividend tax to PLN: {0}")]
+    PaidTaxConversion(#[source] RateConverterError),
+}
+
 pub fn calculate(
     dividends: Vec<Dividend>,
     rate_provider: &NbpRateProvider,
     rounding: DividendRounding,
-) -> Result<DividendTaxData> {
+) -> Result<DividendTaxData, CalculateDividendTaxError> {
     let mut to_pay_total = Decimal::ZERO;
     let mut paid_total = Decimal::ZERO;
     let mut profit = Decimal::ZERO;
@@ -24,7 +32,9 @@ pub fn calculate(
 
     for dividend in dividends {
         let (mut dividend_pln, nbp_date) =
-            rate_provider.convert(&dividend.value, &dividend.date)?;
+            rate_provider
+                .convert(&dividend.value, &dividend.date)
+                .map_err(CalculateDividendTaxError::DividendConversion)?;
         dividend_pln = dividend_pln.maybe_round_dividend(rounding);
 
         let mut to_pay = dividend_pln * POLAND_TAX;
@@ -75,8 +85,10 @@ fn calculate_already_paid(
     dividend_pln: Decimal,
     rate_provider: &NbpRateProvider,
     rounding: DividendRounding,
-) -> Result<AlreadyPaidData> {
-    let (mut paid_pln, _) = rate_provider.convert(&dividend.tax_paid, &dividend.date)?;
+) -> Result<AlreadyPaidData, CalculateDividendTaxError> {
+    let (mut paid_pln, _) = rate_provider
+        .convert(&dividend.tax_paid, &dividend.date)
+        .map_err(CalculateDividendTaxError::PaidTaxConversion)?;
     paid_pln = paid_pln.maybe_round_dividend(rounding);
 
     let mut max_paid_pln = get_treaty_tax(&dividend.country) * dividend_pln;

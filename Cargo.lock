@@ -3207,7 +3207,6 @@ dependencies = [
 name = "pitpls-core"
 version = "0.0.0"
 dependencies = [
- "anyhow",
  "chrono",
  "rust_decimal",
  "serde",
@@ -3220,13 +3219,13 @@ dependencies = [
 name = "pitpls-importers"
 version = "0.0.0"
 dependencies = [
- "anyhow",
  "chrono",
  "pdf-extract",
  "pitpls-core",
  "rust_decimal",
  "serde",
  "specta",
+ "thiserror 2.0.18",
  "tokio",
  "uuid",
 ]
