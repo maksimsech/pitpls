@@ -14,11 +14,11 @@ mod model;
 
 #[derive(Debug, Error)]
 pub enum CalculateTaxSummaryError {
-    #[error("failed to calculate crypto tax summary: {0}")]
+    #[error("Failed to calculate crypto tax summary: {0}")]
     Crypto(#[from] CalculateSellBuyValuesError),
-    #[error("failed to calculate dividend tax summary: {0}")]
+    #[error("Failed to calculate dividend tax summary: {0}")]
     Dividend(#[from] CalculateDividendTaxError),
-    #[error("failed to calculate interest tax summary: {0}")]
+    #[error("Failed to calculate interest tax summary: {0}")]
     Interest(#[from] CalculateInterestTaxError),
 }
 

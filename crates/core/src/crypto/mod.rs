@@ -12,9 +12,9 @@ mod model;
 
 #[derive(Debug, Error)]
 pub enum CalculateSellBuyValuesError {
-    #[error("failed to convert crypto value to PLN: {0}")]
+    #[error("Failed to convert crypto value to PLN: {0}")]
     ValueConversion(#[source] RateConverterError),
-    #[error("failed to convert crypto fee to PLN: {0}")]
+    #[error("Failed to convert crypto fee to PLN: {0}")]
     FeeConversion(#[source] RateConverterError),
 }
 

@@ -13,7 +13,7 @@ use crate::{
 
 #[derive(Debug, Error)]
 pub enum CalculateInterestTaxError {
-    #[error("failed to convert interest value to PLN: {0}")]
+    #[error("Failed to convert interest value to PLN: {0}")]
     InterestConversion(#[source] RateConverterError),
 }
 
