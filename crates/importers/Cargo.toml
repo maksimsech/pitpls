@@ -7,11 +7,11 @@ license.workspace = true
 [dependencies]
 pitpls-core.workspace = true
 
-anyhow.workspace = true
 chrono.workspace = true
 rust_decimal.workspace = true
 uuid.workspace = true
 serde = { version = "1", features = ["derive"] }
 specta = { version = "=2.0.0-rc.22", features = ["derive"] }
 pdf-extract = "0.10"
+thiserror.workspace = true
 tokio.workspace = true

@@ -1,10 +1,11 @@
-use anyhow::Result;
 use tokio::fs::{read, read_to_string};
 
+mod error;
 mod impls;
 pub mod model;
 
 use crate::impls::{coinbase, revolut, t212};
+pub use error::{ImportError, Result};
 pub use model::{ImportData, Importer, ImporterKind, InputType, OutputType};
 
 pub async fn import(kind: ImporterKind, path: &str) -> Result<ImportData> {
