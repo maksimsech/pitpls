@@ -55,17 +55,15 @@ fn parse_text(text: &str) -> Result<Vec<Dividend>> {
     let mut i = 0;
 
     while i < lines.len() {
-        if is_other_income_heading(lines[i]) {
-            if let Some(header_idx) = next_non_empty_line(&lines, i + 1) {
-                if is_table_header(lines[header_idx]) {
-                    found_table = true;
-                    let (mut dividends, next_idx) =
-                        parse_other_income_table(&lines, header_idx + 1)?;
-                    out.append(&mut dividends);
-                    i = next_idx;
-                    continue;
-                }
-            }
+        if is_other_income_heading(lines[i])
+            && let Some(header_idx) = next_non_empty_line(&lines, i + 1)
+            && is_table_header(lines[header_idx])
+        {
+            found_table = true;
+            let (mut dividends, next_idx) = parse_other_income_table(&lines, header_idx + 1)?;
+            out.append(&mut dividends);
+            i = next_idx;
+            continue;
         }
 
         i += 1;
