@@ -11,6 +11,7 @@ use pitpls_core::{
 use crate::{ImportError, Result};
 
 const PROVIDER: &str = "Revolut";
+const OTHER_INCOME_TABLE: &str = "Revolut Other income & fees table";
 const TABLE_HEADER: &str =
     "Date Description Security name ISIN Country Gross Amount Withholding Tax Net Amount";
 
@@ -44,7 +45,7 @@ fn parse_text(text: &str) -> Result<Vec<Dividend>> {
     if !text.contains("Profit and Loss Statement")
         || !text.contains("Revolut Securities Europe UAB")
     {
-        return Err(ImportError::other(
+        return Err(ImportError::unexpected_format(
             "Not a Revolut Profit and Loss Statement PDF",
         ));
     }
@@ -70,9 +71,7 @@ fn parse_text(text: &str) -> Result<Vec<Dividend>> {
     }
 
     if !found_table {
-        return Err(ImportError::other(
-            "Missing Revolut Other income & fees table",
-        ));
+        return Err(ImportError::missing_section(OTHER_INCOME_TABLE));
     }
 
     Ok(out)
@@ -109,14 +108,10 @@ fn parse_other_income_table(lines: &[&str], start_idx: usize) -> Result<(Vec<Div
             continue;
         }
 
-        return Err(ImportError::other(format!(
-            "Unexpected line in Revolut Other income & fees table: {line}"
-        )));
+        return Err(ImportError::invalid_field("line", line, OTHER_INCOME_TABLE));
     }
 
-    Err(ImportError::other(
-        "Missing Total row in Revolut Other income & fees table",
-    ))
+    Err(ImportError::missing_field("Total row", OTHER_INCOME_TABLE))
 }
 
 fn collect_row_lines<'a>(lines: &'a [&str], start_idx: usize) -> (Vec<&'a str>, usize) {
@@ -146,7 +141,7 @@ fn parse_table_row(lines: &[&str]) -> Result<Option<ParsedRow>> {
     let tokens: Vec<&str> = row.split_whitespace().collect();
 
     if tokens.len() < 2 {
-        return Err(ImportError::other(format!("Malformed Revolut row: {row}")));
+        return Err(ImportError::malformed_row(2, tokens.len(), row));
     }
 
     let date = NaiveDate::parse_from_str(tokens[0], "%Y-%m-%d")
@@ -156,18 +151,21 @@ fn parse_table_row(lines: &[&str]) -> Result<Option<ParsedRow>> {
 
     if !is_ticker(ticker) {
         if row_mentions_dividend {
-            return Err(ImportError::other(format!(
-                "Invalid ticker for Revolut dividend on {date}: {ticker}"
-            )));
+            return Err(ImportError::invalid_field(
+                "ticker",
+                ticker,
+                format!("Revolut dividend on {date}"),
+            ));
         }
         return Ok(None);
     }
 
     let Some(isin_idx) = tokens.iter().position(|token| is_isin(token)) else {
         if row_mentions_dividend {
-            return Err(ImportError::other(format!(
-                "Missing ISIN for Revolut dividend {ticker} on {date}"
-            )));
+            return Err(ImportError::missing_field(
+                "ISIN",
+                format!("Revolut dividend {ticker} on {date}"),
+            ));
         }
         return Ok(None);
     };
@@ -181,19 +179,22 @@ fn parse_table_row(lines: &[&str]) -> Result<Option<ParsedRow>> {
     if tokens.get(i).is_some_and(|token| is_country_code(token)) {
         let country_code = tokens[i];
         if !country_code.eq_ignore_ascii_case(country.code().as_str()) {
-            return Err(ImportError::other(format!(
-                "Country mismatch for Revolut row {ticker} on {date}: ISIN {isin} maps to {country}, row has {country_code}"
-            )));
+            return Err(ImportError::data_mismatch(
+                format!("country for Revolut row {ticker} on {date}"),
+                format!("ISIN {isin} maps to {country}"),
+                format!("row has {country_code}"),
+            ));
         }
         i += 1;
     }
 
     let (amounts, consumed) = parse_amount_columns(&tokens, i, &format!("{ticker} on {date}"))?;
     if consumed != tokens.len() {
-        return Err(ImportError::other(format!(
-            "Unexpected trailing tokens for Revolut row {ticker} on {date}: {}",
-            tokens[consumed..].join(" ")
-        )));
+        return Err(ImportError::invalid_field(
+            "trailing tokens",
+            tokens[consumed..].join(" "),
+            format!("Revolut row {ticker} on {date}"),
+        ));
     }
 
     let dividend = is_dividend.then(|| Dividend {
@@ -240,17 +241,21 @@ fn parse_total(lines: &[&str]) -> Result<(AmountColumns, usize)> {
         }
     }
 
-    Err(ImportError::other(format!(
-        "Malformed Revolut Total row: {merged}"
-    )))
+    Err(ImportError::invalid_field(
+        "Total row",
+        merged,
+        OTHER_INCOME_TABLE,
+    ))
 }
 
 fn try_parse_total_line(line: &str) -> Result<Option<AmountColumns>> {
     let tokens: Vec<&str> = line.split_whitespace().collect();
     if tokens.first().copied() != Some("Total") {
-        return Err(ImportError::other(format!(
-            "Expected Revolut Total row, got: {line}"
-        )));
+        return Err(ImportError::invalid_field(
+            "Total row",
+            line,
+            OTHER_INCOME_TABLE,
+        ));
     }
 
     match parse_amount_columns(&tokens, 1, "Total") {
@@ -281,17 +286,20 @@ fn parse_amount_columns(
             let (tax_currency, tax) =
                 parse_required_currency_amount(Some(&token), "withholding tax", context)?;
             if tax_currency != currency {
-                return Err(ImportError::other(format!(
-                    "Tax currency mismatch for Revolut {context}: {currency} vs {tax_currency}"
-                )));
+                return Err(ImportError::data_mismatch(
+                    format!("tax currency for Revolut {context}"),
+                    currency.to_string(),
+                    tax_currency.to_string(),
+                ));
             }
             i += 1;
             tax
         }
         None => {
-            return Err(ImportError::other(format!(
-                "Missing withholding tax for Revolut {context}"
-            )));
+            return Err(ImportError::missing_field(
+                "withholding tax",
+                format!("Revolut {context}"),
+            ));
         }
     };
 
@@ -299,18 +307,22 @@ fn parse_amount_columns(
 
     let (net_currency, net) = parse_required_currency_amount(tokens.get(i), "net amount", context)?;
     if net_currency != currency {
-        return Err(ImportError::other(format!(
-            "Net currency mismatch for Revolut {context}: {currency} vs {net_currency}"
-        )));
+        return Err(ImportError::data_mismatch(
+            format!("net currency for Revolut {context}"),
+            currency.to_string(),
+            net_currency.to_string(),
+        ));
     }
     i += 1;
 
     skip_optional_local_amount(tokens, &mut i);
 
     if gross - tax != net {
-        return Err(ImportError::other(format!(
-            "Gross, tax, and net mismatch for Revolut {context}: {gross} - {tax} != {net}"
-        )));
+        return Err(ImportError::data_mismatch(
+            format!("gross, tax, and net for Revolut {context}"),
+            format!("{gross} - {tax}"),
+            net.to_string(),
+        ));
     }
 
     Ok((
@@ -331,11 +343,10 @@ fn parse_required_currency_amount(
 ) -> Result<(Currency, Decimal)> {
     let token = token
         .copied()
-        .ok_or_else(|| ImportError::other(format!("Missing {label} for Revolut {context}")))?;
+        .ok_or_else(|| ImportError::missing_field(label, format!("Revolut {context}")))?;
 
-    parse_currency_amount(token)?.ok_or_else(|| {
-        ImportError::other(format!("Invalid {label} for Revolut {context}: {token}"))
-    })
+    parse_currency_amount(token)?
+        .ok_or_else(|| ImportError::invalid_field(label, token, format!("Revolut {context}")))
 }
 
 fn skip_optional_local_amount(tokens: &[&str], i: &mut usize) -> bool {
@@ -369,13 +380,9 @@ fn skip_optional_rate(tokens: &[&str], i: &mut usize, context: &str) -> Result<(
     }
 
     let rate = tokens.get(*i + 1).copied().ok_or_else(|| {
-        ImportError::other(format!("Missing local currency rate for Revolut {context}"))
+        ImportError::missing_field("local currency rate", format!("Revolut {context}"))
     })?;
-    parse_decimal_token(rate).map_err(|source| {
-        ImportError::other(format!(
-            "Invalid local currency rate for Revolut {context}: {rate}: {source}"
-        ))
-    })?;
+    parse_decimal_token(rate).map_err(|source| ImportError::invalid_decimal(rate, source))?;
     *i += 2;
 
     Ok(())
@@ -483,10 +490,11 @@ impl SectionSums {
     fn add(&mut self, amounts: AmountColumns) -> Result<()> {
         match self.currency {
             Some(currency) if currency != amounts.currency => {
-                return Err(ImportError::other(format!(
-                    "Mixed source currencies in Revolut Other income & fees table: {currency} and {}",
-                    amounts.currency
-                )));
+                return Err(ImportError::data_mismatch(
+                    format!("source currency in {OTHER_INCOME_TABLE}"),
+                    currency.to_string(),
+                    amounts.currency.to_string(),
+                ));
             }
             Some(_) => {}
             None => self.currency = Some(amounts.currency),
@@ -503,17 +511,25 @@ impl SectionSums {
         if let Some(currency) = self.currency
             && currency != total.currency
         {
-            return Err(ImportError::other(format!(
-                "Revolut Other income & fees total currency mismatch: rows are {currency}, total is {}",
-                total.currency
-            )));
+            return Err(ImportError::data_mismatch(
+                format!("total currency in {OTHER_INCOME_TABLE}"),
+                format!("rows are {currency}"),
+                format!("total is {}", total.currency),
+            ));
         }
 
         if self.gross != total.gross || self.tax != total.tax || self.net != total.net {
-            return Err(ImportError::other(format!(
-                "Revolut Other income & fees total mismatch for {}: rows gross {}, tax {}, net {}; total gross {}, tax {}, net {}",
-                total.currency, self.gross, self.tax, self.net, total.gross, total.tax, total.net
-            )));
+            return Err(ImportError::data_mismatch(
+                format!("{OTHER_INCOME_TABLE} total for {}", total.currency),
+                format!(
+                    "rows gross {}, tax {}, net {}",
+                    self.gross, self.tax, self.net
+                ),
+                format!(
+                    "total gross {}, tax {}, net {}",
+                    total.gross, total.tax, total.net
+                ),
+            ));
         }
 
         Ok(())
