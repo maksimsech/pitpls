@@ -1,5 +1,12 @@
 [workspace]
-members = ["src-tauri", "crates/core", "crates/importers", "crates/nbr"]
+members = [
+    "bin/desktop/src-tauri",
+    "crates/app",
+    "crates/core",
+    "crates/db",
+    "crates/importers",
+    "crates/nbr",
+]
 resolver = "3"
 
 [workspace.package]
@@ -8,7 +15,9 @@ license = "MIT"
 authors = ["Maksim Sech"]
 
 [workspace.dependencies]
+pitpls-app = { path = "crates/app" }
 pitpls-core = { path = "crates/core" }
+pitpls-db = { path = "crates/db" }
 pitpls-importers = { path = "crates/importers" }
 pitpls-nbr = { path = "crates/nbr" }
 
