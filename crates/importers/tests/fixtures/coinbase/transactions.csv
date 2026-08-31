@@ -1,0 +1,10 @@
+Transactions
+User,Example User,anonymous-user-id
+ID,Timestamp,Transaction Type,Asset,Quantity Transacted,Price Currency,Price at Transaction,Subtotal,Total (inclusive of fees and/or spread),Fees and/or Spread,Notes
+staking-income-1,2025-12-23 23:14:54 UTC,Staking Income,AVAX,0.003327202398,EUR,€10.287021525,€0.03423,€0.03423,€0.00,
+deposit-1,2025-11-24 13:30:10 UTC,Deposit,EUR,1500,EUR,€1.00,€1500.00,€1500.00,€0.00,"Deposit from Example Bank, account ****0000"
+advanced-buy-fiat-1,2025-11-28 18:26:29 UTC,Advanced Trade Buy,USDC,479.16,EUR,€0.8626,€413.32342,€413.32342,€0.00,Bought 479.16 USDC for 413.323416 EUR on USDC-EUR at 0.8626 EUR/USDC
+advanced-buy-crypto-1,2025-09-14 19:23:29 UTC,Advanced Trade Buy,EURC,111,EUR,€1.00632447,€111.70202,€111.70202,€0.00,Bought 111 EURC for 130.7025 USDC on EURC-USDC at 1.1775 USDC/EURC
+simple-buy-fiat-1,2025-04-09 08:25:29 UTC,Buy,USDC,10.696332,EUR,€0.9074913333333333,€9.70683,€10.00,€0.2931714115440003565444,Bought 10.696332 USDC for 10 EUR using ****0000
+advanced-sell-crypto-1,2025-03-11 21:24:32 UTC,Advanced Trade Sell,PRO,-16.72,EUR,€0.76667198666666669457,-€12.81876,-€12.66493,€0.1538250674048000055985248,Sold 16.72 PRO for 13.828356256 USDC on PRO-USDC at 0.8371 USDC/PRO
+advanced-sell-fiat-1,2025-03-11 21:24:32 UTC,Advanced Trade Sell,PRO,-16.72,EUR,€0.76667198666666669457,-€12.81876,-€12.66493,€0.1538250674048000055985248,Sold 16.72 PRO for 13.828356256 EUR on PRO-EUR at 0.76667198666666669457 EUR/PRO

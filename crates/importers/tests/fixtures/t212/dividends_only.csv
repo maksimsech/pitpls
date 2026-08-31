@@ -1,0 +1,3 @@
+Action,Time,ISIN,Ticker,Name,No. of shares,Price / share,Currency (Price / share),Exchange rate,Total,Currency (Total),Withholding tax,Currency (Withholding tax)
+Dividend (Dividend),2026-01-15 14:17:43,US0000000001,st1,"Stock 1",34.8301912300,0.204000,USD,3.61670000,25.70,"PLN",1.25,USD
+Dividend (Dividend),2026-03-17 15:19:05,US0000000002,st2,"Stock 2",2.0000000000,1.878500,USD,3.72110000,13.98,"PLN",0.66,USD
