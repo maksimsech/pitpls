@@ -35,6 +35,15 @@ You can also use the shortcut from the `justfile`:
 just d
 ```
 
+The in-progress native GPUI shell currently contains only the Crypto and Rates
+sections. It is a standalone nested Cargo workspace so its graphics dependency
+tree and lockfile stay isolated from the Tauri workspace. Run it with the
+`justfile` shortcut:
+
+```sh
+just dg
+```
+
 No builds are provided. At the moment, the project is intended to be run in development mode only.
 
 ## Project Structure
@@ -42,6 +51,7 @@ No builds are provided. At the moment, the project is intended to be run in deve
 The repository is split into a small set of focused parts:
 
 - `bin/desktop/` - complete desktop application package, including the React frontend.
+- `bin/desktop-gpui/` - native GPUI desktop shell for the migrated Crypto and Rates sections.
 - `bin/desktop/src-tauri/` - Tauri binary and thin command adapters exposed to the frontend.
 - `bin/desktop/src/` - React pages, components, hooks, and generated bindings.
 - `crates/app/` - application use cases, input validation, and orchestration.

@@ -3,3 +3,6 @@ et:
 
 d:
     cd bin/desktop && npm run tauri dev
+
+dg:
+    cd bin/desktop-gpui && cargo run
