@@ -5,6 +5,7 @@ pub mod interest;
 pub mod rate;
 pub mod rounding;
 pub mod settings;
+pub mod stock;
 pub mod summary;
 pub mod tax;
 
