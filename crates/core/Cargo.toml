@@ -5,6 +5,7 @@ authors.workspace = true
 license.workspace = true
 
 [dependencies]
+anyhow.workspace = true
 chrono.workspace = true
 chrono-tz.workspace = true
 rust_decimal.workspace = true
