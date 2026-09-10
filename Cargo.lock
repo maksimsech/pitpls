@@ -5500,6 +5500,7 @@ dependencies = [
 name = "pitpls-core"
 version = "0.0.0"
 dependencies = [
+ "anyhow",
  "chrono",
  "rust_decimal",
  "serde",
@@ -5523,6 +5524,7 @@ dependencies = [
 name = "pitpls-importers"
 version = "0.0.0"
 dependencies = [
+ "anyhow",
  "chrono",
  "pdf-extract",
  "pitpls-core",
