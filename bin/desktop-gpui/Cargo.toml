@@ -1,0 +1,30 @@
+[workspace]
+members = ["."]
+resolver = "3"
+
+[package]
+name = "pitpls-desktop-gpui"
+version = "0.1.0"
+edition = "2024"
+authors = ["Maksim Sech"]
+license = "MIT"
+publish = false
+
+[package.metadata.packager]
+product-name = "pitpls"
+identifier = "com.mngapp.pitpls"
+category = "Finance"
+icons = ["assets/icon.png", "assets/icon.icns", "assets/icon.ico"]
+
+[dependencies]
+pitpls-app = { path = "../../crates/app" }
+pitpls-core = { path = "../../crates/core" }
+pitpls-db = { path = "../../crates/db" }
+
+anyhow = "1.0"
+chrono = { version = "0.4.44", features = ["serde"] }
+gpui = { version = "=0.2.2", features = ["runtime_shaders"] }
+gpui-component = "=0.5.1"
+gpui-component-assets = "=0.5.1"
+directories = "6.0"
+tokio = { version = "1.52.0", features = ["fs", "rt-multi-thread"] }

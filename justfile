@@ -1,5 +1,8 @@
 et:
-    cd src-tauri && cargo test --lib export_bindings
+    cd bin/desktop/src-tauri && cargo test --lib export_bindings
 
 d:
-    cargo tauri dev
+    cd bin/desktop && npm run tauri dev
+
+dg:
+    cd bin/desktop-gpui && cargo run
