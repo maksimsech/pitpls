@@ -1,0 +1,4 @@
+[bindings.swift]
+module_name = "PitCore"
+ffi_module_name = "PitCoreFFI"
+generate_case_iterable_conformance = true

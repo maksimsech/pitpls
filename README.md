@@ -35,7 +35,10 @@ You can also use the shortcut from the `justfile`:
 just d
 ```
 
-No builds are provided. At the moment, the project is intended to be run in development mode only.
+No prebuilt downloads are provided. The Tauri app is intended to be run in development mode.
+
+A native SwiftUI macOS frontend is also available in `bin/macos/`. Build and run it
+with `just m`, or use `just mb` to build only.
 
 ## Project Structure
 
@@ -44,13 +47,15 @@ The repository is split into a small set of focused parts:
 - `bin/desktop/` - complete desktop application package, including the React frontend.
 - `bin/desktop/src-tauri/` - Tauri binary and thin command adapters exposed to the frontend.
 - `bin/desktop/src/` - React pages, components, hooks, and generated bindings.
+- `bin/macos/` - native SwiftUI macOS frontend and app bundle build script.
+- `crates/macos_bindings/` - typed UniFFI adapters and Swift binding generator.
 - `crates/app/` - application use cases, input validation, and orchestration.
 - `crates/core/` - shared financial domain types used across the app.
 - `crates/db/` - SQLite schema and repositories.
 - `crates/importers/` - importer registry and source-specific parsers.
 - `crates/nbr/` - NBP exchange-rate clients and parsers.
 
-The importer crate is organized like this:
+The importer crate is organized:
 
 - `crates/importers/src/lib.rs` - public crate entrypoint, importer registry, and `import(...)` dispatch.
 - `crates/importers/src/model.rs` - public importer metadata and shared import result types.

@@ -1,0 +1,26 @@
+[package]
+name = "macos_bindings"
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[lib]
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[[bin]]
+name = "pitpls-bindgen"
+path = "src/bindgen.rs"
+required-features = ["bindgen"]
+
+[features]
+bindgen = ["uniffi/cli", "uniffi/cargo-metadata"]
+
+[dependencies]
+pitpls-app.workspace = true
+pitpls-core.workspace = true
+pitpls-db.workspace = true
+pitpls-importers.workspace = true
+chrono.workspace = true
+rust_decimal.workspace = true
+thiserror.workspace = true
+uniffi = { version = "=0.31.0", default-features = false, features = ["tokio"] }
