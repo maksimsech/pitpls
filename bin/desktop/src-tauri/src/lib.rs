@@ -1,0 +1,97 @@
+use pitpls_importers::{
+    IMPORTERS,
+    model::{Importer, InputType, OutputType},
+};
+use specta_typescript::{BigIntExportBehavior, Typescript};
+use tauri_specta::{Builder, collect_commands};
+
+use crate::command::{
+    add_year, create_crypto, create_dividend, create_interest, delete_cryptos, delete_dividends,
+    delete_interests, delete_year, get_warnings, import_api, import_csv, list_rates, list_years,
+    load_cryptos, load_dividends, load_interests, load_settings, load_tax_summary, reset_rates,
+    run_import, update_crypto, update_dividend, update_interest, update_settings,
+};
+use crate::state::setup;
+
+mod command;
+mod state;
+
+fn specta_builder() -> Builder<tauri::Wry> {
+    Builder::<tauri::Wry>::new()
+        .commands(collect_commands![
+            import_csv,
+            import_api,
+            reset_rates,
+            list_rates,
+            load_cryptos,
+            delete_cryptos,
+            create_crypto,
+            update_crypto,
+            load_dividends,
+            delete_dividends,
+            create_dividend,
+            update_dividend,
+            load_interests,
+            delete_interests,
+            create_interest,
+            update_interest,
+            run_import,
+            get_warnings,
+            load_tax_summary,
+            list_years,
+            add_year,
+            delete_year,
+            load_settings,
+            update_settings,
+        ])
+        .typ::<Importer>()
+        .typ::<InputType>()
+        .typ::<OutputType>()
+        .constant("IMPORTERS", IMPORTERS)
+        .error_handling(tauri_specta::ErrorHandlingMode::Result)
+}
+
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
+pub fn run() {
+    let specta_builder = specta_builder();
+
+    #[cfg(debug_assertions)]
+    specta_builder
+        .export(
+            Typescript::default()
+                .bigint(BigIntExportBehavior::Number)
+                .header("// @ts-nocheck\n"),
+            "../src/bindings.ts",
+        )
+        .expect("Failed to export typescript bindings");
+
+    tauri::Builder::default()
+        .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_notification::init())
+        .invoke_handler(specta_builder.invoke_handler())
+        .setup(move |app| {
+            specta_builder.mount_events(app);
+            let handle = app.handle().clone();
+            setup(handle)
+        })
+        .run(tauri::generate_context!())
+        .expect("error while running tauri application");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn export_bindings() {
+        specta_builder()
+            .export(
+                Typescript::default()
+                    .bigint(BigIntExportBehavior::Number)
+                    .header("// @ts-nocheck\n"),
+                "../src/bindings.ts",
+            )
+            .expect("failed to export typescript bindings");
+    }
+}

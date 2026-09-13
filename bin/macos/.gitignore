@@ -1,0 +1,6 @@
+.build/
+.swiftpm/
+.generated/
+Sources/PitCore/*.swift
+Sources/PitCoreFFI/*.h
+Sources/PitCoreFFI/*.modulemap
