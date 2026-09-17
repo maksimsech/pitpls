@@ -87,7 +87,7 @@ impl NbpRateProvider {
         &self,
         date: &NaiveDate,
         currency: &Currency,
-    ) -> std::result::Result<(Decimal, NaiveDate), RateConverterError> {
+    ) -> Result<(Decimal, NaiveDate), RateConverterError> {
         if self.rates_by_date.is_empty() {
             return Err(RateConverterError::NoRatesAvailable);
         }
