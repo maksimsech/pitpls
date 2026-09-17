@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use chrono::NaiveDate;
 use rust_decimal::Decimal;
 
@@ -46,11 +48,19 @@ pub struct StockTaxData {
 pub struct CalculatedStock {
     pub ticker: String,
     pub provider: String,
+    pub stats: YearStats,
+    pub history_by_year: HashMap<i32, YearStats>,
+}
+
+#[derive(Default)]
+pub struct YearStats {
     pub bought: Decimal,
     pub sold: Decimal,
-    pub value: Decimal,
-    // TODO: Should be enum later,
-    pub warnings: Vec<String>,
-    // TODO: As an option I could use different contract to lower memory used
+    pub tax: Decimal,
+    pub warnings: Vec<Warning>,
     pub history: Vec<Stock>,
+}
+
+pub enum Warning {
+    SellWithoutBuy { sell_id: String },
 }
