@@ -11,7 +11,8 @@ pub use repository::RepositoryError;
 
 use repository::{
     crypto::CryptoRepository, dividend::DividendRepository, interest::InterestRepository,
-    rate::RateRepository, settings::SettingsRepository, year::YearRepository,
+    rate::RateRepository, settings::SettingsRepository, stock::StockRepository,
+    year::YearRepository,
 };
 
 pub mod repository;
@@ -77,6 +78,10 @@ impl Database {
 
     pub fn settings_repo(&self) -> SettingsRepository {
         SettingsRepository::new(self.pool.clone())
+    }
+
+    pub fn stock_repo(&self) -> StockRepository {
+        StockRepository::new(self.pool.clone())
     }
 
     pub fn year_repo(&self) -> YearRepository {
