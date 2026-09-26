@@ -1,7 +1,4 @@
-use std::{
-    collections::{HashMap, HashSet, LinkedList},
-    vec,
-};
+use std::collections::{HashMap, HashSet, LinkedList};
 
 use anyhow::Result;
 use chrono::Datelike;

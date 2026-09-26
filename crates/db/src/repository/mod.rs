@@ -6,6 +6,7 @@ pub mod interest;
 pub mod last_import;
 pub mod rate;
 pub mod settings;
+pub mod stock;
 pub mod year;
 
 pub type Result<T> = std::result::Result<T, RepositoryError>;
@@ -23,6 +24,9 @@ pub enum RepositoryError {
 
     #[error("Year {0} is out of range")]
     InvalidYear(i32),
+
+    #[error("Invalid stock record: {0}")]
+    InvalidStockRecord(String),
 }
 
 impl RepositoryError {
