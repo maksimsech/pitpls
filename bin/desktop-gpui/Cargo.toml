@@ -1,0 +1,19 @@
+[package]
+name = "desktop-gpui"
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+gpui-kit = "0.7.0"
+pitpls-core.workspace = true
+pitpls-app.workspace = true
+pitpls-db.workspace = true
+pitpls-importers.workspace = true
+chrono.workspace = true
+rust_decimal.workspace = true
+tokio = { workspace = true, features = ["rt-multi-thread", "sync"] }
+dirs = "6"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

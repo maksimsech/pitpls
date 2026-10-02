@@ -37,11 +37,31 @@ just d
 
 No builds are provided. At the moment, the project is intended to be run in development mode only.
 
+### Native GPUI app
+
+`desktop-gpui` provides the existing Home, Imports, Dividends, Interests, Crypto,
+Rates, and Settings workflows in a native Rust window. It uses the same shared
+application services and database as the Tauri app.
+
+```sh
+just dg
+```
+
+For a separate database during local testing:
+
+```sh
+just dg --database /tmp/pitpls-gpui/pitpls.db
+```
+
+See [the native app README](bin/desktop-gpui/README.md) for build requirements,
+database behavior, and local review steps.
+
 ## Project Structure
 
 The repository is split into a small set of focused parts:
 
 - `bin/desktop/` - complete desktop application package, including the React frontend.
+- `bin/desktop-gpui/` - native GPUI frontend using the shared Rust services.
 - `bin/desktop/src-tauri/` - Tauri binary and thin command adapters exposed to the frontend.
 - `bin/desktop/src/` - React pages, components, hooks, and generated bindings.
 - `crates/app/` - application use cases, input validation, and orchestration.

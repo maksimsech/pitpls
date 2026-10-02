@@ -3,3 +3,7 @@ et:
 
 d:
     cd bin/desktop && npm run tauri dev
+
+[positional-arguments]
+dg *args:
+    cargo run --locked -p desktop-gpui -- "$@"
