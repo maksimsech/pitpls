@@ -28,7 +28,6 @@ pub struct Desktop {
     page: Page,
     active: Option<PageHandle>,
     history: Vec<Page>,
-    menu_open: bool,
     page_locked: bool,
     preferences: Preferences,
     preference_task: Option<Task<()>>,
@@ -68,7 +67,12 @@ impl Desktop {
         let events = cx.new(|_| PageEvents);
         let page_subscription = cx.subscribe_in(&events, window, |this, _, event, window, cx| {
             match event {
-                PageEvent::LockNavigation(locked) => this.page_locked = *locked,
+                PageEvent::LockNavigation(locked) => {
+                    if this.page_locked == *locked {
+                        return;
+                    }
+                    this.page_locked = *locked;
+                }
                 PageEvent::Navigate(page) => this.navigate(*page, window, cx),
             }
             cx.notify();
@@ -81,7 +85,6 @@ impl Desktop {
             page: Page::Home,
             active: None,
             history: vec![],
-            menu_open: false,
             page_locked: false,
             preferences: Preferences::default(),
             preference_task: None,
@@ -198,7 +201,6 @@ impl Desktop {
             self.mount_page(window, cx);
             self.load_years(window, cx);
         }
-        self.menu_open = false;
         cx.notify();
     }
 
@@ -285,10 +287,6 @@ impl Render for Desktop {
             .font_family(cx.theme().font_family.clone())
             .text_sm()
             .child(self.toolbar(cx))
-            .when(self.menu_open, |view| view.child(self.navigation(cx)))
             .child(content)
-            .child(div().flex_shrink_0().px_4().py_2().border_t_1().border_color(cx.theme().border)
-                .text_xs().text_color(cx.theme().muted_foreground)
-                .child("Informational use only. Verify calculations before using them for financial or tax decisions."))
     }
 }

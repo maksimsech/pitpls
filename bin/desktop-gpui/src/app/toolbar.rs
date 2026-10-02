@@ -1,6 +1,12 @@
 use super::*;
 use gpui_kit::prelude::FluentBuilder;
-use gpui_kit::{assets::IconName, component::button::*};
+use gpui_kit::{
+    assets::IconName,
+    component::{
+        button::*,
+        sidebar::{SidebarItem, SidebarMenu, SidebarMenuItem},
+    },
+};
 
 impl Desktop {
     pub fn toolbar(&self, cx: &mut Context<Self>) -> Div {
@@ -14,10 +20,7 @@ impl Desktop {
                     .outline()
                     .accessibility_label("Toggle navigation menu")
                     .disabled(locked)
-                    .on_click(cx.listener(|this, _, _, cx| {
-                        this.menu_open = !this.menu_open;
-                        cx.notify();
-                    })),
+                    .on_click(cx.listener(|this, _, window, cx| this.open_navigation(window, cx))),
             )
             .when(!self.history.is_empty(), |bar| {
                 bar.child(
@@ -117,25 +120,51 @@ impl Desktop {
             .child(controls)
     }
 
-    pub fn navigation(&self, cx: &mut Context<Self>) -> Div {
-        h_flex()
-            .flex_shrink_0()
-            .flex_wrap()
-            .gap_2()
-            .px_4()
-            .pb_3()
-            .pt_2()
-            .border_b_1()
-            .border_color(cx.theme().border)
-            .children(Page::ALL.into_iter().map(|page| {
-                Button::new(SharedString::from(format!("nav-{}", page.title())))
-                    .label(page.title())
-                    .outline()
-                    .selected(self.page == page)
-                    .disabled(self.locked() || self.context.is_none())
-                    .on_click(
-                        cx.listener(move |this, _, window, cx| this.navigate(page, window, cx)),
-                    )
-            }))
+    fn open_navigation(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.locked() {
+            return;
+        }
+        let page = cx.entity().downgrade();
+        window.open_sheet_at(Placement::Left, cx, move |sheet, window, cx| {
+            let Ok(menu) = page.update(cx, |this, cx| {
+                SidebarMenu::new().children(Page::ALL.into_iter().map(|page| {
+                    SidebarMenuItem::new(page.title())
+                        .active(this.page == page)
+                        .suffix({
+                            let desktop = cx.entity().downgrade();
+                            let disabled = this.locked() || this.context.is_none();
+                            move |_, _| {
+                                Button::new(SharedString::from(format!("open-{}", page.title())))
+                                    .icon(IconName::ChevronRight)
+                                    .ghost()
+                                    .small()
+                                    .accessibility_label(format!("Open {}", page.title()))
+                                    .disabled(disabled)
+                                    .on_click({
+                                        let desktop = desktop.clone();
+                                        move |_, window, cx| {
+                                            cx.stop_propagation();
+                                            window.close_sheet(cx);
+                                            let _ = desktop.update(cx, |this, cx| {
+                                                this.navigate(page, window, cx)
+                                            });
+                                        }
+                                    })
+                            }
+                        })
+                        .disable(this.locked() || this.context.is_none())
+                        .on_click(cx.listener(move |this, _, window, cx| {
+                            window.close_sheet(cx);
+                            this.navigate(page, window, cx);
+                        }))
+                }))
+            }) else {
+                return sheet;
+            };
+            sheet
+                .title("pitpls")
+                .size(px(280.))
+                .child(menu.render("navigation", window, cx))
+        });
     }
 }

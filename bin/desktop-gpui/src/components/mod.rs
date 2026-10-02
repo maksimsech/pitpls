@@ -1,9 +1,17 @@
 use gpui_kit::prelude::FluentBuilder;
 pub mod file_picker;
 pub mod form;
+pub mod records;
 pub mod table;
 
-use gpui_kit::{component::*, *};
+use gpui_kit::{
+    component::{
+        alert::Alert,
+        group_box::{GroupBox, GroupBoxVariants},
+        *,
+    },
+    *,
+};
 
 #[derive(Default)]
 pub struct Status {
@@ -57,26 +65,17 @@ impl Status {
         }
     }
 
-    pub fn render(&self, cx: &App) -> Div {
+    pub fn render(&self, _: &App) -> Div {
         v_flex()
+            .flex_shrink_0()
             .gap_3()
             .when_some(self.message.clone(), |view, message| {
-                view.child(notice(message, cx))
+                view.child(Alert::success("operation-success", message))
             })
             .when_some(self.error.clone(), |view, error| {
                 view.child(
-                    v_flex()
-                        .gap_2()
-                        .p_4()
-                        .border_1()
-                        .border_color(cx.theme().danger)
-                        .rounded(cx.theme().radius)
-                        .child(
-                            div()
-                                .font_semibold()
-                                .child("Unable to complete the operation"),
-                        )
-                        .child(error),
+                    Alert::error("operation-error", error)
+                        .title("Unable to complete the operation"),
                 )
             })
             .when(self.busy, |view| view.child("Working…"))
@@ -84,12 +83,8 @@ impl Status {
     }
 }
 
-pub fn notice(message: impl Into<SharedString>, cx: &App) -> Div {
-    div()
-        .p_3()
-        .rounded(cx.theme().radius)
-        .bg(cx.theme().muted)
-        .child(message.into())
+pub fn notice(message: impl Into<SharedString>, _: &App) -> Alert {
+    Alert::warning("page-notice", message.into())
 }
 
 pub fn empty(message: &'static str, cx: &App) -> Div {
@@ -116,52 +111,46 @@ pub fn scroll(content: impl IntoElement) -> AnyElement {
         .into_any_element()
 }
 
-pub fn period(year: Option<i32>, cx: &App) -> Div {
-    div()
-        .text_sm()
-        .text_color(cx.theme().muted_foreground)
-        .child(
-            year.map(|year| format!("Reporting year {year}"))
-                .unwrap_or_else(|| "All years · Historical information".into()),
-        )
-}
-
 pub struct SummaryGroup {
     pub title: &'static str,
     pub values: Vec<(&'static str, SharedString)>,
 }
 
 pub fn summaries(groups: &[SummaryGroup], cx: &App) -> Div {
-    v_flex().gap_5().children(groups.iter().map(|group| {
-        v_flex()
-            .gap_3()
-            .child(div().font_semibold().child(group.title))
-            .child(
-                h_flex()
-                    .flex_wrap()
-                    .gap_3()
-                    .children(group.values.iter().map(|(label, value)| {
-                        v_flex()
-                            .gap_2()
-                            .min_w(rems(15.7))
-                            .flex_1()
-                            .p_4()
-                            .border_1()
-                            .border_color(cx.theme().border)
-                            .rounded(cx.theme().radius)
-                            .child(
-                                div()
-                                    .text_sm()
-                                    .text_color(cx.theme().muted_foreground)
-                                    .child(*label),
-                            )
-                            .child(
-                                div()
-                                    .text_lg()
-                                    .font_family(cx.theme().mono_font_family.clone())
-                                    .child(value.clone()),
-                            )
-                    })),
-            )
-    }))
+    v_flex()
+        .flex_shrink_0()
+        .gap_5()
+        .children(groups.iter().map(|group| {
+            v_flex()
+                .gap_3()
+                .child(div().font_semibold().child(group.title))
+                .child(
+                    h_flex()
+                        .flex_wrap()
+                        .gap_3()
+                        .children(group.values.iter().map(|(label, value)| {
+                            GroupBox::new()
+                                .id(SharedString::from(format!(
+                                    "summary-{}-{label}",
+                                    group.title
+                                )))
+                                .outline()
+                                .min_w(rems(15.7))
+                                .flex_1()
+                                .content_style(gpui_kit::StyleRefinement::default().gap_2())
+                                .child(
+                                    div()
+                                        .text_sm()
+                                        .text_color(cx.theme().muted_foreground)
+                                        .child(*label),
+                                )
+                                .child(
+                                    div()
+                                        .text_lg()
+                                        .font_family(cx.theme().mono_font_family.clone())
+                                        .child(value.clone()),
+                                )
+                        })),
+                )
+        }))
 }

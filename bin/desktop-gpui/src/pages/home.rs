@@ -62,16 +62,16 @@ impl PageView for HomePage {
                             SummaryGroup {
                                 title: "Crypto",
                                 values: vec![
-                                    ("Income", pln(summary.crypto.income)),
-                                    ("Costs", pln(summary.crypto.costs)),
+                                    ("Income (E-36)", pln(summary.crypto.income)),
+                                    ("Costs (E-37)", pln(summary.crypto.costs)),
                                 ],
                             },
                             SummaryGroup {
                                 title: "Foreign dividends and interest",
                                 values: vec![
-                                    ("Income", pln(summary.foreign.income)),
-                                    ("Calculated tax", pln(summary.foreign.tax_to_pay)),
-                                    ("Creditable foreign tax", pln(summary.foreign.tax_paid)),
+                                    ("Income (I-65)", pln(summary.foreign.income)),
+                                    ("Tax to pay (G-47)", pln(summary.foreign.tax_to_pay)),
+                                    ("Paid tax (G-48)", pln(summary.foreign.tax_paid)),
                                 ],
                             },
                         ];
@@ -90,7 +90,6 @@ impl Render for HomePage {
             v_flex()
                 .gap_4()
                 .p_5()
-                .child(components::period(self.year, cx))
                 .child(self.status.render(cx))
                 .when(self.warning, |view| {
                     view.child(components::notice(

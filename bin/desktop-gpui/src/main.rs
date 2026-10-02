@@ -1,4 +1,6 @@
 mod app;
+#[cfg(target_os = "macos")]
+mod app_icon;
 mod components;
 mod config;
 mod format;
@@ -33,6 +35,8 @@ fn run() -> Result<(), String> {
         // The component-only bundle omits app icons such as SquarePen and Trash.
         .with_assets(gpui_kit::assets::AllAssets)
         .run(move |cx| {
+            #[cfg(target_os = "macos")]
+            app_icon::install();
             gpui_kit::init(cx);
             gpui_kit::component::Theme::sync_system_appearance(None, cx);
             theme::configure_theme(cx);

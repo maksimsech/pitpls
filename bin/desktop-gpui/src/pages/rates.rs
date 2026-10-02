@@ -7,7 +7,10 @@ use crate::{
     navigation::PageContext,
 };
 use chrono::Datelike;
-use gpui_kit::component::input::InputState;
+use gpui_kit::component::{
+    dialog::{AlertDialog, Dialog, DialogButtonProps},
+    input::InputState,
+};
 use gpui_kit::{
     component::{button::*, scroll::ScrollableElement, *},
     *,
@@ -94,6 +97,9 @@ impl RatesPage {
             },
             |this, result, window, cx| {
                 if this.status.saved(result) {
+                    if this.nbp_year.is_some() {
+                        window.close_dialog(cx);
+                    }
                     this.close_form(window, cx);
                     this.refresh(window, cx);
                 }
@@ -128,13 +134,21 @@ impl RatesPage {
     fn open_nbp(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.return_focus = window.focused(cx);
         let year = form::input(chrono::Local::now().year().to_string(), window, cx);
-        window.focus(&year.focus_handle(cx), cx);
-        self.nbp_year = Some(year);
+        self.nbp_year = Some(year.clone());
         self.status.error = None;
+        let page = cx.entity().downgrade();
+        window.open_dialog(cx, move |dialog, _, cx| {
+            page.update(cx, |this, cx| this.nbp_dialog(dialog, cx))
+                .unwrap_or_else(|_| Dialog::new(cx))
+        });
+        window.focus(&year.focus_handle(cx), cx);
         self.notify(cx);
     }
 
     fn import_nbp(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.status.busy {
+            return;
+        }
         let Some(year) = &self.nbp_year else {
             return;
         };
@@ -161,41 +175,87 @@ impl RatesPage {
         }
     }
 
+    fn nbp_dialog(&self, dialog: Dialog, cx: &mut Context<Self>) -> Dialog {
+        let Some(year) = &self.nbp_year else {
+            return dialog;
+        };
+        let dismiss = cx.entity().downgrade();
+        let submit = cx.entity().downgrade();
+        dialog
+            .title("Import from NBP")
+            .overlay_closable(false)
+            .keyboard(!self.status.busy)
+            .close_button(!self.status.busy)
+            .on_ok(move |_, window, cx| {
+                let _ = submit.update(cx, |this, cx| this.import_nbp(window, cx));
+                false
+            })
+            .on_cancel(move |_, _, cx| {
+                dismiss
+                    .update(cx, |this, _| !this.status.busy)
+                    .unwrap_or(true)
+            })
+            .on_close(cx.listener(|this, _, window, cx| {
+                if !this.status.busy {
+                    this.close_form(window, cx);
+                }
+            }))
+            .child(self.status.render(cx))
+            .child(form::input_field("Year", year, self.status.busy, cx))
+            .footer(
+                h_flex()
+                    .justify_end()
+                    .gap_2()
+                    .child(
+                        Button::new("cancel-nbp")
+                            .label("Cancel")
+                            .outline()
+                            .disabled(self.status.busy)
+                            .on_click(cx.listener(|this, _, window, cx| {
+                                if !this.status.busy {
+                                    window.close_dialog(cx);
+                                    this.close_form(window, cx);
+                                }
+                            })),
+                    )
+                    .child(
+                        Button::new("import-nbp")
+                            .label(if self.status.busy {
+                                "Importing…"
+                            } else {
+                                "Import"
+                            })
+                            .primary()
+                            .disabled(self.status.busy)
+                            .on_click(
+                                cx.listener(|this, _, window, cx| this.import_nbp(window, cx)),
+                            ),
+                    ),
+            )
+    }
+
+    fn open_reset(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.confirm_reset = true;
+        let page = cx.entity().downgrade();
+        window.open_alert_dialog(cx, move |dialog, _, cx| {
+            page.update(cx, |_, cx| {
+                let confirm = cx.entity().downgrade();
+                dialog.title("Reset rates")
+                    .child("Remove all imported exchange rates? Calculations will be unavailable until rates are reimported.")
+                    .button_props(DialogButtonProps::default().show_cancel(true).ok_text("Reset").cancel_text("Cancel"))
+                    .on_ok(move |_, window, cx| confirm.update(cx, |this, cx| this.change(Change::Reset, window, cx)).is_ok())
+                    .on_close(cx.listener(|this, _, _, cx| { this.confirm_reset = false; this.notify(cx); }))
+            }).unwrap_or_else(|_| AlertDialog::new(cx))
+        });
+        self.notify(cx);
+    }
+
     fn controls(&self, cx: &mut Context<Self>) -> Div {
-        let disabled = self.status.busy || self.status.loading || self.confirm_reset;
+        let disabled = self.status.busy
+            || self.status.loading
+            || self.nbp_year.is_some()
+            || self.confirm_reset;
         let mut content = v_flex().gap_4().p_5().child(self.status.render(cx));
-        if let Some(year) = &self.nbp_year {
-            return content
-                .child(
-                    div()
-                        .text_lg()
-                        .font_semibold()
-                        .child("Import rates from NBP"),
-                )
-                .child(form::input_field("Year", year, self.status.busy, cx))
-                .child(
-                    h_flex()
-                        .gap_2()
-                        .child(
-                            Button::new("cancel-nbp")
-                                .label("Cancel")
-                                .outline()
-                                .disabled(self.status.busy)
-                                .on_click(
-                                    cx.listener(|this, _, window, cx| this.close_form(window, cx)),
-                                ),
-                        )
-                        .child(
-                            Button::new("import-nbp")
-                                .label("Import")
-                                .primary()
-                                .disabled(self.status.busy)
-                                .on_click(
-                                    cx.listener(|this, _, window, cx| this.import_nbp(window, cx)),
-                                ),
-                        ),
-                );
-        }
         content = content.child(
             h_flex()
                 .flex_wrap()
@@ -216,43 +276,12 @@ impl RatesPage {
                 )
                 .child(
                     Button::new("rates-reset")
-                        .label("Reset rates")
+                        .label("Reset")
                         .outline()
                         .disabled(disabled || !self.status.ready || self.data.rows.is_empty())
-                        .on_click(cx.listener(|this, _, _, cx| {
-                            this.confirm_reset = true;
-                            this.notify(cx);
-                        })),
+                        .on_click(cx.listener(|this, _, window, cx| this.open_reset(window, cx))),
                 ),
         );
-        if self.confirm_reset {
-            content = content
-                .child(components::notice(
-                    "Remove all imported exchange rates? Calculations will be unavailable until rates are reimported.",
-                    cx,
-                ))
-                .child(
-                    h_flex()
-                        .gap_2()
-                        .child(
-                            Button::new("cancel-reset")
-                                .label("Cancel")
-                                .outline()
-                                .on_click(cx.listener(|this, _, _, cx| {
-                                    this.confirm_reset = false;
-                                    this.notify(cx);
-                                })),
-                        )
-                        .child(
-                            Button::new("confirm-reset")
-                                .label("Confirm reset")
-                                .primary()
-                                .on_click(cx.listener(|this, _, window, cx| {
-                                    this.change(Change::Reset, window, cx)
-                                })),
-                        ),
-                );
-        }
         if self.status.error.is_some() || (!self.status.ready && !self.status.loading) {
             content = content.child(
                 Button::new("retry-rates")
@@ -314,7 +343,7 @@ impl PageView for RatesPage {
 
 impl Render for RatesPage {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        if self.nbp_year.is_some() || !self.status.ready {
+        if !self.status.ready {
             return components::scroll(self.controls(cx));
         }
         v_flex()

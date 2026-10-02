@@ -27,12 +27,12 @@ impl CryptoForm {
     pub fn new(record: Option<&CalculatedCrypto>, window: &mut Window, cx: &mut App) -> Self {
         Self {
             existing_id: record.map(|record| record.id.clone()),
-            id: form::input(
+            id: form::optional_id(
                 record.map(|record| record.id.clone()).unwrap_or_default(),
                 window,
                 cx,
             ),
-            date: form::input(
+            date: form::date_input(
                 record
                     .map(|record| record.date.to_string())
                     .unwrap_or_else(|| chrono::Local::now().date_naive().to_string()),
@@ -116,7 +116,7 @@ impl CryptoForm {
         let id = form::text(&self.id, cx);
         Ok(CreateCryptoInput {
             id: (!id.is_empty()).then_some(id),
-            date: form::required(&self.date, "Date (YYYY-MM-DD)", cx)?,
+            date: form::required(&self.date, "Date", cx)?,
             action: form::selected(&self.action, "Action", cx)?,
             value: form::required(&self.value, "Value", cx)?,
             value_currency: form::selected(&self.value_currency, "Value currency", cx)?,
@@ -132,7 +132,7 @@ impl CryptoForm {
                 .existing_id
                 .clone()
                 .ok_or("No record selected for editing")?,
-            date: form::required(&self.date, "Date (YYYY-MM-DD)", cx)?,
+            date: form::required(&self.date, "Date", cx)?,
             action: form::selected(&self.action, "Action", cx)?,
             value: form::required(&self.value, "Value", cx)?,
             value_currency: form::selected(&self.value_currency, "Value currency", cx)?,
@@ -149,28 +149,21 @@ impl CryptoForm {
             .flex_wrap()
             .gap_4()
             .max_w(px(700.))
-            .child(form::input_field(
-                if editing {
-                    "ID"
-                } else {
-                    "ID (optional; generated when blank)"
-                },
-                &self.id,
-                busy || editing,
-                cx,
-            ))
-            .child(form::input_field("Date (YYYY-MM-DD)", &self.date, busy, cx))
+            .child(form::input_field("ID", &self.id, busy || editing, cx))
+            .child(form::input_field("Date", &self.date, busy, cx))
             .child(form::select_field("Action", &self.action, busy, cx))
-            .child(form::input_field("Value", &self.value, busy, cx))
-            .child(form::select_field(
+            .child(form::amount_field(
+                "Value",
                 "Value currency",
+                &self.value,
                 &self.value_currency,
                 busy,
                 cx,
             ))
-            .child(form::input_field("Fee", &self.fee, busy, cx))
-            .child(form::select_field(
+            .child(form::amount_field(
+                "Fee",
                 "Fee currency",
+                &self.fee,
                 &self.fee_currency,
                 busy,
                 cx,

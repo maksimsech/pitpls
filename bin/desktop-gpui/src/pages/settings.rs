@@ -16,6 +16,8 @@ use pitpls_core::settings::{DividendRounding, Settings};
 pub struct SettingsPage {
     context: PageContext,
     status: Status,
+    saved_rounding: Option<DividendRounding>,
+    selection_subscription: Option<Subscription>,
     dividend_rounding: Option<Entity<ChoiceState<DividendRounding>>>,
 }
 
@@ -25,13 +27,22 @@ impl SettingsPage {
             context,
             status: Status::default(),
             dividend_rounding: None,
+            saved_rounding: None,
+            selection_subscription: None,
         };
         page.refresh(window, cx);
         page
     }
 
+    fn has_changes(&self, cx: &App) -> bool {
+        self.dividend_rounding
+            .as_ref()
+            .and_then(|state| state.read(cx).selected_value().copied())
+            .is_some_and(|value| Some(value) != self.saved_rounding)
+    }
+
     fn save(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if self.status.busy || self.status.loading {
+        if self.status.busy || self.status.loading || !self.has_changes(cx) {
             return;
         }
         let Some(dividend_rounding) = &self.dividend_rounding else {
@@ -55,8 +66,10 @@ impl SettingsPage {
                 settings::update_settings(&app, settings).await?;
                 Ok("Settings saved.".into())
             },
-            |this, result, _, cx| {
-                this.status.saved(result);
+            move |this, result, _, cx| {
+                if this.status.saved(result) {
+                    this.saved_rounding = Some(dividend_rounding);
+                }
                 this.context.set_locked(false, cx);
                 cx.notify();
             },
@@ -78,6 +91,7 @@ impl PageView for SettingsPage {
             |app| async move { settings::load_settings(&app).await },
             |this, result, window, cx| {
                 if let Some(settings) = this.status.loaded(result) {
+                    this.saved_rounding = Some(settings.dividend_rounding);
                     this.dividend_rounding = Some(form::select(
                         vec![
                             Choice::new(DividendRounding::SumToGroszy, "Sum to groszy"),
@@ -89,6 +103,18 @@ impl PageView for SettingsPage {
                         window,
                         cx,
                     ));
+                    this.selection_subscription = this.dividend_rounding.as_ref().map(|state| {
+                        cx.subscribe(
+                            state,
+                            |this,
+                             _,
+                             _: &select::SelectEvent<Vec<form::Choice<DividendRounding>>>,
+                             cx| {
+                                this.status.message = None;
+                                cx.notify();
+                            },
+                        )
+                    });
                 }
                 cx.notify();
             },
@@ -117,9 +143,13 @@ impl Render for SettingsPage {
                 .child(
                     h_flex().child(
                         Button::new("save-settings")
-                            .label("Save settings")
+                            .label(if self.status.busy {
+                                "Saving…"
+                            } else {
+                                "Save"
+                            })
                             .primary()
-                            .disabled(self.status.busy)
+                            .disabled(self.status.busy || !self.has_changes(cx))
                             .on_click(cx.listener(|this, _, window, cx| this.save(window, cx))),
                     ),
                 );

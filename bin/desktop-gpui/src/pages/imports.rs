@@ -4,9 +4,10 @@ use crate::{
     navigation::PageContext,
 };
 use gpui_kit::{
-    component::{button::*, *},
-    *,
+    assets::IconName,
+    component::{button::*, list::ListItem, tag::Tag},
 };
+use gpui_kit::{component::*, *};
 use pitpls_app::use_case::import;
 use pitpls_importers::{IMPORTERS, ImporterKind, InputType, OutputType};
 
@@ -98,12 +99,11 @@ impl ImportsPage {
                     .output
                     .iter()
                     .map(|value| match value {
-                        OutputType::Dividend => "Dividends",
+                        OutputType::Dividend => "Dividend",
                         OutputType::Crypto => "Crypto",
-                        OutputType::Interest => "Interests",
+                        OutputType::Interest => "Interest",
                     })
-                    .collect::<Vec<_>>()
-                    .join(" · ");
+                    .collect::<Vec<_>>();
                 let formats = importer
                     .input
                     .iter()
@@ -113,33 +113,62 @@ impl ImportsPage {
                     })
                     .collect::<Vec<_>>()
                     .join(" / ");
-                h_flex()
+                ListItem::new(("importer", index))
+                    .accessibility_label(format!("Import {}", importer.name))
+                    .disabled(self.status.busy)
+                    .text_sm()
+                    .on_click(
+                        cx.listener(move |this, _, window, cx| this.pick_file(index, window, cx)),
+                    )
                     .gap_4()
                     .p_4()
                     .border_1()
                     .border_color(cx.theme().border)
                     .rounded(cx.theme().radius)
                     .child(
-                        v_flex()
-                            .flex_1()
-                            .gap_1()
-                            .child(div().font_semibold().child(importer.name))
+                        h_flex()
+                            .w_full()
+                            .gap_4()
                             .child(
-                                div()
-                                    .text_sm()
-                                    .text_color(cx.theme().muted_foreground)
-                                    .child(format!("{formats} · {outputs}")),
+                                v_flex()
+                                    .flex_1()
+                                    .gap_1()
+                                    .child(div().font_semibold().child(importer.name))
+                                    .child(
+                                        div()
+                                            .text_sm()
+                                            .text_color(cx.theme().muted_foreground)
+                                            .child(formats),
+                                    ),
+                            )
+                            .child(
+                                h_flex().gap_2().children(
+                                    outputs
+                                        .into_iter()
+                                        .map(|output| Tag::secondary().outline().child(output)),
+                                ),
                             ),
                     )
-                    .child(
-                        Button::new(("import", index))
-                            .label("Choose file…")
-                            .outline()
-                            .disabled(self.status.busy)
-                            .on_click(cx.listener(move |this, _, window, cx| {
-                                this.pick_file(index, window, cx)
-                            })),
-                    )
+                    .suffix({
+                        let busy = self.status.busy;
+                        let page = cx.entity().downgrade();
+                        move |_, _| {
+                            Button::new(("import-file", index))
+                                .icon(IconName::Upload)
+                                .ghost()
+                                .accessibility_label(format!("Import {}", importer.name))
+                                .disabled(busy)
+                                .on_click({
+                                    let page = page.clone();
+                                    move |_, window, cx| {
+                                        cx.stop_propagation();
+                                        let _ = page.update(cx, |this, cx| {
+                                            this.pick_file(index, window, cx)
+                                        });
+                                    }
+                                })
+                        }
+                    })
             }))
     }
 }

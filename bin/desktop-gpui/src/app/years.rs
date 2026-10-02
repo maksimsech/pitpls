@@ -1,6 +1,9 @@
 use super::*;
 use chrono::Datelike;
-use gpui_kit::component::button::*;
+use gpui_kit::component::{
+    button::*,
+    dialog::{AlertDialog, Dialog, DialogButtonProps},
+};
 use pitpls_app::use_case::year;
 
 impl Desktop {
@@ -48,9 +51,15 @@ impl Desktop {
     fn open_year_form(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.return_focus = window.focused(cx);
         let year = form::input(chrono::Local::now().year().to_string(), window, cx);
-        window.focus(&year.focus_handle(cx), cx);
-        self.year_form = Some(year);
+        self.year_form = Some(year.clone());
         self.status.error = None;
+        let desktop = cx.entity().downgrade();
+        window.open_dialog(cx, move |dialog, _, cx| {
+            desktop
+                .update(cx, |this, cx| this.year_dialog(dialog, cx))
+                .unwrap_or_else(|_| Dialog::new(cx))
+        });
+        window.focus(&year.focus_handle(cx), cx);
         cx.notify();
     }
 
@@ -112,6 +121,9 @@ impl Desktop {
             },
             move |this, result, window, cx| {
                 if this.status.saved(result) {
+                    if this.year_form.is_some() {
+                        window.close_dialog(cx);
+                    }
                     this.close_year_form(window, cx);
                     if remove {
                         if this.preferences.year == Some(year) {
@@ -130,36 +142,96 @@ impl Desktop {
         cx.notify();
     }
 
+    fn year_dialog(&self, dialog: Dialog, cx: &mut Context<Self>) -> Dialog {
+        let Some(year) = &self.year_form else {
+            return dialog;
+        };
+        let dismiss = cx.entity().downgrade();
+        let submit = cx.entity().downgrade();
+        dialog
+            .title("Add custom year")
+            .overlay_closable(false)
+            .keyboard(!self.status.busy)
+            .close_button(!self.status.busy)
+            .on_ok(move |_, window, cx| {
+                let _ = submit.update(cx, |this, cx| this.add_year(window, cx));
+                false
+            })
+            .on_cancel(move |_, _, cx| {
+                dismiss
+                    .update(cx, |this, _| !this.status.busy)
+                    .unwrap_or(true)
+            })
+            .on_close(cx.listener(|this, _, window, cx| {
+                if !this.status.busy {
+                    this.close_year_form(window, cx);
+                }
+            }))
+            .child(self.status.render(cx))
+            .child(form::input_field("Year", year, self.status.busy, cx))
+            .footer(
+                h_flex()
+                    .justify_end()
+                    .gap_2()
+                    .child(
+                        Button::new("cancel-year")
+                            .label("Cancel")
+                            .outline()
+                            .disabled(self.status.busy)
+                            .on_click(cx.listener(|this, _, window, cx| {
+                                if !this.status.busy {
+                                    window.close_dialog(cx);
+                                    this.close_year_form(window, cx);
+                                }
+                            })),
+                    )
+                    .child(
+                        Button::new("save-year")
+                            .label("Add")
+                            .primary()
+                            .disabled(self.status.busy)
+                            .on_click(cx.listener(|this, _, window, cx| this.add_year(window, cx))),
+                    ),
+            )
+    }
+
+    fn confirm_remove_year(&mut self, year: i32, window: &mut Window, cx: &mut Context<Self>) {
+        self.delete_year = Some(year);
+        let desktop = cx.entity().downgrade();
+        window.open_alert_dialog(cx, move |dialog, _, cx| {
+            desktop
+                .update(cx, |_, cx| {
+                    let confirm = cx.entity().downgrade();
+                    dialog
+                        .title("Remove year")
+                        .child(format!("Remove {year} from the year selector?"))
+                        .button_props(
+                            DialogButtonProps::default()
+                                .show_cancel(true)
+                                .ok_text("Remove")
+                                .cancel_text("Cancel"),
+                        )
+                        .on_ok(move |_, window, cx| {
+                            confirm
+                                .update(cx, |this, cx| this.change_year(year, true, window, cx))
+                                .is_ok()
+                        })
+                        .on_close(cx.listener(|this, _, _, cx| {
+                            this.delete_year = None;
+                            cx.notify();
+                        }))
+                })
+                .unwrap_or_else(|_| AlertDialog::new(cx))
+        });
+        cx.notify();
+    }
+
     pub fn year_manager(&self, cx: &mut Context<Self>) -> Div {
         let mut content = v_flex().gap_4().p_5();
-        if let Some(year) = &self.year_form {
-            return content
-                .child(div().text_lg().font_semibold().child("Add custom year"))
-                .child(form::input_field("Year", year, self.status.busy, cx))
-                .child(
-                    h_flex()
-                        .gap_2()
-                        .child(
-                            Button::new("cancel-year")
-                                .label("Cancel")
-                                .outline()
-                                .disabled(self.status.busy)
-                                .on_click(cx.listener(|this, _, window, cx| {
-                                    this.close_year_form(window, cx)
-                                })),
-                        )
-                        .child(
-                            Button::new("save-year")
-                                .label("Save")
-                                .primary()
-                                .disabled(self.status.busy)
-                                .on_click(
-                                    cx.listener(|this, _, window, cx| this.add_year(window, cx)),
-                                ),
-                        ),
-                );
-        }
-        let disabled = self.status.busy || self.status.loading || self.delete_year.is_some();
+        let disabled = self.status.busy
+            || self.status.loading
+            || self.year_form.is_some()
+            || self.delete_year.is_some();
         content = content
             .child(
                 h_flex()
@@ -191,40 +263,11 @@ impl Desktop {
                             .label(format!("Remove {year}"))
                             .outline()
                             .disabled(disabled)
-                            .on_click(cx.listener(move |this, _, _, cx| {
-                                this.delete_year = Some(year);
-                                cx.notify();
+                            .on_click(cx.listener(move |this, _, window, cx| {
+                                this.confirm_remove_year(year, window, cx)
                             }))
                     })),
             );
-        if let Some(year) = self.delete_year {
-            content = content
-                .child(components::notice(
-                    format!("Remove {year} from the year selector?"),
-                    cx,
-                ))
-                .child(
-                    h_flex()
-                        .gap_2()
-                        .child(
-                            Button::new("cancel-remove-year")
-                                .label("Cancel")
-                                .outline()
-                                .on_click(cx.listener(|this, _, _, cx| {
-                                    this.delete_year = None;
-                                    cx.notify();
-                                })),
-                        )
-                        .child(
-                            Button::new("confirm-remove-year")
-                                .label("Confirm")
-                                .primary()
-                                .on_click(cx.listener(move |this, _, window, cx| {
-                                    this.change_year(year, true, window, cx)
-                                })),
-                        ),
-                );
-        }
         content
     }
 }

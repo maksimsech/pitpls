@@ -25,12 +25,12 @@ impl DividendForm {
     pub fn new(record: Option<&CalculatedDividend>, window: &mut Window, cx: &mut App) -> Self {
         Self {
             existing_id: record.map(|record| record.id.clone()),
-            id: form::input(
+            id: form::optional_id(
                 record.map(|record| record.id.clone()).unwrap_or_default(),
                 window,
                 cx,
             ),
-            date: form::input(
+            date: form::date_input(
                 record
                     .map(|record| record.date.to_string())
                     .unwrap_or_else(|| chrono::Local::now().date_naive().to_string()),
@@ -58,7 +58,7 @@ impl DividendForm {
                 window,
                 cx,
             ),
-            tax_paid: form::input(
+            tax_paid: form::optional_id(
                 record
                     .map(|record| record.tax_paid.value.to_string())
                     .unwrap_or_else(|| "0".into()),
@@ -117,13 +117,13 @@ impl DividendForm {
         let id = form::text(&self.id, cx);
         Ok(CreateDividendInput {
             id: (!id.is_empty()).then_some(id),
-            date: form::required(&self.date, "Date (YYYY-MM-DD)", cx)?,
+            date: form::required(&self.date, "Date", cx)?,
             ticker: form::required(&self.ticker, "Ticker", cx)?,
             value: form::required(&self.value, "Value", cx)?,
             value_currency: form::selected(&self.value_currency, "Value currency", cx)?,
             tax_paid: form::required(&self.tax_paid, "Tax paid", cx)?,
             tax_paid_currency: form::selected(&self.tax_paid_currency, "Tax paid currency", cx)?,
-            country: form::required(&self.country, "Country code (two letters)", cx)?.parse()?,
+            country: form::required(&self.country, "Country code", cx)?.parse()?,
             provider: form::required(&self.provider, "Provider", cx)?,
         })
     }
@@ -134,13 +134,13 @@ impl DividendForm {
                 .existing_id
                 .clone()
                 .ok_or("No record selected for editing")?,
-            date: form::required(&self.date, "Date (YYYY-MM-DD)", cx)?,
+            date: form::required(&self.date, "Date", cx)?,
             ticker: form::required(&self.ticker, "Ticker", cx)?,
             value: form::required(&self.value, "Value", cx)?,
             value_currency: form::selected(&self.value_currency, "Value currency", cx)?,
             tax_paid: form::required(&self.tax_paid, "Tax paid", cx)?,
             tax_paid_currency: form::selected(&self.tax_paid_currency, "Tax paid currency", cx)?,
-            country: form::required(&self.country, "Country code (two letters)", cx)?.parse()?,
+            country: form::required(&self.country, "Country code", cx)?.parse()?,
             provider: form::required(&self.provider, "Provider", cx)?,
         })
     }
@@ -152,38 +152,26 @@ impl DividendForm {
             .flex_wrap()
             .gap_4()
             .max_w(px(700.))
-            .child(form::input_field(
-                if editing {
-                    "ID"
-                } else {
-                    "ID (optional; generated when blank)"
-                },
-                &self.id,
-                busy || editing,
-                cx,
-            ))
-            .child(form::input_field("Date (YYYY-MM-DD)", &self.date, busy, cx))
+            .child(form::input_field("ID", &self.id, busy || editing, cx))
+            .child(form::input_field("Date", &self.date, busy, cx))
             .child(form::input_field("Ticker", &self.ticker, busy, cx))
-            .child(form::input_field("Value", &self.value, busy, cx))
-            .child(form::select_field(
+            .child(form::amount_field(
+                "Value",
                 "Value currency",
+                &self.value,
                 &self.value_currency,
                 busy,
                 cx,
             ))
-            .child(form::input_field("Tax paid", &self.tax_paid, busy, cx))
-            .child(form::select_field(
+            .child(form::amount_field(
+                "Tax paid",
                 "Tax paid currency",
+                &self.tax_paid,
                 &self.tax_paid_currency,
                 busy,
                 cx,
             ))
-            .child(form::input_field(
-                "Country code (two letters)",
-                &self.country,
-                busy,
-                cx,
-            ))
+            .child(form::input_field("Country code", &self.country, busy, cx))
             .child(form::input_field("Provider", &self.provider, busy, cx))
     }
 }
