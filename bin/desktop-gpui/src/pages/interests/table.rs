@@ -1,9 +1,28 @@
 use super::*;
+use crate::{
+    components::table::{Column, cell},
+    format::{amount, exact_pln, money},
+};
+use gpui_kit::{assets::IconName, component::checkbox::Checkbox};
+
 use gpui_kit::component::scroll::ScrollableElement;
 use gpui_kit::prelude::FluentBuilder;
 
-impl<D: RecordDefinition> RecordsPage<D> {
-    fn table_header(&self, cx: &mut Context<Self>) -> Div {
+const SELECT_WIDTH: f32 = 42.;
+const ACTION_WIDTH: f32 = 132.;
+
+impl InterestsPage {
+    fn columns() -> Vec<Column> {
+        vec![
+            Column::text("Date", 120.),
+            Column::text("Provider", 160.),
+            Column::number("Value", 160.),
+            Column::number("Value (PLN)", 160.),
+            Column::number("Calculated tax (PLN)", 185.),
+        ]
+    }
+
+    fn table_header(&self, columns: &[Column], cx: &mut Context<Self>) -> Div {
         let mut row = h_flex()
             .h(px(42.))
             .bg(cx.theme().muted)
@@ -18,13 +37,12 @@ impl<D: RecordDefinition> RecordsPage<D> {
                     Checkbox::new("select-all")
                         .accessibility_label("Select all records")
                         .checked(
-                            !self.data.rows.is_empty()
-                                && self.selected.len() == self.data.rows.len(),
+                            !self.records.is_empty() && self.selected.len() == self.records.len(),
                         )
                         .disabled(self.status.busy || self.confirmation.is_some())
                         .on_click(cx.listener(|this, checked, _, cx| {
                             this.selected = if *checked {
-                                this.data.rows.iter().map(|row| row.id.clone()).collect()
+                                this.records.iter().map(|row| row.id.clone()).collect()
                             } else {
                                 HashSet::new()
                             };
@@ -33,8 +51,7 @@ impl<D: RecordDefinition> RecordsPage<D> {
                 ),
         );
         row.children(
-            self.data
-                .columns
+            columns
                 .iter()
                 .map(|column| cell(column.label.clone(), column, true, cx)),
         )
@@ -48,14 +65,26 @@ impl<D: RecordDefinition> RecordsPage<D> {
         )
     }
 
-    fn record_row(&self, record: &RecordRow, cx: &mut Context<Self>) -> Div {
+    fn record_row(
+        &self,
+        record: &CalculatedInterest,
+        columns: &[Column],
+        cx: &mut Context<Self>,
+    ) -> Div {
+        let cells: Vec<SharedString> = vec![
+            record.date.to_string().into(),
+            record.provider.clone().into(),
+            amount(record.value),
+            money(record.calculated_value),
+            money(record.to_pay),
+        ];
         let selected_id = record.id.clone();
         let expand_id = record.id.clone();
         let delete_id = record.id.clone();
-        let edit = record.edit.clone();
+        let edit_id = record.id.clone();
         let expanded = self.expanded.contains(&record.id);
         let disabled = self.status.busy || self.confirmation.is_some();
-        let label = format!("{} record on {}", D::PAGE.title(), record.cells[0]);
+        let label = format!("Interest record on {}", record.date);
         v_flex()
             .border_b_1()
             .border_color(cx.theme().border)
@@ -86,10 +115,9 @@ impl<D: RecordDefinition> RecordsPage<D> {
                             ),
                     )
                     .children(
-                        record
-                            .cells
+                        cells
                             .iter()
-                            .zip(&self.data.columns)
+                            .zip(columns)
                             .map(|(value, column)| cell(value.clone(), column, false, cx)),
                     )
                     .child(
@@ -127,8 +155,13 @@ impl<D: RecordDefinition> RecordsPage<D> {
                                     .accessibility_label(format!("Edit {label}"))
                                     .disabled(disabled)
                                     .on_click(cx.listener(move |this, _, window, cx| {
-                                        let editor = D::form(Some(edit.clone()), window, cx);
-                                        this.open_editor(editor, true, window, cx);
+                                        if let Some(record) =
+                                            this.records.iter().find(|record| record.id == edit_id)
+                                        {
+                                            let editor =
+                                                InterestForm::new(Some(record), window, cx);
+                                            this.open_editor(editor, window, cx);
+                                        }
                                     })),
                             )
                             .child(
@@ -150,6 +183,19 @@ impl<D: RecordDefinition> RecordsPage<D> {
                     ),
             )
             .when(expanded, |row| {
+                let details: Vec<(SharedString, SharedString)> = vec![
+                    ("Record ID".into(), record.id.clone().into()),
+                    ("NBP date".into(), record.nbp_date.to_string().into()),
+                    ("Original value".into(), amount(record.value)),
+                    (
+                        "Converted value (full precision)".into(),
+                        exact_pln(record.calculated_value),
+                    ),
+                    (
+                        "Calculated tax (full precision)".into(),
+                        exact_pln(record.to_pay),
+                    ),
+                ];
                 row.child(
                     h_flex()
                         .flex_wrap()
@@ -157,7 +203,7 @@ impl<D: RecordDefinition> RecordsPage<D> {
                         .gap_4()
                         .p_5()
                         .bg(cx.theme().muted)
-                        .children(record.details.iter().map(|(label, value)| {
+                        .children(details.iter().map(|(label, value)| {
                             v_flex()
                                 .w(px(280.))
                                 .gap_1()
@@ -177,8 +223,8 @@ impl<D: RecordDefinition> RecordsPage<D> {
             })
     }
 
-    pub(super) fn records(&self, cx: &mut Context<Self>) -> AnyElement {
-        if self.data.rows.is_empty() {
+    pub fn records(&self, cx: &mut Context<Self>) -> AnyElement {
+        if self.records.is_empty() {
             return self
                 .empty_state(
                     "No records for this period. Add a record or import a file.",
@@ -186,21 +232,20 @@ impl<D: RecordDefinition> RecordsPage<D> {
                 )
                 .into_any_element();
         }
-        let width = self
-            .data
-            .columns
-            .iter()
-            .map(|column| column.width)
-            .sum::<f32>()
-            + SELECT_WIDTH
-            + ACTION_WIDTH;
+        let columns = Self::columns();
+        let width =
+            columns.iter().map(|column| column.width).sum::<f32>() + SELECT_WIDTH + ACTION_WIDTH;
         let table = v_flex()
             .min_w(rems(width / 14.))
             .border_1()
             .border_color(cx.theme().border)
             .rounded(cx.theme().radius)
-            .child(self.table_header(cx))
-            .children(self.data.rows.iter().map(|row| self.record_row(row, cx)))
+            .child(self.table_header(&columns, cx))
+            .children(
+                self.records
+                    .iter()
+                    .map(|row| self.record_row(row, &columns, cx)),
+            )
             .child(
                 div()
                     .p_3()
@@ -208,7 +253,7 @@ impl<D: RecordDefinition> RecordsPage<D> {
                     .text_color(cx.theme().muted_foreground)
                     .child(format!(
                         "{} record(s) · Totals above cover the entire selected period.",
-                        self.data.rows.len()
+                        self.records.len()
                     )),
             );
         div()

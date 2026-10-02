@@ -3,7 +3,7 @@ use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::{assets::IconName, component::button::*};
 
 impl Desktop {
-    pub(super) fn toolbar(&self, cx: &mut Context<Self>) -> Div {
+    pub fn toolbar(&self, cx: &mut Context<Self>) -> Div {
         let locked = self.locked();
         let navigation = h_flex()
             .gap_2()
@@ -117,7 +117,7 @@ impl Desktop {
             .child(controls)
     }
 
-    pub(super) fn navigation(&self, cx: &mut Context<Self>) -> Div {
+    pub fn navigation(&self, cx: &mut Context<Self>) -> Div {
         h_flex()
             .flex_shrink_0()
             .flex_wrap()

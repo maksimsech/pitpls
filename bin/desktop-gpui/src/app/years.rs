@@ -2,10 +2,9 @@ use super::*;
 use chrono::Datelike;
 use gpui_kit::component::button::*;
 use pitpls_app::use_case::year;
-use serde_json::json;
 
 impl Desktop {
-    pub(super) fn load_years(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    pub fn load_years(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let Some(context) = &self.context else {
             return;
         };
@@ -33,18 +32,13 @@ impl Desktop {
             years.push(year);
         }
         years.sort_unstable_by(|a, b| b.cmp(a));
-        let mut choices = vec![Choice::new("all", "All years")];
+        let mut choices = vec![Choice::new(None, "All years")];
         choices.extend(
             years
                 .iter()
-                .map(|year| Choice::new(year.to_string(), year.to_string())),
+                .map(|year| Choice::new(Some(*year), year.to_string())),
         );
-        let value: SharedString = self
-            .preferences
-            .year
-            .map(|y| y.to_string())
-            .unwrap_or_else(|| "all".into())
-            .into();
+        let value = self.preferences.year;
         self.year_select.update(cx, |state, cx| {
             state.set_items(choices, window, cx);
             state.set_selected_value(&value, window, cx);
@@ -53,17 +47,9 @@ impl Desktop {
 
     fn open_year_form(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.return_focus = window.focused(cx);
-        let mut form = Form::new("Add custom year");
-        form.input(
-            "year",
-            "Year",
-            &json!({"year": chrono::Local::now().year().to_string()}),
-            false,
-            window,
-            cx,
-        );
-        form.focus(window, cx);
-        self.year_form = Some(form);
+        let year = form::input(chrono::Local::now().year().to_string(), window, cx);
+        window.focus(&year.focus_handle(cx), cx);
+        self.year_form = Some(year);
         self.status.error = None;
         cx.notify();
     }
@@ -78,13 +64,11 @@ impl Desktop {
     }
 
     fn add_year(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let Some(form) = &self.year_form else {
+        let Some(year) = &self.year_form else {
             return;
         };
-        let year = form.values(cx).and_then(|value| {
-            value["year"]
-                .as_str()
-                .unwrap_or_default()
+        let year = form::required(year, "Year", cx).and_then(|value| {
+            value
                 .parse::<i32>()
                 .map_err(|_| "Enter a valid whole year".to_string())
         });
@@ -146,12 +130,12 @@ impl Desktop {
         cx.notify();
     }
 
-    pub(super) fn year_manager(&self, cx: &mut Context<Self>) -> Div {
+    pub fn year_manager(&self, cx: &mut Context<Self>) -> Div {
         let mut content = v_flex().gap_4().p_5();
-        if let Some(form) = &self.year_form {
+        if let Some(year) = &self.year_form {
             return content
-                .child(div().text_lg().font_semibold().child(form.title.clone()))
-                .child(form.render(self.status.busy, cx))
+                .child(div().text_lg().font_semibold().child("Add custom year"))
+                .child(form::input_field("Year", year, self.status.busy, cx))
                 .child(
                     h_flex()
                         .gap_2()

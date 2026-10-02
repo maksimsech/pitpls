@@ -4,7 +4,6 @@ mod home;
 mod imports;
 mod interests;
 mod rates;
-mod records;
 mod settings;
 
 use crate::navigation::{Page, PageContext};

@@ -4,7 +4,7 @@ mod years;
 use crate::{
     components::{
         self, Status,
-        form::{self, Choice, ChoiceState, Form},
+        form::{self, Choice, ChoiceState},
     },
     config::{self, Config, Preferences},
     navigation::{Page, PageContext, PageEvent, PageEvents},
@@ -14,7 +14,7 @@ use crate::{
 };
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::{
-    component::{button::ButtonVariants, select::*, *},
+    component::{button::ButtonVariants, input::InputState, select::*, *},
     *,
 };
 use std::sync::Arc;
@@ -34,9 +34,9 @@ pub struct Desktop {
     preference_task: Option<Task<()>>,
     status: Status,
     years: Vec<i32>,
-    year_select: Entity<ChoiceState>,
+    year_select: Entity<ChoiceState<Option<i32>>>,
     manage_years: bool,
-    year_form: Option<Form>,
+    year_form: Option<Entity<InputState>>,
     delete_year: Option<i32>,
     return_focus: Option<FocusHandle>,
     _subscriptions: Vec<Subscription>,
@@ -49,7 +49,7 @@ impl Desktop {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
-        let year_select = form::select(vec![Choice::new("all", "All years")], "all", window, cx);
+        let year_select = form::select(vec![Choice::new(None, "All years")], None, window, cx);
         let year_subscription =
             cx.subscribe_in(&year_select, window, |this, _, event, window, cx| {
                 let SelectEvent::Confirm(Some(value)) = event else {
@@ -58,7 +58,7 @@ impl Desktop {
                 if this.locked() {
                     return;
                 }
-                let year = value.parse::<i32>().ok();
+                let year = *value;
                 if this.preferences.year != year {
                     this.preferences.year = year;
                     this.save_preferences(window, cx);

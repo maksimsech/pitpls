@@ -5,7 +5,7 @@ use specta::Type;
 
 use crate::common::Amount;
 
-#[derive(Clone, Copy, Serialize, Deserialize, Type)]
+#[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
 pub enum Action {
     FiatBuy,
     FiatSell,

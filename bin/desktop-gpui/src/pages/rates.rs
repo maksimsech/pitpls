@@ -1,19 +1,18 @@
 use super::PageView;
 use crate::{
     components::{
-        self, Status, file_picker,
-        form::Form,
+        self, Status, file_picker, form,
         table::{Column, cell},
     },
     navigation::PageContext,
 };
 use chrono::Datelike;
+use gpui_kit::component::input::InputState;
 use gpui_kit::{
     component::{button::*, scroll::ScrollableElement, *},
     *,
 };
 use pitpls_app::use_case::rate;
-use serde_json::json;
 use std::ops::Range;
 
 #[derive(Default)]
@@ -31,7 +30,7 @@ pub struct RatesPage {
     context: PageContext,
     status: Status,
     data: RateData,
-    form: Option<Form>,
+    nbp_year: Option<Entity<InputState>>,
     confirm_reset: bool,
     return_focus: Option<FocusHandle>,
     rate_scroll: UniformListScrollHandle,
@@ -43,7 +42,7 @@ impl RatesPage {
             context,
             status: Status::default(),
             data: RateData::default(),
-            form: None,
+            nbp_year: None,
             confirm_reset: false,
             return_focus: None,
             rate_scroll: UniformListScrollHandle::new(),
@@ -54,14 +53,14 @@ impl RatesPage {
 
     fn notify(&self, cx: &mut Context<Self>) {
         self.context.set_locked(
-            self.status.busy || self.form.is_some() || self.confirm_reset,
+            self.status.busy || self.nbp_year.is_some() || self.confirm_reset,
             cx,
         );
         cx.notify();
     }
 
     fn close_form(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        self.form = None;
+        self.nbp_year = None;
         self.status.error = None;
         if let Some(focus) = self.return_focus.take() {
             window.focus(&focus, cx);
@@ -128,32 +127,21 @@ impl RatesPage {
 
     fn open_nbp(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.return_focus = window.focused(cx);
-        let mut form = Form::new("Import rates from NBP");
-        form.input(
-            "year",
-            "Year",
-            &json!({"year": chrono::Local::now().year().to_string()}),
-            false,
-            window,
-            cx,
-        );
-        form.focus(window, cx);
-        self.form = Some(form);
+        let year = form::input(chrono::Local::now().year().to_string(), window, cx);
+        window.focus(&year.focus_handle(cx), cx);
+        self.nbp_year = Some(year);
         self.status.error = None;
         self.notify(cx);
     }
 
     fn import_nbp(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let Some(form) = &self.form else {
+        let Some(year) = &self.nbp_year else {
             return;
         };
         let current_year = chrono::Local::now().year();
-        let year = form
-            .values(cx)
+        let year = form::required(year, "Year", cx)
             .and_then(|value| {
-                value["year"]
-                    .as_str()
-                    .unwrap_or_default()
+                value
                     .parse::<i32>()
                     .map_err(|_| "Enter a valid whole year".to_string())
             })
@@ -176,10 +164,15 @@ impl RatesPage {
     fn controls(&self, cx: &mut Context<Self>) -> Div {
         let disabled = self.status.busy || self.status.loading || self.confirm_reset;
         let mut content = v_flex().gap_4().p_5().child(self.status.render(cx));
-        if let Some(form) = &self.form {
+        if let Some(year) = &self.nbp_year {
             return content
-                .child(div().text_lg().font_semibold().child(form.title.clone()))
-                .child(form.render(self.status.busy, cx))
+                .child(
+                    div()
+                        .text_lg()
+                        .font_semibold()
+                        .child("Import rates from NBP"),
+                )
+                .child(form::input_field("Year", year, self.status.busy, cx))
                 .child(
                     h_flex()
                         .gap_2()
@@ -275,7 +268,7 @@ impl RatesPage {
 
 impl PageView for RatesPage {
     fn refresh(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if self.status.busy || self.form.is_some() || self.confirm_reset {
+        if self.status.busy || self.nbp_year.is_some() || self.confirm_reset {
             return;
         }
         self.status.begin_load();
@@ -321,7 +314,7 @@ impl PageView for RatesPage {
 
 impl Render for RatesPage {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        if self.form.is_some() || !self.status.ready {
+        if self.nbp_year.is_some() || !self.status.ready {
             return components::scroll(self.controls(cx));
         }
         v_flex()

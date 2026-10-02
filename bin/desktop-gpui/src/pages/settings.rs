@@ -2,7 +2,7 @@ use super::PageView;
 use crate::{
     components::{
         self, Status,
-        form::{Choice, Form},
+        form::{self, Choice, ChoiceState},
     },
     navigation::PageContext,
 };
@@ -11,13 +11,12 @@ use gpui_kit::{
     *,
 };
 use pitpls_app::use_case::settings;
-use pitpls_core::settings::Settings;
-use serde_json::json;
+use pitpls_core::settings::{DividendRounding, Settings};
 
 pub struct SettingsPage {
     context: PageContext,
     status: Status,
-    form: Option<Form>,
+    dividend_rounding: Option<Entity<ChoiceState<DividendRounding>>>,
 }
 
 impl SettingsPage {
@@ -25,41 +24,20 @@ impl SettingsPage {
         let mut page = Self {
             context,
             status: Status::default(),
-            form: None,
+            dividend_rounding: None,
         };
         page.refresh(window, cx);
         page
-    }
-
-    fn form(settings: Settings, window: &mut Window, cx: &mut App) -> Form {
-        let mut form = Form::new("Calculation settings");
-        form.choice(
-            "dividend_rounding",
-            "Dividend rounding",
-            vec![
-                Choice::new("SumToGroszy", "Sum to groszy"),
-                Choice::new("SumToPayToZlote", "Sum to pay to złote"),
-                Choice::new("SumBothToZlote", "Sum both to złote"),
-                Choice::new("AllToZlote", "All to złote"),
-            ],
-            &json!(settings),
-            window,
-            cx,
-        );
-        form
     }
 
     fn save(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if self.status.busy || self.status.loading {
             return;
         }
-        let Some(form) = &self.form else {
+        let Some(dividend_rounding) = &self.dividend_rounding else {
             return;
         };
-        let settings = match form
-            .values(cx)
-            .and_then(|value| serde_json::from_value::<Settings>(value).map_err(|e| e.to_string()))
-        {
+        let dividend_rounding = match form::selected(dividend_rounding, "Dividend rounding", cx) {
             Ok(value) => value,
             Err(error) => {
                 self.status.error = Some(error.into());
@@ -67,6 +45,7 @@ impl SettingsPage {
                 return;
             }
         };
+        let settings = Settings { dividend_rounding };
         self.status.begin_save();
         self.context.set_locked(true, cx);
         self.status.task = Some(self.context.services.run(
@@ -92,14 +71,24 @@ impl PageView for SettingsPage {
             return;
         }
         self.status.begin_load();
-        self.form = None;
+        self.dividend_rounding = None;
         self.status.task = Some(self.context.services.run(
             window,
             cx,
             |app| async move { settings::load_settings(&app).await },
             |this, result, window, cx| {
                 if let Some(settings) = this.status.loaded(result) {
-                    this.form = Some(Self::form(settings, window, cx));
+                    this.dividend_rounding = Some(form::select(
+                        vec![
+                            Choice::new(DividendRounding::SumToGroszy, "Sum to groszy"),
+                            Choice::new(DividendRounding::SumToPayToZlote, "Sum to pay to złote"),
+                            Choice::new(DividendRounding::SumBothToZlote, "Sum both to złote"),
+                            Choice::new(DividendRounding::AllToZlote, "All to złote"),
+                        ],
+                        settings.dividend_rounding,
+                        window,
+                        cx,
+                    ));
                 }
                 cx.notify();
             },
@@ -111,10 +100,20 @@ impl PageView for SettingsPage {
 impl Render for SettingsPage {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let mut content = v_flex().gap_4().p_5().child(self.status.render(cx));
-        if let Some(form) = &self.form {
+        if let Some(dividend_rounding) = &self.dividend_rounding {
             content = content
-                .child(div().text_lg().font_semibold().child(form.title.clone()))
-                .child(form.render(self.status.busy, cx))
+                .child(
+                    div()
+                        .text_lg()
+                        .font_semibold()
+                        .child("Calculation settings"),
+                )
+                .child(form::select_field(
+                    "Dividend rounding",
+                    dividend_rounding,
+                    self.status.busy,
+                    cx,
+                ))
                 .child(
                     h_flex().child(
                         Button::new("save-settings")
