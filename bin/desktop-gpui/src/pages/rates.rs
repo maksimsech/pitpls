@@ -7,10 +7,8 @@ use crate::{
     navigation::PageContext,
 };
 use chrono::Datelike;
-use gpui_kit::component::{
-    dialog::{AlertDialog, Dialog, DialogButtonProps},
-    input::InputState,
-};
+use gpui_kit::component::{dialog::Dialog, input::InputState};
+use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::{
     component::{button::*, scroll::ScrollableElement, *},
     *,
@@ -37,6 +35,7 @@ pub struct RatesPage {
     confirm_reset: bool,
     return_focus: Option<FocusHandle>,
     rate_scroll: UniformListScrollHandle,
+    horizontal_scroll: ScrollHandle,
 }
 
 impl RatesPage {
@@ -49,6 +48,7 @@ impl RatesPage {
             confirm_reset: false,
             return_focus: None,
             rate_scroll: UniformListScrollHandle::new(),
+            horizontal_scroll: ScrollHandle::new(),
         };
         page.refresh(window, cx);
         page
@@ -183,7 +183,7 @@ impl RatesPage {
         let submit = cx.entity().downgrade();
         dialog
             .title("Import from NBP")
-            .overlay_closable(false)
+            .overlay_closable(!self.status.busy)
             .keyboard(!self.status.busy)
             .close_button(!self.status.busy)
             .on_ok(move |_, window, cx| {
@@ -200,7 +200,9 @@ impl RatesPage {
                     this.close_form(window, cx);
                 }
             }))
-            .child(self.status.render(cx))
+            .when(self.status.is_visible(), |view| {
+                view.child(self.status.render(cx))
+            })
             .child(form::input_field("Year", year, self.status.busy, cx))
             .footer(
                 h_flex()
@@ -237,15 +239,14 @@ impl RatesPage {
     fn open_reset(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.confirm_reset = true;
         let page = cx.entity().downgrade();
-        window.open_alert_dialog(cx, move |dialog, _, cx| {
+        window.open_dialog(cx, move |dialog, _, cx| {
             page.update(cx, |_, cx| {
                 let confirm = cx.entity().downgrade();
-                dialog.title("Reset rates")
+                dialog.title("Reset rates").footer(components::confirmation_footer("Reset"))
                     .child("Remove all imported exchange rates? Calculations will be unavailable until rates are reimported.")
-                    .button_props(DialogButtonProps::default().show_cancel(true).ok_text("Reset").cancel_text("Cancel"))
                     .on_ok(move |_, window, cx| confirm.update(cx, |this, cx| this.change(Change::Reset, window, cx)).is_ok())
                     .on_close(cx.listener(|this, _, _, cx| { this.confirm_reset = false; this.notify(cx); }))
-            }).unwrap_or_else(|_| AlertDialog::new(cx))
+            }).unwrap_or_else(|_| Dialog::new(cx))
         });
         self.notify(cx);
     }
@@ -255,7 +256,12 @@ impl RatesPage {
             || self.status.loading
             || self.nbp_year.is_some()
             || self.confirm_reset;
-        let mut content = v_flex().gap_4().p_5().child(self.status.render(cx));
+        let mut content = v_flex()
+            .gap_4()
+            .p_5()
+            .when(self.status.is_visible(), |view| {
+                view.child(self.status.render(cx))
+            });
         content = content.child(
             h_flex()
                 .flex_wrap()
@@ -277,7 +283,7 @@ impl RatesPage {
                 .child(
                     Button::new("rates-reset")
                         .label("Reset")
-                        .outline()
+                        .danger()
                         .disabled(disabled || !self.status.ready || self.data.rows.is_empty())
                         .on_click(cx.listener(|this, _, window, cx| this.open_reset(window, cx))),
                 ),
@@ -347,6 +353,9 @@ impl Render for RatesPage {
             return components::scroll(self.controls(cx));
         }
         v_flex()
+            .size_full()
+            .min_w_0()
+            .overflow_hidden()
             .flex_1()
             .min_h_0()
             .child(self.controls(cx))
@@ -355,6 +364,8 @@ impl Render for RatesPage {
                     .flex()
                     .flex_1()
                     .min_h_0()
+                    .min_w_0()
+                    .overflow_hidden()
                     .px_5()
                     .pb_5()
                     .child(self.rates(cx)),
@@ -377,56 +388,74 @@ impl RatesPage {
             .sum::<f32>();
         // Rate rows are uniform, unlike the expandable financial record rows.
         // Keep their header and virtual list in one horizontal scroll container.
+        let mut list = uniform_list(
+            "rate-days",
+            self.data.rows.len(),
+            cx.processor(|this, range: Range<usize>, _, cx| {
+                range
+                    .map(|index| {
+                        h_flex()
+                            .h(px(40.))
+                            .border_b_1()
+                            .border_color(cx.theme().border)
+                            .children(
+                                this.data.rows[index]
+                                    .iter()
+                                    .zip(&this.data.columns)
+                                    .map(|(value, column)| cell(value.clone(), column, false, cx)),
+                            )
+                    })
+                    .collect::<Vec<_>>()
+            }),
+        )
+        .flex_1()
+        .min_h_0()
+        .track_scroll(&self.rate_scroll);
+        // Keep horizontal wheel events available to the enclosing viewport.
+        list.style().restrict_scroll_to_axis = Some(true);
         let table = v_flex()
             .w(rems(width / 14.))
+            .flex_shrink_0()
             .h_full()
             .min_h_0()
             .border_1()
             .border_color(cx.theme().border)
             .child(
-                h_flex().h(px(42.)).bg(cx.theme().muted).children(
-                    self.data
-                        .columns
-                        .iter()
-                        .map(|column| cell(column.label.clone(), column, true, cx)),
-                ),
+                h_flex()
+                    .flex_shrink_0()
+                    .h(px(42.))
+                    .bg(cx.theme().muted)
+                    .children(
+                        self.data
+                            .columns
+                            .iter()
+                            .map(|column| cell(column.label.clone(), column, true, cx)),
+                    ),
             )
-            .child(
-                uniform_list(
-                    "rate-days",
-                    self.data.rows.len(),
-                    cx.processor(|this, range: Range<usize>, _, cx| {
-                        range
-                            .map(|index| {
-                                h_flex()
-                                    .h(px(40.))
-                                    .border_b_1()
-                                    .border_color(cx.theme().border)
-                                    .children(
-                                        this.data.rows[index].iter().zip(&this.data.columns).map(
-                                            |(value, column)| {
-                                                cell(value.clone(), column, false, cx)
-                                            },
-                                        ),
-                                    )
-                            })
-                            .collect::<Vec<_>>()
-                    }),
-                )
-                .flex_1()
-                .min_h_0()
-                .track_scroll(&self.rate_scroll),
-            );
+            .child(list);
+        // Scrollbar overlays belong to the stationary viewport, outside the
+        // element whose content offset changes while panning across currencies.
         div()
             .relative()
             .flex_1()
+            .min_w_0()
             .min_h_0()
+            .overflow_hidden()
             .child(
                 div()
                     .id("rates-horizontal")
                     .size_full()
-                    .overflow_x_scrollbar()
+                    .overflow_x_scroll()
+                    .lock_scroll_axis()
+                    .track_scroll(&self.horizontal_scroll)
                     .child(table),
+            )
+            .child(
+                div().absolute().inset_0().child(
+                    scroll::Scrollbar::horizontal(&self.horizontal_scroll)
+                        .mode(scroll::ScrollbarMode::Always)
+                        .viewport_from_layout(),
+                ),
             )
             .vertical_scrollbar(&self.rate_scroll)
             .into_any_element()

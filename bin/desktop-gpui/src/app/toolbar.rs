@@ -12,6 +12,11 @@ impl Desktop {
     pub fn toolbar(&self, cx: &mut Context<Self>) -> Div {
         let locked = self.locked();
         let navigation = h_flex()
+            .p_1()
+            .rounded(cx.theme().radius)
+            .border_1()
+            .border_color(cx.theme().border)
+            .bg(cx.theme().background.opacity(0.95))
             .gap_2()
             .flex_shrink_0()
             .child(
@@ -20,7 +25,13 @@ impl Desktop {
                     .outline()
                     .accessibility_label("Toggle navigation menu")
                     .disabled(locked)
-                    .on_click(cx.listener(|this, _, window, cx| this.open_navigation(window, cx))),
+                    .on_click(cx.listener(|this, _, window, cx| {
+                        this.menu_open = !this.menu_open;
+                        if this.menu_open {
+                            window.focus(&this.navigation_focus, cx);
+                        }
+                        cx.notify();
+                    })),
             )
             .when(!self.history.is_empty(), |bar| {
                 bar.child(
@@ -35,7 +46,7 @@ impl Desktop {
                             }
                             if let Some(page) = this.history.pop() {
                                 this.page = page;
-                                this.manage_years = false;
+                                this.menu_open = false;
                                 this.mount_page(window, cx);
                                 this.load_years(window, cx);
                             }
@@ -50,6 +61,7 @@ impl Desktop {
                         IconName::Moon
                     })
                     .outline()
+                    .ghost()
                     .accessibility_label("Toggle light and dark theme")
                     .disabled(self.context.is_none())
                     .on_click(cx.listener(|this, _, window, cx| {
@@ -77,6 +89,11 @@ impl Desktop {
                     .child(self.page.title()),
             );
         let controls = h_flex()
+            .p_1()
+            .rounded(cx.theme().radius)
+            .border_1()
+            .border_color(cx.theme().border)
+            .bg(cx.theme().background.opacity(0.95))
             .gap_2()
             .flex_shrink_0()
             .when(self.page.has_year(), |bar| {
@@ -94,10 +111,9 @@ impl Desktop {
                         .label("Manage years")
                         .outline()
                         .disabled(locked || self.status.loading || self.context.is_none())
-                        .on_click(cx.listener(|this, _, _, cx| {
-                            this.manage_years = !this.manage_years;
-                            cx.notify();
-                        })),
+                        .on_click(
+                            cx.listener(|this, _, window, cx| this.open_year_manager(window, cx)),
+                        ),
                 )
             })
             .child(
@@ -114,57 +130,60 @@ impl Desktop {
             .justify_between()
             .gap_3()
             .p_4()
-            .border_b_1()
-            .border_color(cx.theme().border)
             .child(navigation)
             .child(controls)
     }
 
-    fn open_navigation(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if self.locked() {
-            return;
-        }
-        let page = cx.entity().downgrade();
-        window.open_sheet_at(Placement::Left, cx, move |sheet, window, cx| {
-            let Ok(menu) = page.update(cx, |this, cx| {
-                SidebarMenu::new().children(Page::ALL.into_iter().map(|page| {
-                    SidebarMenuItem::new(page.title())
-                        .active(this.page == page)
-                        .suffix({
-                            let desktop = cx.entity().downgrade();
-                            let disabled = this.locked() || this.context.is_none();
-                            move |_, _| {
-                                Button::new(SharedString::from(format!("open-{}", page.title())))
-                                    .icon(IconName::ChevronRight)
-                                    .ghost()
-                                    .small()
-                                    .accessibility_label(format!("Open {}", page.title()))
-                                    .disabled(disabled)
-                                    .on_click({
-                                        let desktop = desktop.clone();
-                                        move |_, window, cx| {
-                                            cx.stop_propagation();
-                                            window.close_sheet(cx);
-                                            let _ = desktop.update(cx, |this, cx| {
-                                                this.navigate(page, window, cx)
-                                            });
-                                        }
-                                    })
-                            }
-                        })
-                        .disable(this.locked() || this.context.is_none())
-                        .on_click(cx.listener(move |this, _, window, cx| {
-                            window.close_sheet(cx);
-                            this.navigate(page, window, cx);
-                        }))
+    pub fn navigation_panel(&self, window: &mut Window, cx: &mut Context<Self>) -> Div {
+        let menu = SidebarMenu::new().children(Page::ALL.into_iter().map(|page| {
+            SidebarMenuItem::new(page.title())
+                .icon(match page {
+                    Page::Home => IconName::House,
+                    Page::Imports => IconName::Upload,
+                    Page::Dividends => IconName::Coins,
+                    Page::Interests => IconName::Percent,
+                    Page::Crypto => IconName::Bitcoin,
+                    Page::Rates => IconName::ChartLine,
+                    Page::Settings => IconName::Settings,
+                })
+                .active(self.page == page)
+                .disable(self.locked() || self.context.is_none())
+                .on_click(cx.listener(move |this, _, window, cx| {
+                    this.menu_open = false;
+                    this.navigate(page, window, cx);
+                    cx.notify();
                 }))
-            }) else {
-                return sheet;
-            };
-            sheet
-                .title("pitpls")
-                .size(px(280.))
-                .child(menu.render("navigation", window, cx))
-        });
+        }));
+        div()
+            .absolute()
+            .inset_0()
+            .child(
+                div()
+                    .id("navigation-backdrop")
+                    .absolute()
+                    .inset_0()
+                    .bg(cx.theme().background.opacity(0.4))
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.menu_open = false;
+                        cx.notify();
+                    })),
+            )
+            .child(
+                v_flex()
+                    .id("navigation-panel")
+                    .absolute()
+                    .top_0()
+                    .bottom_0()
+                    .left_0()
+                    .w(px(280.))
+                    .pt_16()
+                    .px_3()
+                    .pb_3()
+                    .bg(cx.theme().background)
+                    .border_r_1()
+                    .border_color(cx.theme().border)
+                    .overflow_y_scroll()
+                    .child(menu.render("navigation", window, cx)),
+            )
     }
 }

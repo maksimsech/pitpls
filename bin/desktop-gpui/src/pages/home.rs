@@ -90,7 +90,9 @@ impl Render for HomePage {
             v_flex()
                 .gap_4()
                 .p_5()
-                .child(self.status.render(cx))
+                .when(self.status.is_visible(), |view| {
+                    view.child(self.status.render(cx))
+                })
                 .when(self.warning, |view| {
                     view.child(components::notice(
                         "No rates loaded for this period. Open Rates to import exchange rates.",

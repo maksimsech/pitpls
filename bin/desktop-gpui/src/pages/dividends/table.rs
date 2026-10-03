@@ -10,7 +10,7 @@ use gpui_kit::component::{scroll::ScrollableElement, v_virtual_list};
 use gpui_kit::prelude::FluentBuilder;
 
 const SELECT_WIDTH: f32 = 42.;
-const ACTION_WIDTH: f32 = 132.;
+const ACTION_WIDTH: f32 = 108.;
 
 impl DividendsPage {
     pub(super) fn display_record(record: &CalculatedDividend) -> RowDisplay {
@@ -45,7 +45,7 @@ impl DividendsPage {
         RowDisplay { cells, details }
     }
 
-    fn columns() -> Vec<Column> {
+    fn base_columns() -> Vec<Column> {
         vec![
             Column::text("Date", 120.),
             Column::text("Ticker", 95.),
@@ -54,6 +54,18 @@ impl DividendsPage {
             Column::number("Tax paid", 155.),
             Column::text("Country", 85.),
         ]
+    }
+
+    fn columns(&self) -> Vec<Column> {
+        let mut columns = Self::base_columns();
+        let available = self.table_state.width / px(1.) * 14. / self.table_state.rem_size;
+        let minimum =
+            columns.iter().map(|column| column.width).sum::<f32>() + SELECT_WIDTH + ACTION_WIDTH;
+        let extra = (available - minimum).max(0.) / columns.len() as f32;
+        for column in &mut columns {
+            column.width += extra;
+        }
+        columns
     }
 
     fn table_header(&self, columns: &[Column], cx: &mut Context<Self>) -> Div {
@@ -126,7 +138,7 @@ impl DividendsPage {
             .border_color(cx.theme().border)
             .child(
                 h_flex()
-                    .min_h(px(48.))
+                    .min_h(px(40.))
                     .when(self.selected.contains(&record.id), |row| {
                         row.bg(cx.theme().muted)
                     })
@@ -205,7 +217,7 @@ impl DividendsPage {
                             .child(
                                 Button::new(SharedString::from(format!("delete-{}", record.id)))
                                     .icon(IconName::Trash)
-                                    .ghost()
+                                    .danger()
                                     .small()
                                     .accessibility_label(format!("Delete {label}"))
                                     .disabled(disabled)
@@ -261,13 +273,16 @@ impl DividendsPage {
                 )
                 .into_any_element();
         }
-        let columns = Self::columns();
+        let columns = Self::base_columns();
         let width =
             columns.iter().map(|column| column.width).sum::<f32>() + SELECT_WIDTH + ACTION_WIDTH;
         // Match the page padding and table borders. The width is explicit in both
         // measurement and presentation, including horizontally overflowing tables.
         let width = (window.viewport_size().width - window.rem_size() * 2.5 - px(2.))
             .max(window.rem_size() * (width / 14.));
+        self.table_state.width = width;
+        self.table_state.rem_size = window.rem_size() / px(1.);
+        let columns = self.columns();
         let key = (
             width,
             window.rem_size(),
@@ -307,7 +322,7 @@ impl DividendsPage {
             "record-rows",
             self.table_state.sizes.clone(),
             move |this, range, _, cx| {
-                let columns = Self::columns();
+                let columns = this.columns();
                 range
                     .map(|index| {
                         let record = &this.records[index];
@@ -357,13 +372,20 @@ impl DividendsPage {
         div()
             .id("records-horizontal")
             .w_full()
+            .min_w_0()
             .flex_1()
             .min_h(rems(17.))
             .relative()
-            .overflow_x_scroll()
-            .lock_scroll_axis()
-            .track_scroll(&self.table_scroll)
-            .child(table)
+            .overflow_hidden()
+            .child(
+                div()
+                    .id("records-pan")
+                    .size_full()
+                    .overflow_x_scroll()
+                    .lock_scroll_axis()
+                    .track_scroll(&self.table_scroll)
+                    .child(table),
+            )
             .horizontal_scrollbar(&self.table_scroll)
             .into_any_element()
     }

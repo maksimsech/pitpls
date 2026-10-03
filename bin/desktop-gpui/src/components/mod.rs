@@ -27,6 +27,10 @@ pub struct Status {
 }
 
 impl Status {
+    pub fn is_visible(&self) -> bool {
+        self.busy || self.loading || self.error.is_some() || self.message.is_some()
+    }
+
     pub fn begin_load(&mut self) {
         self.loading = true;
         self.ready = false;
@@ -153,4 +157,30 @@ pub fn summaries(groups: &[SummaryGroup], cx: &App) -> Div {
                         })),
                 )
         }))
+}
+
+/// Keep confirmations dismissible while routing both buttons through the
+/// dialog's existing callbacks (including its close/focus cleanup).
+pub fn confirmation_footer(label: &'static str) -> Div {
+    use gpui_kit::component::{
+        button::*,
+        dialog::{Cancel, Confirm},
+    };
+    h_flex()
+        .justify_end()
+        .gap_2()
+        .child(
+            Button::new("cancel-confirmation")
+                .label("Cancel")
+                .outline()
+                .on_click(|_, window, cx| window.dispatch_action(Box::new(Cancel), cx)),
+        )
+        .child(
+            Button::new("confirm-action")
+                .label(label)
+                .danger()
+                .on_click(|_, window, cx| {
+                    window.dispatch_action(Box::new(Confirm { secondary: false }), cx)
+                }),
+        )
 }

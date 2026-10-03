@@ -6,6 +6,7 @@ use crate::{
     },
     navigation::PageContext,
 };
+use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::{
     component::{button::*, *},
     *,
@@ -125,7 +126,12 @@ impl PageView for SettingsPage {
 
 impl Render for SettingsPage {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let mut content = v_flex().gap_4().p_5().child(self.status.render(cx));
+        let mut content = v_flex()
+            .gap_4()
+            .p_5()
+            .when(self.status.is_visible(), |view| {
+                view.child(self.status.render(cx))
+            });
         if let Some(dividend_rounding) = &self.dividend_rounding {
             content = content
                 .child(

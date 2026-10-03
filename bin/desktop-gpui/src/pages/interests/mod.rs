@@ -1,3 +1,4 @@
+use gpui_kit::prelude::FluentBuilder;
 mod form;
 mod table;
 
@@ -8,7 +9,7 @@ use crate::{
     format::pln,
     navigation::{Page, PageContext},
 };
-use gpui_kit::component::dialog::{AlertDialog, Dialog, DialogButtonProps};
+use gpui_kit::component::dialog::Dialog;
 use gpui_kit::component::scroll::ScrollableElement;
 use gpui_kit::{
     component::{button::*, *},
@@ -202,7 +203,7 @@ impl InterestsPage {
             .child(
                 Button::new("delete-selected")
                     .label("Remove selected")
-                    .outline()
+                    .danger()
                     .disabled(disabled || self.selected.is_empty())
                     .on_click(cx.listener(|this, _, window, cx| {
                         this.open_confirmation(
@@ -229,22 +230,17 @@ impl InterestsPage {
     ) {
         self.confirmation = Some(confirmation);
         let page = cx.entity().downgrade();
-        window.open_alert_dialog(cx, move |dialog, _, cx| {
+        window.open_dialog(cx, move |dialog, _, cx| {
             page.update(cx, |this, cx| {
                 let confirm = cx.entity().downgrade();
                 dialog
                     .title("Delete records")
+                    .footer(components::confirmation_footer("Delete"))
                     .child(
                         this.confirmation
                             .as_ref()
                             .map(|value| value.message.clone())
                             .unwrap_or_default(),
-                    )
-                    .button_props(
-                        DialogButtonProps::default()
-                            .show_cancel(true)
-                            .ok_text("Confirm")
-                            .cancel_text("Cancel"),
                     )
                     .on_ok(move |_, window, cx| {
                         confirm
@@ -256,7 +252,7 @@ impl InterestsPage {
                         this.notify(cx);
                     }))
             })
-            .unwrap_or_else(|_| AlertDialog::new(cx))
+            .unwrap_or_else(|_| Dialog::new(cx))
         });
         self.notify(cx);
     }
@@ -271,7 +267,7 @@ impl InterestsPage {
             .title(editor.title())
             .w(px(740.))
             .max_w(px(740.))
-            .overlay_closable(false)
+            .overlay_closable(!self.status.busy)
             .keyboard(!self.status.busy)
             .close_button(!self.status.busy)
             .on_ok(move |_, window, cx| {
@@ -288,7 +284,9 @@ impl InterestsPage {
                     this.close_editor(window, cx);
                 }
             }))
-            .child(self.status.render(cx))
+            .when(self.status.is_visible(), |view| {
+                view.child(self.status.render(cx))
+            })
             .child(editor.render(self.status.busy, cx))
             .footer(
                 h_flex()
@@ -369,7 +367,9 @@ impl Render for InterestsPage {
             .track_scroll(&self.page_scroll)
             .gap_4()
             .p_5()
-            .child(self.status.render(cx));
+            .when(self.status.is_visible(), |view| {
+                view.child(self.status.render(cx))
+            });
         content = content.child(self.actions(cx));
         if self.status.error.is_some() || (!self.status.ready && !self.status.loading) {
             content = content.child(

@@ -3,6 +3,7 @@ use crate::{
     components::{self, Status, file_picker},
     navigation::PageContext,
 };
+use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::{
     assets::IconName,
     component::{button::*, list::ListItem, tag::Tag},
@@ -84,7 +85,9 @@ impl Render for ImportsPage {
             v_flex()
                 .gap_4()
                 .p_5()
-                .child(self.status.render(cx))
+                .when(self.status.is_visible(), |view| {
+                    view.child(self.status.render(cx))
+                })
                 .child(self.imports(cx)),
         )
     }

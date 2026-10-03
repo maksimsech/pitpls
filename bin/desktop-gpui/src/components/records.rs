@@ -12,6 +12,7 @@ pub struct RecordTableState {
     pub measured: Vec<[Option<Size<Pixels>>; 2]>,
     pub scroll: VirtualListScrollHandle,
     pub width: Pixels,
+    pub rem_size: f32,
     pub layout_key: Option<(Pixels, Pixels, SharedString, SharedString)>,
     pub dirty: bool,
 }
@@ -24,6 +25,7 @@ impl Default for RecordTableState {
             measured: vec![],
             scroll: VirtualListScrollHandle::new(),
             width: px(0.),
+            rem_size: 16.,
             layout_key: None,
             dirty: true,
         }

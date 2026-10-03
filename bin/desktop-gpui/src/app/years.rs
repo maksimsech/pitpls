@@ -1,9 +1,6 @@
 use super::*;
 use chrono::Datelike;
-use gpui_kit::component::{
-    button::*,
-    dialog::{AlertDialog, Dialog, DialogButtonProps},
-};
+use gpui_kit::component::{button::*, dialog::Dialog};
 use pitpls_app::use_case::year;
 
 impl Desktop {
@@ -49,6 +46,10 @@ impl Desktop {
     }
 
     fn open_year_form(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.manage_years {
+            window.close_dialog(cx);
+            self.manage_years = false;
+        }
         self.return_focus = window.focused(cx);
         let year = form::input(chrono::Local::now().year().to_string(), window, cx);
         self.year_form = Some(year.clone());
@@ -150,7 +151,9 @@ impl Desktop {
         let submit = cx.entity().downgrade();
         dialog
             .title("Add custom year")
-            .overlay_closable(false)
+            .w(px(420.))
+            .max_w(px(420.))
+            .overlay_closable(!self.status.busy)
             .keyboard(!self.status.busy)
             .close_button(!self.status.busy)
             .on_ok(move |_, window, cx| {
@@ -198,19 +201,14 @@ impl Desktop {
     fn confirm_remove_year(&mut self, year: i32, window: &mut Window, cx: &mut Context<Self>) {
         self.delete_year = Some(year);
         let desktop = cx.entity().downgrade();
-        window.open_alert_dialog(cx, move |dialog, _, cx| {
+        window.open_dialog(cx, move |dialog, _, cx| {
             desktop
                 .update(cx, |_, cx| {
                     let confirm = cx.entity().downgrade();
                     dialog
                         .title("Remove year")
+                        .footer(components::confirmation_footer("Remove"))
                         .child(format!("Remove {year} from the year selector?"))
-                        .button_props(
-                            DialogButtonProps::default()
-                                .show_cancel(true)
-                                .ok_text("Remove")
-                                .cancel_text("Cancel"),
-                        )
                         .on_ok(move |_, window, cx| {
                             confirm
                                 .update(cx, |this, cx| this.change_year(year, true, window, cx))
@@ -221,32 +219,64 @@ impl Desktop {
                             cx.notify();
                         }))
                 })
-                .unwrap_or_else(|_| AlertDialog::new(cx))
+                .unwrap_or_else(|_| Dialog::new(cx))
         });
         cx.notify();
     }
 
-    pub fn year_manager(&self, cx: &mut Context<Self>) -> Div {
-        let mut content = v_flex().gap_4().p_5();
-        let disabled = self.status.busy
-            || self.status.loading
-            || self.year_form.is_some()
-            || self.delete_year.is_some();
-        content = content
-            .child(
-                h_flex()
-                    .justify_between()
-                    .child(div().font_semibold().child("Manage years"))
-                    .child(
-                        Button::new("add-year")
-                            .label("Add year")
-                            .outline()
-                            .disabled(disabled)
-                            .on_click(
-                                cx.listener(|this, _, window, cx| this.open_year_form(window, cx)),
-                            ),
-                    ),
-            )
+    pub fn open_year_manager(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.manage_years = true;
+        let desktop = cx.entity().downgrade();
+        window.open_dialog(cx, move |dialog, _, cx| {
+            desktop
+                .update(cx, |this, cx| {
+                    dialog
+                        .title("Manage years")
+                        .w(px(420.))
+                        .max_w(px(420.))
+                        .overlay_closable(!this.status.busy)
+                        .keyboard(!this.status.busy)
+                        .close_button(!this.status.busy)
+                        .on_close(cx.listener(|this, _, _, cx| {
+                            this.manage_years = false;
+                            cx.notify();
+                        }))
+                        .child(this.year_manager(cx))
+                        .footer(
+                            h_flex()
+                                .justify_end()
+                                .gap_2()
+                                .child(
+                                    Button::new("done-years")
+                                        .label("Done")
+                                        .outline()
+                                        .disabled(this.status.busy)
+                                        .on_click(cx.listener(|this, _, window, cx| {
+                                            window.close_dialog(cx);
+                                            this.manage_years = false;
+                                            cx.notify();
+                                        })),
+                                )
+                                .child(
+                                    Button::new("add-year")
+                                        .label("Add year")
+                                        .primary()
+                                        .disabled(this.status.busy)
+                                        .on_click(cx.listener(|this, _, window, cx| {
+                                            this.open_year_form(window, cx)
+                                        })),
+                                ),
+                        )
+                })
+                .unwrap_or_else(|_| Dialog::new(cx))
+        });
+        cx.notify();
+    }
+
+    fn year_manager(&self, cx: &mut Context<Self>) -> Div {
+        let disabled = self.status.busy || self.status.loading || self.delete_year.is_some();
+        v_flex()
+            .gap_3()
             .child(
                 div()
                     .text_sm()
@@ -254,20 +284,35 @@ impl Desktop {
                     .child("Removing a year only removes it from the selector."),
             )
             .child(
-                h_flex()
-                    .flex_wrap()
-                    .gap_2()
+                v_flex()
+                    .id("year-list")
+                    .max_h(px(256.))
+                    .overflow_y_scroll()
+                    .gap_1()
+                    .when(self.years.is_empty(), |view| {
+                        view.child("No custom years yet.")
+                    })
                     .children(self.years.iter().map(|year| {
                         let year = *year;
-                        Button::new(SharedString::from(format!("remove-year-{year}")))
-                            .label(format!("Remove {year}"))
-                            .outline()
-                            .disabled(disabled)
-                            .on_click(cx.listener(move |this, _, window, cx| {
-                                this.confirm_remove_year(year, window, cx)
-                            }))
+                        h_flex()
+                            .justify_between()
+                            .gap_3()
+                            .p_2()
+                            .border_1()
+                            .border_color(cx.theme().border)
+                            .rounded(cx.theme().radius)
+                            .child(year.to_string())
+                            .child(
+                                Button::new(SharedString::from(format!("remove-year-{year}")))
+                                    .label("Remove")
+                                    .danger()
+                                    .small()
+                                    .disabled(disabled)
+                                    .on_click(cx.listener(move |this, _, window, cx| {
+                                        this.confirm_remove_year(year, window, cx)
+                                    })),
+                            )
                     })),
-            );
-        content
+            )
     }
 }

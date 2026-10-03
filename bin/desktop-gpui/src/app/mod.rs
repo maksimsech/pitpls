@@ -35,6 +35,8 @@ pub struct Desktop {
     years: Vec<i32>,
     year_select: Entity<ChoiceState<Option<i32>>>,
     manage_years: bool,
+    menu_open: bool,
+    navigation_focus: FocusHandle,
     year_form: Option<Entity<InputState>>,
     delete_year: Option<i32>,
     return_focus: Option<FocusHandle>,
@@ -92,6 +94,8 @@ impl Desktop {
             years: vec![],
             year_select,
             manage_years: false,
+            menu_open: false,
+            navigation_focus: cx.focus_handle(),
             year_form: None,
             delete_year: None,
             return_focus: None,
@@ -103,6 +107,7 @@ impl Desktop {
 
     fn locked(&self) -> bool {
         self.status.busy
+            || self.manage_years
             || self.page_locked
             || self.year_form.is_some()
             || self.delete_year.is_some()
@@ -226,10 +231,15 @@ impl Desktop {
 }
 
 impl Render for Desktop {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         // Keep one bounded content region in every state, including startup and
         // connection failures, so page content cannot displace the window chrome.
-        let mut content = v_flex().flex_1().min_h_0().overflow_hidden();
+        let mut content = v_flex()
+            .flex_1()
+            .min_h_0()
+            .min_w_0()
+            .pt_16()
+            .overflow_hidden();
         if self.context.is_none() {
             content = content.child(components::scroll(
                 v_flex()
@@ -270,23 +280,37 @@ impl Render for Desktop {
                         )
                     },
                 )
-                .when(self.manage_years, |view| {
-                    view.child(components::scroll(self.year_manager(cx)))
-                })
-                .when(!self.manage_years, |view| {
-                    view.when_some(self.active.as_ref(), |view, page| {
-                        view.child(page.view.clone())
-                    })
+                .when_some(self.active.as_ref(), |view, page| {
+                    view.child(page.view.clone())
                 });
         }
         v_flex()
+            .id("desktop")
+            .track_focus(&self.navigation_focus)
+            .on_key_down(cx.listener(|this, event: &KeyDownEvent, _, cx| {
+                if this.menu_open && event.keystroke.key == "escape" {
+                    this.menu_open = false;
+                    cx.notify();
+                }
+            }))
+            .relative()
             .size_full()
             .overflow_hidden()
             .bg(cx.theme().background)
             .text_color(cx.theme().foreground)
             .font_family(cx.theme().font_family.clone())
             .text_sm()
-            .child(self.toolbar(cx))
             .child(content)
+            .when(self.menu_open, |view| {
+                view.child(self.navigation_panel(window, cx))
+            })
+            .child(
+                div()
+                    .absolute()
+                    .top_0()
+                    .left_0()
+                    .right_0()
+                    .child(self.toolbar(cx)),
+            )
     }
 }
