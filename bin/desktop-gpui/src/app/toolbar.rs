@@ -1,4 +1,5 @@
 use super::*;
+use crate::{TOOLBAR_HEIGHT, components::tooltip::hover_label};
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::{
     assets::IconName,
@@ -8,12 +9,11 @@ use gpui_kit::{
     },
 };
 
-pub(super) const TOOLBAR_HEIGHT: Pixels = px(64.);
 const SIDEBAR_WIDTH: Pixels = px(230.);
 const RAIL_WIDTH: Pixels = px(68.);
 
 impl Desktop {
-    pub fn toolbar(&self, window: &Window, cx: &mut Context<Self>) -> AnyElement {
+    pub fn toolbar(&self, progress: f32, window: &Window, cx: &mut Context<Self>) -> AnyElement {
         let locked = self.locked();
         let collapsed = self.preferences.sidebar_collapsed;
         let fullscreen = window.is_fullscreen() || window.is_simple_fullscreen();
@@ -21,31 +21,31 @@ impl Desktop {
         // Expanded navigation and the page title share the same vertical edge.
         // The collapsed header still reserves room for the native window controls.
         let leading_width = if integrated_titlebar {
-            if collapsed {
-                px(52.)
-            } else {
-                SIDEBAR_WIDTH - px(96.)
-            }
+            px(52.) + (SIDEBAR_WIDTH - px(96.) - px(52.)) * progress
         } else {
-            self.sidebar_width()
+            Self::sidebar_width(progress)
         };
         let leading = h_flex()
+            .relative()
             .h_full()
             .w(leading_width)
             .flex_shrink_0()
             .px_3()
-            .when(!collapsed, |view| {
-                view.border_r_1().border_color(cx.theme().sidebar_border)
-            })
+            // Keep the toolbar divider inset in both sidebar states. When
+            // expanded, it lines up with the navigation panel's right edge.
+            .child(
+                div()
+                    .absolute()
+                    .right_0()
+                    .top((TOOLBAR_HEIGHT - px(20.)) / 2.)
+                    .w(px(1.))
+                    .h(px(20.))
+                    .bg(cx.theme().sidebar_border),
+            )
             .child(
                 Button::new("sidebar-toggle")
                     .icon(IconName::PanelLeft)
                     .ghost()
-                    .tooltip(if collapsed {
-                        "Expand sidebar"
-                    } else {
-                        "Collapse sidebar"
-                    })
                     .accessibility_label(if collapsed {
                         "Expand sidebar"
                     } else {
@@ -56,7 +56,20 @@ impl Desktop {
                         this.preferences.sidebar_collapsed = !this.preferences.sidebar_collapsed;
                         this.save_preferences(window, cx);
                         cx.notify();
-                    })),
+                    }))
+                    .map(|button| {
+                        hover_label(
+                            "sidebar-toggle-label",
+                            button,
+                            if collapsed {
+                                "Expand sidebar"
+                            } else {
+                                "Collapse sidebar"
+                            },
+                            Placement::Bottom,
+                            &self.hover_labels,
+                        )
+                    }),
             );
         let title = h_flex()
             .flex_1()
@@ -68,7 +81,6 @@ impl Desktop {
                     Button::new("back")
                         .icon(IconName::ArrowLeft)
                         .ghost()
-                        .tooltip("Back")
                         .accessibility_label("Back")
                         .disabled(locked)
                         .on_click(cx.listener(|this, _, window, cx| {
@@ -80,7 +92,16 @@ impl Desktop {
                                 this.mount_page(window, cx);
                                 this.load_years(window, cx);
                             }
-                        })),
+                        }))
+                        .map(|button| {
+                            hover_label(
+                                "back-label",
+                                button,
+                                "Back",
+                                Placement::Bottom,
+                                &self.hover_labels,
+                            )
+                        }),
                 )
             })
             .child(
@@ -121,10 +142,18 @@ impl Desktop {
                 Button::new("refresh")
                     .icon(IconName::RefreshCw)
                     .ghost()
-                    .tooltip("Refresh current page")
                     .accessibility_label("Refresh current page")
                     .disabled(locked || self.status.loading)
-                    .on_click(cx.listener(|this, _, window, cx| this.reload(window, cx))),
+                    .on_click(cx.listener(|this, _, window, cx| this.reload(window, cx)))
+                    .map(|button| {
+                        hover_label(
+                            "refresh-label",
+                            button,
+                            "Refresh current page",
+                            Placement::Bottom,
+                            &self.hover_labels,
+                        )
+                    }),
             );
         let toolbar = h_flex()
             .size_full()
@@ -138,9 +167,8 @@ impl Desktop {
                 .h(TOOLBAR_HEIGHT)
                 .pl(px(96.))
                 .pr_0()
-                .border_b_1()
-                .border_color(cx.theme().sidebar_border)
-                .bg(cx.theme().sidebar)
+                .border_b_0()
+                .bg(cx.theme().title_bar)
                 .child(toolbar)
                 .into_any_element();
         }
@@ -151,9 +179,7 @@ impl Desktop {
         div()
             .h(TOOLBAR_HEIGHT)
             .flex_shrink_0()
-            .border_b_1()
-            .border_color(cx.theme().sidebar_border)
-            .bg(cx.theme().sidebar)
+            .bg(cx.theme().title_bar)
             .child(toolbar)
             .into_any_element()
     }
@@ -198,15 +224,11 @@ impl Desktop {
             .scrollable(true)
     }
 
-    fn sidebar_width(&self) -> Pixels {
-        if self.preferences.sidebar_collapsed {
-            RAIL_WIDTH
-        } else {
-            SIDEBAR_WIDTH
-        }
+    fn sidebar_width(progress: f32) -> Pixels {
+        RAIL_WIDTH + (SIDEBAR_WIDTH - RAIL_WIDTH) * progress
     }
 
-    fn navigation_button(&self, page: Page, cx: &mut Context<Self>) -> Button {
+    fn navigation_button(&self, page: Page, progress: f32, cx: &mut Context<Self>) -> AnyElement {
         let collapsed = self.preferences.sidebar_collapsed;
         let icon = match page {
             Page::Home => IconName::House,
@@ -229,19 +251,40 @@ impl Desktop {
             .child(
                 h_flex()
                     .w_full()
+                    .overflow_hidden()
                     .gap(px(12.))
-                    .when(collapsed, |view| view.justify_center())
-                    .child(Icon::new(icon).size(px(18.)))
-                    .when(!collapsed, |view| view.child(page.title())),
+                    .child(div().flex_shrink_0().child(Icon::new(icon).size(px(18.))))
+                    .when(progress > 0., |view| {
+                        view.child(
+                            div()
+                                .whitespace_nowrap()
+                                .opacity(progress)
+                                .child(page.title()),
+                        )
+                    }),
             )
-            .when(collapsed, |button| button.tooltip(page.title()))
             .accessibility_label(page.title())
             .disabled(self.locked() || self.context.is_none())
             .on_click(cx.listener(move |this, _, window, cx| this.navigate(page, window, cx)))
+            .map(|button| {
+                if collapsed {
+                    hover_label(
+                        page.title(),
+                        button,
+                        page.title(),
+                        Placement::Right,
+                        &self.hover_labels,
+                    )
+                    .w_full()
+                    .into_any_element()
+                } else {
+                    button.into_any_element()
+                }
+            })
     }
 
-    pub fn navigation_panel(&self, cx: &mut Context<Self>) -> Div {
-        let collapsed = self.preferences.sidebar_collapsed;
+    pub fn navigation_panel(&self, progress: f32, cx: &mut Context<Self>) -> Div {
+        let inner_width = Self::sidebar_width(progress) - px(24.);
         let theme_button = Button::new("theme")
             .icon(if cx.theme().is_dark() {
                 IconName::Moon
@@ -250,11 +293,6 @@ impl Desktop {
             })
             .ghost()
             .size(px(40.))
-            .tooltip(if cx.theme().is_dark() {
-                "Switch to light theme"
-            } else {
-                "Switch to dark theme"
-            })
             .accessibility_label("Toggle light and dark theme")
             .disabled(self.context.is_none())
             .on_click(cx.listener(|this, _, window, cx| {
@@ -274,12 +312,11 @@ impl Desktop {
                 cx.notify();
             }));
         v_flex()
-            .w(self.sidebar_width())
+            .w(Self::sidebar_width(progress))
             .h_full()
             .flex_shrink_0()
-            .bg(cx.theme().sidebar)
-            .border_r_1()
-            .border_color(cx.theme().sidebar_border)
+            .overflow_hidden()
+            .bg(cx.theme().sidebar.mix_oklab(cx.theme().title_bar, progress))
             .p(px(12.))
             .child(
                 v_flex()
@@ -292,26 +329,42 @@ impl Desktop {
                         Page::ALL
                             .into_iter()
                             .filter(|page| *page != Page::Settings)
-                            .map(|page| self.navigation_button(page, cx)),
+                            .map(|page| self.navigation_button(page, progress, cx)),
                     ),
             )
             .child(
-                h_flex()
+                div()
+                    .relative()
                     .flex_shrink_0()
-                    .when(collapsed, |view| view.flex_col())
-                    .gap_2()
-                    .pt_3()
+                    .h(px(101.) - px(48.) * progress)
                     .mt_3()
                     .border_t_1()
                     .border_color(cx.theme().sidebar_border)
                     .child(
                         div()
+                            .absolute()
+                            .left_0()
+                            .top(px(13.))
                             .min_w_0()
-                            .when(!collapsed, |view| view.flex_1())
-                            .when(collapsed, |view| view.w_full())
-                            .child(self.navigation_button(Page::Settings, cx)),
+                            .w(inner_width - px(48.) * progress)
+                            .child(self.navigation_button(Page::Settings, progress, cx)),
                     )
-                    .child(theme_button),
+                    .child(
+                        hover_label(
+                            "theme-label",
+                            theme_button,
+                            if cx.theme().is_dark() {
+                                "Switch to light theme"
+                            } else {
+                                "Switch to dark theme"
+                            },
+                            Placement::Right,
+                            &self.hover_labels,
+                        )
+                        .absolute()
+                        .left((inner_width - px(40.)) * progress)
+                        .top(px(13.) + px(48.) * (1. - progress)),
+                    ),
             )
     }
 }

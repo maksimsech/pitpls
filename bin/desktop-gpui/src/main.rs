@@ -15,6 +15,7 @@ use gpui_kit::*;
 use std::sync::Arc;
 
 pub(crate) const APP_NAME: &str = "pitpls";
+pub(crate) const TOOLBAR_HEIGHT: Pixels = px(44.);
 
 actions!(desktop_gpui, [Quit]);
 
@@ -64,8 +65,11 @@ fn run() -> Result<(), String> {
                     titlebar: Some(TitlebarOptions {
                         title: None,
                         appears_transparent: true,
-                        // Center the native controls in the 64px app toolbar.
-                        traffic_light_position: Some(point(px(16.), px(25.))),
+                        // Center the 14px native controls in the compact toolbar.
+                        traffic_light_position: Some(point(
+                            px(16.),
+                            (TOOLBAR_HEIGHT - px(14.)) / 2.,
+                        )),
                     }),
                     #[cfg(target_os = "macos")]
                     app_owns_titlebar_drag: true,

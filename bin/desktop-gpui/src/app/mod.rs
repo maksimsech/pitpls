@@ -11,6 +11,7 @@ use crate::{
 };
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::{
+    base::{Transition, transition},
     component::{button::ButtonVariants, input::InputState, *},
     *,
 };
@@ -32,6 +33,7 @@ pub struct Desktop {
     years: Vec<i32>,
     manage_years: bool,
     navigation_focus: FocusHandle,
+    hover_labels: Entity<gpui_kit::base::TooltipOverlay>,
     year_form: Option<Entity<InputState>>,
     delete_year: Option<i32>,
     return_focus: Option<FocusHandle>,
@@ -73,6 +75,7 @@ impl Desktop {
             years: vec![],
             manage_years: false,
             navigation_focus: cx.focus_handle(),
+            hover_labels: cx.new(|_| gpui_kit::base::TooltipOverlay::new()),
             year_form: None,
             delete_year: None,
             return_focus: None,
@@ -220,9 +223,37 @@ impl Desktop {
 
 impl Render for Desktop {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let target = if self.preferences.sidebar_collapsed {
+            0.
+        } else {
+            1.
+        };
+        // Initialize from restored preferences; only user changes animate.
+        // One shared value keeps the header, content edge, and labels in sync.
+        let sidebar_progress = if self.context.is_some() {
+            let motion = cx.theme().motion_tokens();
+            transition(
+                "desktop-sidebar-expansion",
+                target,
+                Transition::new(motion.duration_normal).easing(motion.easing_move.clone()),
+                window,
+                cx,
+            )
+        } else {
+            target
+        };
         // Keep one bounded content region in every state, including startup and
         // connection failures, so page content cannot displace the window chrome.
-        let mut content = v_flex().flex_1().min_h_0().min_w_0().overflow_hidden();
+        let mut content = v_flex()
+            .flex_1()
+            .min_h_0()
+            .min_w_0()
+            .overflow_hidden()
+            .bg(cx.theme().background)
+            // The frame starts to the right of navigation in both sidebar states.
+            .border_1()
+            .border_color(cx.theme().border)
+            .rounded(px(12.));
         if self.context.is_none() {
             content = content.child(components::scroll(
                 v_flex()
@@ -273,19 +304,23 @@ impl Render for Desktop {
             .relative()
             .size_full()
             .overflow_hidden()
-            .bg(cx.theme().background)
+            .bg(cx.theme().title_bar)
             .text_color(cx.theme().foreground)
             .font_family(cx.theme().font_family.clone())
             .text_sm()
-            .child(self.toolbar(window, cx))
+            .child(self.toolbar(sidebar_progress, window, cx))
             .child(
                 h_flex()
                     .flex_1()
                     .min_h_0()
-                    .w_full()
+                    .min_w_0()
+                    .mr(px(4.))
+                    .mb(px(4.))
+                    .overflow_hidden()
                     .items_stretch()
-                    .child(self.navigation_panel(cx))
+                    .child(self.navigation_panel(sidebar_progress, cx))
                     .child(content),
             )
+            .child(self.hover_labels.clone())
     }
 }

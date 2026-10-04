@@ -3,6 +3,7 @@ pub mod file_picker;
 pub mod form;
 pub mod records;
 pub mod table;
+pub mod tooltip;
 
 use gpui_kit::{
     component::{
