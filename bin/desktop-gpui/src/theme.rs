@@ -101,8 +101,8 @@ pub fn configure_theme(cx: &mut App) {
         c.list_active_border = c.border;
         c.table = c.background;
         c.table_even = c.background;
-        c.table_head = c.muted;
-        c.table_head_foreground = c.foreground;
+        c.table_head = rgb(if dark { 0x111111 } else { 0xfafafa }).into();
+        c.table_head_foreground = c.muted_foreground;
         c.table_hover = c.muted.opacity(0.5);
         c.table_active = c.muted;
         c.table_active_border = c.border;

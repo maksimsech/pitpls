@@ -10,10 +10,6 @@ pub fn pln(value: Decimal) -> gpui_kit::SharedString {
     format!("{} PLN", money(value)).into()
 }
 
-pub fn exact_pln(value: Decimal) -> gpui_kit::SharedString {
-    format!("{} PLN", value.normalize()).into()
-}
-
 pub fn amount(value: Amount) -> gpui_kit::SharedString {
     format!("{} {}", value.value.normalize(), value.currency).into()
 }

@@ -1,11 +1,13 @@
 use super::*;
 use crate::{
     components::table::{Column, cell},
-    format::{amount, exact_pln},
+    format::{amount, pln},
 };
 use gpui_kit::{assets::IconName, component::checkbox::Checkbox};
 
-use crate::components::records::{ACTION_WIDTH, RowDisplay, SELECT_WIDTH};
+use crate::components::records::{
+    ACTION_WIDTH, DetailGroup, RowDisplay, SELECT_WIDTH, record_details,
+};
 use gpui_kit::component::{scroll::ScrollableElement, v_virtual_list};
 use gpui_kit::prelude::FluentBuilder;
 
@@ -19,25 +21,33 @@ impl DividendsPage {
             amount(record.tax_paid),
             record.country.to_string().into(),
         ];
-        let details: Vec<(SharedString, SharedString)> = vec![
-            ("Record ID".into(), record.id.clone().into()),
-            ("NBP date".into(), record.nbp_date.to_string().into()),
-            ("Original value".into(), amount(record.value)),
-            ("Original tax paid".into(), amount(record.tax_paid)),
-            (
-                "Calculated value".into(),
-                exact_pln(record.calculated_value),
-            ),
-            (
-                "Calculated to pay".into(),
-                exact_pln(record.calculated_to_pay),
-            ),
-            (
-                "Calculated tax paid".into(),
-                exact_pln(record.calculated_tax_paid),
-            ),
-            ("Max tax paid".into(), exact_pln(record.max_tax_paid)),
-            ("Used tax paid".into(), exact_pln(record.used_tax_paid)),
+        let details = vec![
+            DetailGroup {
+                title: "Original amounts",
+                fields: vec![
+                    ("Original value".into(), amount(record.value)),
+                    ("Original tax paid".into(), amount(record.tax_paid)),
+                ],
+            },
+            DetailGroup {
+                title: "Conversion",
+                fields: vec![
+                    ("NBP date".into(), record.nbp_date.to_string().into()),
+                    ("Calculated value".into(), pln(record.calculated_value)),
+                    (
+                        "Calculated tax paid".into(),
+                        pln(record.calculated_tax_paid),
+                    ),
+                ],
+            },
+            DetailGroup {
+                title: "Tax calculation",
+                fields: vec![
+                    ("Calculated to pay".into(), pln(record.calculated_to_pay)),
+                    ("Max tax paid".into(), pln(record.max_tax_paid)),
+                    ("Used tax paid".into(), pln(record.used_tax_paid)),
+                ],
+            },
         ];
         RowDisplay { cells, details }
     }
@@ -70,7 +80,7 @@ impl DividendsPage {
         let mut row = h_flex()
             .h(px(42.))
             .rounded_t(cx.theme().radius)
-            .bg(cx.theme().muted)
+            .bg(cx.theme().table_head)
             .border_b_1()
             .border_color(cx.theme().border);
         row = row.child(
@@ -111,6 +121,8 @@ impl DividendsPage {
                 .flex_shrink_0()
                 .px_3()
                 .text_sm()
+                .font_medium()
+                .text_color(cx.theme().table_head_foreground)
                 .child("Actions"),
         )
     }
@@ -240,30 +252,7 @@ impl DividendsPage {
                     ),
             )
             .when(expanded, |row| {
-                row.child(
-                    h_flex()
-                        .flex_wrap()
-                        .items_start()
-                        .gap_4()
-                        .p_5()
-                        .bg(cx.theme().muted)
-                        .children(display.details.iter().map(|(label, value)| {
-                            v_flex()
-                                .w(px(280.))
-                                .gap_1()
-                                .child(
-                                    div()
-                                        .text_sm()
-                                        .text_color(cx.theme().muted_foreground)
-                                        .child(label.clone()),
-                                )
-                                .child(
-                                    div()
-                                        .font_family(cx.theme().mono_font_family.clone())
-                                        .child(value.clone()),
-                                )
-                        })),
-                )
+                row.child(record_details(&record.id, &display.details, disabled, cx))
             })
     }
 

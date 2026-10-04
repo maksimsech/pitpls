@@ -1,5 +1,13 @@
 use gpui_kit::{
-    component::{ActiveTheme, VirtualListScrollHandle, h_flex, v_flex},
+    assets::IconName,
+    component::{
+        ActiveTheme, Disableable, Sizable, StyledExt, VirtualListScrollHandle,
+        button::{Button, ButtonVariants},
+        h_flex,
+        tooltip::Tooltip,
+        v_flex,
+    },
+    prelude::FluentBuilder,
     *,
 };
 use std::rc::Rc;
@@ -30,7 +38,9 @@ pub fn skeleton(columns: &[super::table::Column], visible: bool, cx: &App) -> Di
                 .h(px(42.))
                 .flex_shrink_0()
                 .rounded_t(cx.theme().radius)
-                .bg(cx.theme().muted)
+                .bg(cx.theme().table_head)
+                .border_b_1()
+                .border_color(cx.theme().border)
                 .children(
                     columns
                         .iter()
@@ -62,9 +72,106 @@ pub fn skeleton(columns: &[super::table::Column], visible: bool, cx: &App) -> Di
 }
 
 #[derive(PartialEq)]
+pub struct DetailGroup {
+    pub title: &'static str,
+    pub fields: Vec<(SharedString, SharedString)>,
+}
+
+#[derive(PartialEq)]
 pub struct RowDisplay {
     pub cells: Vec<SharedString>,
-    pub details: Vec<(SharedString, SharedString)>,
+    pub details: Vec<DetailGroup>,
+}
+
+/// Keep expanded records in the table's visual flow. Groups wrap when needed;
+/// the virtual list measures this same layout to reserve the correct row height.
+pub fn record_details(record_id: &str, groups: &[DetailGroup], disabled: bool, cx: &App) -> Div {
+    h_flex()
+        .w_full()
+        .flex_wrap()
+        .items_start()
+        .gap_6()
+        .pl(rems(SELECT_WIDTH / 14. + 0.75))
+        .pr_5()
+        .py_4()
+        .border_t_1()
+        .border_color(cx.theme().border)
+        .bg(cx.theme().table_head)
+        .children(groups.iter().enumerate().map(|(index, group)| {
+            v_flex()
+                .flex_1()
+                .min_w(rems(18.))
+                .gap_2()
+                .child(
+                    div()
+                        .mb_1()
+                        .font_medium()
+                        .text_color(cx.theme().muted_foreground)
+                        .child(group.title),
+                )
+                .children(group.fields.iter().map(|(label, value)| {
+                    let full_value = value.clone();
+                    h_flex()
+                        .w_full()
+                        .min_h(rems(1.5))
+                        .gap_3()
+                        .child(
+                            div()
+                                .flex_shrink_0()
+                                .text_color(cx.theme().muted_foreground)
+                                .child(label.clone()),
+                        )
+                        .child(
+                            div()
+                                .id(SharedString::from(format!("detail-{record_id}-{label}")))
+                                .flex_1()
+                                .min_w_0()
+                                .text_right()
+                                .font_family(cx.theme().mono_font_family.clone())
+                                .truncate()
+                                .tooltip(move |window, cx| {
+                                    Tooltip::new(full_value.clone()).build(window, cx)
+                                })
+                                .child(value.clone()),
+                        )
+                }))
+                .when(index == 0, |group| {
+                    let copy_id = record_id.to_owned();
+                    group.child(
+                        h_flex()
+                            .w_full()
+                            .min_h(rems(1.5))
+                            .gap_3()
+                            .text_color(cx.theme().muted_foreground)
+                            .child(div().flex_shrink_0().child("Record ID"))
+                            .child(
+                                div()
+                                    .flex_1()
+                                    .min_w_0()
+                                    .text_right()
+                                    .text_xs()
+                                    .font_family(cx.theme().mono_font_family.clone())
+                                    .truncate()
+                                    .child(SharedString::from(record_id.to_owned())),
+                            )
+                            .child(
+                                Button::new(SharedString::from(format!("copy-id-{record_id}")))
+                                    .icon(IconName::Copy)
+                                    .ghost()
+                                    .xsmall()
+                                    .accessibility_label("Copy full record ID")
+                                    .tooltip(format!("Copy record ID: {record_id}"))
+                                    .disabled(disabled)
+                                    .on_click(move |_, _, cx| {
+                                        cx.stop_propagation();
+                                        cx.write_to_clipboard(ClipboardItem::new_string(
+                                            copy_id.clone(),
+                                        ));
+                                    }),
+                            ),
+                    )
+                })
+        }))
 }
 
 pub struct RecordTableState {

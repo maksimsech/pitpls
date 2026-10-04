@@ -1,11 +1,13 @@
 use super::*;
 use crate::{
     components::table::{Column, cell},
-    format::{amount, exact_pln, money},
+    format::{amount, money, pln},
 };
 use gpui_kit::{assets::IconName, component::checkbox::Checkbox};
 
-use crate::components::records::{ACTION_WIDTH, RowDisplay, SELECT_WIDTH};
+use crate::components::records::{
+    ACTION_WIDTH, DetailGroup, RowDisplay, SELECT_WIDTH, record_details,
+};
 use gpui_kit::component::{scroll::ScrollableElement, v_virtual_list};
 use gpui_kit::prelude::FluentBuilder;
 
@@ -18,15 +20,22 @@ impl InterestsPage {
             money(record.calculated_value),
             money(record.to_pay),
         ];
-        let details: Vec<(SharedString, SharedString)> = vec![
-            ("Record ID".into(), record.id.clone().into()),
-            ("NBP date".into(), record.nbp_date.to_string().into()),
-            ("Original value".into(), amount(record.value)),
-            (
-                "Calculated value".into(),
-                exact_pln(record.calculated_value),
-            ),
-            ("To pay".into(), exact_pln(record.to_pay)),
+        let details = vec![
+            DetailGroup {
+                title: "Original amounts",
+                fields: vec![("Original value".into(), amount(record.value))],
+            },
+            DetailGroup {
+                title: "Conversion",
+                fields: vec![
+                    ("NBP date".into(), record.nbp_date.to_string().into()),
+                    ("Calculated value".into(), pln(record.calculated_value)),
+                ],
+            },
+            DetailGroup {
+                title: "Tax calculation",
+                fields: vec![("To pay".into(), pln(record.to_pay))],
+            },
         ];
         RowDisplay { cells, details }
     }
@@ -58,7 +67,7 @@ impl InterestsPage {
         let mut row = h_flex()
             .h(px(42.))
             .rounded_t(cx.theme().radius)
-            .bg(cx.theme().muted)
+            .bg(cx.theme().table_head)
             .border_b_1()
             .border_color(cx.theme().border);
         row = row.child(
@@ -99,6 +108,8 @@ impl InterestsPage {
                 .flex_shrink_0()
                 .px_3()
                 .text_sm()
+                .font_medium()
+                .text_color(cx.theme().table_head_foreground)
                 .child("Actions"),
         )
     }
@@ -228,30 +239,7 @@ impl InterestsPage {
                     ),
             )
             .when(expanded, |row| {
-                row.child(
-                    h_flex()
-                        .flex_wrap()
-                        .items_start()
-                        .gap_4()
-                        .p_5()
-                        .bg(cx.theme().muted)
-                        .children(display.details.iter().map(|(label, value)| {
-                            v_flex()
-                                .w(px(280.))
-                                .gap_1()
-                                .child(
-                                    div()
-                                        .text_sm()
-                                        .text_color(cx.theme().muted_foreground)
-                                        .child(label.clone()),
-                                )
-                                .child(
-                                    div()
-                                        .font_family(cx.theme().mono_font_family.clone())
-                                        .child(value.clone()),
-                                )
-                        })),
-                )
+                row.child(record_details(&record.id, &display.details, disabled, cx))
             })
     }
 
