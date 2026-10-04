@@ -8,8 +8,6 @@ mod navigation;
 mod pages;
 mod services;
 mod theme;
-#[cfg(target_os = "macos")]
-mod window_chrome;
 
 use gpui_kit::*;
 use std::sync::Arc;

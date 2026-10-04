@@ -28,7 +28,6 @@ impl Desktop {
             window.close_dialog(cx);
             self.manage_years = false;
         }
-        self.return_focus = window.focused(cx);
         let year = form::input(chrono::Local::now().year().to_string(), window, cx);
         self.year_form = Some(year.clone());
         self.status.error = None;
@@ -42,12 +41,9 @@ impl Desktop {
         cx.notify();
     }
 
-    fn close_year_form(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    fn close_year_form(&mut self, cx: &mut Context<Self>) {
         self.year_form = None;
         self.status.error = None;
-        if let Some(focus) = self.return_focus.take() {
-            window.focus(&focus, cx);
-        }
         cx.notify();
     }
 
@@ -103,7 +99,7 @@ impl Desktop {
                     if this.year_form.is_some() {
                         window.close_dialog(cx);
                     }
-                    this.close_year_form(window, cx);
+                    this.close_year_form(cx);
                     if remove {
                         if this.preferences.year == Some(year) {
                             this.preferences.year = None;
@@ -143,9 +139,9 @@ impl Desktop {
                     .update(cx, |this, _| !this.status.busy)
                     .unwrap_or(true)
             })
-            .on_close(cx.listener(|this, _, window, cx| {
+            .on_close(cx.listener(|this, _, _, cx| {
                 if !this.status.busy {
-                    this.close_year_form(window, cx);
+                    this.close_year_form(cx);
                 }
             }))
             .child(self.status.render(cx))
@@ -162,7 +158,7 @@ impl Desktop {
                             .on_click(cx.listener(|this, _, window, cx| {
                                 if !this.status.busy {
                                     window.close_dialog(cx);
-                                    this.close_year_form(window, cx);
+                                    this.close_year_form(cx);
                                 }
                             })),
                     )

@@ -33,7 +33,6 @@ pub struct RatesPage {
     data: RateData,
     nbp_year: Option<Entity<InputState>>,
     confirm_reset: bool,
-    return_focus: Option<FocusHandle>,
     rate_scroll: UniformListScrollHandle,
     horizontal_scroll: ScrollHandle,
 }
@@ -46,7 +45,6 @@ impl RatesPage {
             data: RateData::default(),
             nbp_year: None,
             confirm_reset: false,
-            return_focus: None,
             rate_scroll: UniformListScrollHandle::new(),
             horizontal_scroll: ScrollHandle::new(),
         };
@@ -62,12 +60,9 @@ impl RatesPage {
         cx.notify();
     }
 
-    fn close_form(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    fn close_form(&mut self, cx: &mut Context<Self>) {
         self.nbp_year = None;
         self.status.error = None;
-        if let Some(focus) = self.return_focus.take() {
-            window.focus(&focus, cx);
-        }
         self.notify(cx);
     }
 
@@ -100,7 +95,7 @@ impl RatesPage {
                     if this.nbp_year.is_some() {
                         window.close_dialog(cx);
                     }
-                    this.close_form(window, cx);
+                    this.close_form(cx);
                     this.refresh(window, cx);
                 }
                 this.notify(cx);
@@ -132,7 +127,6 @@ impl RatesPage {
     }
 
     fn open_nbp(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        self.return_focus = window.focused(cx);
         let year = form::input(chrono::Local::now().year().to_string(), window, cx);
         self.nbp_year = Some(year.clone());
         self.status.error = None;
@@ -195,9 +189,9 @@ impl RatesPage {
                     .update(cx, |this, _| !this.status.busy)
                     .unwrap_or(true)
             })
-            .on_close(cx.listener(|this, _, window, cx| {
+            .on_close(cx.listener(|this, _, _, cx| {
                 if !this.status.busy {
-                    this.close_form(window, cx);
+                    this.close_form(cx);
                 }
             }))
             .when(self.status.is_visible(), |view| {
@@ -216,7 +210,7 @@ impl RatesPage {
                             .on_click(cx.listener(|this, _, window, cx| {
                                 if !this.status.busy {
                                     window.close_dialog(cx);
-                                    this.close_form(window, cx);
+                                    this.close_form(cx);
                                 }
                             })),
                     )

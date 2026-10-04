@@ -33,11 +33,9 @@ pub struct Desktop {
     years: Vec<i32>,
     manage_years: bool,
     navigation_focus: FocusHandle,
-    hover_labels: Entity<gpui_kit::base::TooltipOverlay>,
     year_form: Option<Entity<InputState>>,
     delete_year: Option<i32>,
-    return_focus: Option<FocusHandle>,
-    _subscriptions: Vec<Subscription>,
+    _page_subscription: Subscription,
 }
 
 impl Desktop {
@@ -57,6 +55,7 @@ impl Desktop {
                     this.page_locked = *locked;
                 }
                 PageEvent::Navigate(page) => this.navigate(*page, window, cx),
+                PageEvent::YearsChanged => this.load_years(window, cx),
             }
             cx.notify();
         });
@@ -75,23 +74,10 @@ impl Desktop {
             years: vec![],
             manage_years: false,
             navigation_focus: cx.focus_handle(),
-            hover_labels: cx.new(|_| gpui_kit::base::TooltipOverlay::new()),
             year_form: None,
             delete_year: None,
-            return_focus: None,
-            _subscriptions: vec![page_subscription],
+            _page_subscription: page_subscription,
         };
-        #[cfg(target_os = "macos")]
-        {
-            crate::window_chrome::sync_fullscreen_title(window);
-            view._subscriptions
-                .push(cx.observe_window_bounds(window, |_, window, cx| {
-                    // Apply after AppKit/GPUI finish updating the native window.
-                    cx.defer_in(window, |_, window, _| {
-                        crate::window_chrome::sync_fullscreen_title(window);
-                    });
-                }));
-        }
         view.connect(window, cx);
         view
     }
@@ -195,7 +181,6 @@ impl Desktop {
             self.page = page;
             self.manage_years = false;
             self.mount_page(window, cx);
-            self.load_years(window, cx);
         }
         cx.notify();
     }
@@ -315,6 +300,5 @@ impl Render for Desktop {
                     .child(self.navigation_panel(sidebar_progress, cx))
                     .child(content),
             )
-            .child(self.hover_labels.clone())
     }
 }

@@ -46,6 +46,7 @@ impl Page {
 pub enum PageEvent {
     Navigate(Page),
     LockNavigation(bool),
+    YearsChanged,
 }
 
 /// An explicit window-owned event channel; pages never hold the app shell.
@@ -71,5 +72,10 @@ impl PageContext {
     pub fn navigate(&self, page: Page, cx: &mut App) {
         self.events
             .update(cx, |_, cx| cx.emit(PageEvent::Navigate(page)));
+    }
+
+    pub fn years_changed(&self, cx: &mut App) {
+        self.events
+            .update(cx, |_, cx| cx.emit(PageEvent::YearsChanged));
     }
 }

@@ -37,7 +37,6 @@ pub struct CryptoPage {
     expanded: HashSet<String>,
     editor: Option<CryptoForm>,
     confirmation: Option<Confirmation>,
-    return_focus: Option<FocusHandle>,
     focus: FocusHandle,
     _focus_subscription: Subscription,
 }
@@ -62,7 +61,6 @@ impl CryptoPage {
             expanded: HashSet::new(),
             editor: None,
             confirmation: None,
-            return_focus: None,
             focus: cx.focus_handle(),
             _focus_subscription: cx.on_focus_lost(window, |this, window, cx| {
                 // GPUI supplies the nearest surviving focus ancestor when a
@@ -88,7 +86,6 @@ impl CryptoPage {
     }
 
     fn open_editor(&mut self, form: CryptoForm, window: &mut Window, cx: &mut Context<Self>) {
-        self.return_focus = window.focused(cx);
         self.editor = Some(form);
         self.status.error = None;
         self.status.message = None;
@@ -103,12 +100,9 @@ impl CryptoPage {
         self.notify(cx);
     }
 
-    fn close_editor(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    fn close_editor(&mut self, cx: &mut Context<Self>) {
         self.editor = None;
         self.status.error = None;
-        if let Some(focus) = self.return_focus.take() {
-            window.focus(&focus, cx);
-        }
         self.notify(cx);
     }
 
@@ -144,8 +138,9 @@ impl CryptoPage {
             },
             |this, result, window, cx| {
                 if this.status.saved(result) {
+                    this.context.years_changed(cx);
                     window.close_dialog(cx);
-                    this.close_editor(window, cx);
+                    this.close_editor(cx);
                     window.focus(&this.focus, cx);
                     this.refresh(window, cx);
                 }
@@ -281,9 +276,9 @@ impl CryptoPage {
                     .update(cx, |this, _| !this.status.busy)
                     .unwrap_or(true)
             })
-            .on_close(cx.listener(|this, _, window, cx| {
+            .on_close(cx.listener(|this, _, _, cx| {
                 if !this.status.busy {
-                    this.close_editor(window, cx);
+                    this.close_editor(cx);
                 }
             }))
             .when(self.status.is_visible(), |view| {
@@ -302,7 +297,7 @@ impl CryptoPage {
                             .on_click(cx.listener(|this, _, window, cx| {
                                 if !this.status.busy {
                                     window.close_dialog(cx);
-                                    this.close_editor(window, cx);
+                                    this.close_editor(cx);
                                 }
                             })),
                     )
@@ -413,7 +408,7 @@ impl Render for CryptoPage {
         } else if self.status.loading {
             content = content
                 .child(components::summary_skeleton(
-                    "PIT-38",
+                    "Crypto totals",
                     &["Income (E-36)", "Costs (E-37)"],
                     self.status.loading_visible,
                     cx,

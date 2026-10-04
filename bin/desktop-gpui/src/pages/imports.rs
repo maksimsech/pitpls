@@ -93,6 +93,9 @@ impl ImportsPage {
                             },
                             |this, result, _, cx| {
                                 this.status.saved(result);
+                                // Importers commit each record type separately, so even
+                                // a failed import may have added reporting years.
+                                this.context.years_changed(cx);
                                 this.context.set_locked(false, cx);
                                 cx.notify();
                             },

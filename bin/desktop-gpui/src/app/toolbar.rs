@@ -1,5 +1,5 @@
 use super::*;
-use crate::{TOOLBAR_HEIGHT, components::tooltip::hover_label};
+use crate::TOOLBAR_HEIGHT;
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::{
     assets::IconName,
@@ -60,19 +60,12 @@ impl Desktop {
                         this.save_preferences(window, cx);
                         cx.notify();
                     }))
-                    .map(|button| {
-                        hover_label(
-                            "sidebar-toggle-label",
-                            button,
-                            if collapsed {
-                                "Expand sidebar"
-                            } else {
-                                "Collapse sidebar"
-                            },
-                            Placement::Bottom,
-                            &self.hover_labels,
-                        )
-                    }),
+                    .tooltip(if collapsed {
+                        "Expand sidebar"
+                    } else {
+                        "Collapse sidebar"
+                    })
+                    .tooltip_placement(Placement::Bottom),
             );
         let title = h_flex()
             .flex_1()
@@ -94,18 +87,10 @@ impl Desktop {
                             if let Some(page) = this.history.pop() {
                                 this.page = page;
                                 this.mount_page(window, cx);
-                                this.load_years(window, cx);
                             }
                         }))
-                        .map(|button| {
-                            hover_label(
-                                "back-label",
-                                button,
-                                "Back",
-                                Placement::Bottom,
-                                &self.hover_labels,
-                            )
-                        }),
+                        .tooltip("Back")
+                        .tooltip_placement(Placement::Bottom),
                 )
             })
             .child(
@@ -149,15 +134,8 @@ impl Desktop {
                     .accessibility_label("Refresh current page")
                     .disabled(locked || self.status.loading)
                     .on_click(cx.listener(|this, _, window, cx| this.reload(window, cx)))
-                    .map(|button| {
-                        hover_label(
-                            "refresh-label",
-                            button,
-                            "Refresh current page",
-                            Placement::Bottom,
-                            &self.hover_labels,
-                        )
-                    }),
+                    .tooltip("Refresh current page")
+                    .tooltip_placement(Placement::Bottom),
             );
         let toolbar = h_flex()
             .size_full()
@@ -270,21 +248,12 @@ impl Desktop {
             .accessibility_label(page.title())
             .disabled(self.locked() || self.context.is_none())
             .on_click(cx.listener(move |this, _, window, cx| this.navigate(page, window, cx)))
-            .map(|button| {
-                if collapsed {
-                    hover_label(
-                        page.title(),
-                        button,
-                        page.title(),
-                        Placement::Right,
-                        &self.hover_labels,
-                    )
-                    .w_full()
-                    .into_any_element()
-                } else {
-                    button.into_any_element()
-                }
+            .when(collapsed, |button| {
+                button
+                    .tooltip(page.title())
+                    .tooltip_placement(Placement::Right)
             })
+            .into_any_element()
     }
 
     pub fn navigation_panel(&self, progress: f32, cx: &mut Context<Self>) -> Div {
@@ -300,6 +269,12 @@ impl Desktop {
             .ghost()
             .size(NAV_BUTTON_SIZE)
             .accessibility_label("Toggle light and dark theme")
+            .tooltip(if cx.theme().is_dark() {
+                "Switch to light theme"
+            } else {
+                "Switch to dark theme"
+            })
+            .tooltip_placement(Placement::Right)
             .disabled(self.context.is_none())
             .on_click(cx.listener(|this, _, window, cx| {
                 let dark = !cx.theme().is_dark();
@@ -356,20 +331,11 @@ impl Desktop {
                             .child(self.navigation_button(Page::Settings, progress, cx)),
                     )
                     .child(
-                        hover_label(
-                            "theme-label",
-                            theme_button,
-                            if cx.theme().is_dark() {
-                                "Switch to light theme"
-                            } else {
-                                "Switch to dark theme"
-                            },
-                            Placement::Right,
-                            &self.hover_labels,
-                        )
-                        .absolute()
-                        .left((inner_width - NAV_BUTTON_SIZE) * progress)
-                        .top(footer_top + footer_step * (1. - progress)),
+                        div()
+                            .absolute()
+                            .left((inner_width - NAV_BUTTON_SIZE) * progress)
+                            .top(footer_top + footer_step * (1. - progress))
+                            .child(theme_button),
                     ),
             )
     }
