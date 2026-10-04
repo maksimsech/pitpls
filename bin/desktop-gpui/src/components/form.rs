@@ -105,8 +105,9 @@ pub fn field(label: &'static str, control: impl IntoElement, cx: &App) -> Div {
         .gap_2()
         .child(
             div()
-                .text_sm()
-                .text_color(cx.theme().muted_foreground)
+                .text_base()
+                .font_medium()
+                .text_color(cx.theme().foreground)
                 .child(label),
         )
         .child(control)

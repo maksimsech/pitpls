@@ -40,8 +40,10 @@ impl HomePage {
 
 impl PageView for HomePage {
     fn refresh(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        self.status.begin_load();
-        self.warning = false;
+        if self.status.loading {
+            return;
+        }
+        self.status.begin_load(window, cx, |this| &mut this.status);
         let year = self.year;
         self.status.task = Some(self.context.services.run(
             window,
@@ -86,40 +88,61 @@ impl PageView for HomePage {
 
 impl Render for HomePage {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        components::scroll(
-            v_flex()
-                .gap_4()
-                .p(px(24.))
-                .when(self.status.is_visible(), |view| {
-                    view.child(self.status.render(cx))
-                })
-                .when(self.warning, |view| {
-                    view.child(components::notice(
-                        "No rates loaded for this period. Open Rates to import exchange rates.",
-                        cx,
-                    ))
-                })
-                .when(self.warning || self.status.error.is_some(), |view| {
-                    view.child(
-                        h_flex()
-                            .gap_2()
-                            .child(
-                                Button::new("open-rates")
-                                    .label("Open rates")
-                                    .outline()
-                                    .on_click(cx.listener(|this, _, _, cx| {
-                                        this.context.navigate(Page::Rates, cx)
-                                    })),
-                            )
-                            .child(Button::new("retry").label("Retry").outline().on_click(
-                                cx.listener(|this, _, window, cx| this.refresh(window, cx)),
-                            )),
-                    )
-                })
-                .when(
-                    !self.status.loading && self.status.error.is_none(),
-                    |view| view.child(components::summaries(&self.summaries, cx)),
-                ),
-        )
+        v_flex()
+            .relative()
+            .size_full()
+            .min_h_0()
+            .child(components::scroll(
+                components::page_content()
+                    .gap_4()
+                    .when(self.status.is_visible(), |view| {
+                        view.child(self.status.render(cx))
+                    })
+                    .when(self.warning, |view| {
+                        view.child(components::notice(
+                            "No rates loaded for this period. Open Rates to import exchange rates.",
+                            cx,
+                        ))
+                    })
+                    .when(self.warning || self.status.error.is_some(), |view| {
+                        view.child(
+                            h_flex()
+                                .gap_2()
+                                .child(
+                                    Button::new("open-rates")
+                                        .label("Open rates")
+                                        .outline()
+                                        .on_click(cx.listener(|this, _, _, cx| {
+                                            this.context.navigate(Page::Rates, cx)
+                                        })),
+                                )
+                                .child(Button::new("retry").label("Retry").outline().on_click(
+                                    cx.listener(|this, _, window, cx| this.refresh(window, cx)),
+                                )),
+                        )
+                    })
+                    .when(self.status.ready, |view| {
+                        view.child(components::summaries(&self.summaries, cx))
+                    })
+                    .when(!self.status.ready && self.status.loading, |view| {
+                        view.child(
+                            v_flex()
+                                .gap_5()
+                                .child(components::summary_skeleton(
+                                    "Crypto",
+                                    &["Income (E-36)", "Costs (E-37)"],
+                                    self.status.loading_visible,
+                                    cx,
+                                ))
+                                .child(components::summary_skeleton(
+                                    "Foreign dividends and interest",
+                                    &["Income (I-65)", "Tax to pay (G-47)", "Paid tax (G-48)"],
+                                    self.status.loading_visible,
+                                    cx,
+                                )),
+                        )
+                    }),
+            ))
+            .child(self.status.refreshing(cx))
     }
 }

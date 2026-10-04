@@ -279,21 +279,15 @@ impl Render for Desktop {
             ));
         } else {
             content = content
-                .when(
-                    self.status.busy
-                        || self.status.loading
-                        || self.status.error.is_some()
-                        || self.status.message.is_some(),
-                    |view| {
-                        view.child(
-                            div()
-                                .flex_shrink_0()
-                                .px_5()
-                                .pt_4()
-                                .child(self.status.render(cx)),
-                        )
-                    },
-                )
+                .when(self.status.is_visible(), |view| {
+                    view.child(
+                        div()
+                            .flex_shrink_0()
+                            .px_5()
+                            .pt_4()
+                            .child(self.status.render(cx)),
+                    )
+                })
                 .when_some(self.active.as_ref(), |view, page| {
                     view.child(page.view.clone())
                 });

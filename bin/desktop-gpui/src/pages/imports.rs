@@ -6,15 +6,23 @@ use crate::{
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::{
     assets::IconName,
-    component::{button::*, list::ListItem, tag::Tag},
+    component::{
+        button::*,
+        group_box::{GroupBox, GroupBoxVariants},
+        spinner::Spinner,
+        *,
+    },
+    *,
 };
-use gpui_kit::{component::*, *};
 use pitpls_app::use_case::import;
 use pitpls_importers::{IMPORTERS, ImporterKind, InputType, OutputType};
+use std::path::Path;
 
 pub struct ImportsPage {
     context: PageContext,
     status: Status,
+    active_importer: Option<usize>,
+    file_name: Option<SharedString>,
 }
 
 impl ImportsPage {
@@ -22,6 +30,8 @@ impl ImportsPage {
         Self {
             context,
             status: Status::default(),
+            active_importer: None,
+            file_name: None,
         }
     }
 
@@ -29,6 +39,8 @@ impl ImportsPage {
         if self.status.busy {
             return;
         }
+        self.active_importer = Some(index);
+        self.file_name = None;
         self.status.begin_save();
         self.context.set_locked(true, cx);
         let extension = match IMPORTERS[index].input[0] {
@@ -42,23 +54,59 @@ impl ImportsPage {
             move |this, result, window, cx| {
                 match result {
                     Ok(Some(file)) => {
+                        this.file_name = Path::new(&file)
+                            .file_name()
+                            .map(|name| name.to_string_lossy().into_owned().into());
                         let kind = match &IMPORTERS[index].kind {
                             ImporterKind::T212 => ImporterKind::T212,
                             ImporterKind::Revolut => ImporterKind::Revolut,
                             ImporterKind::Coinbase => ImporterKind::Coinbase,
                         };
-                        this.status.task = Some(this.context.services.run(window, cx, move |app| async move {
-                        let result = import::run_import(&app, kind, file).await?;
-                        Ok(format!("Imported {} dividends, {} crypto records and {} interest records.", result.dividends, result.cryptos, result.interests))
-                    }, |this, result, _, cx| {
-                        this.status.saved(result);
-                        this.context.set_locked(false, cx);
-                        cx.notify();
-                    }));
+                        this.status.task = Some(this.context.services.run(
+                            window,
+                            cx,
+                            move |app| async move {
+                                let result = import::run_import(&app, kind, file).await?;
+                                let counts = IMPORTERS[index]
+                                    .output
+                                    .iter()
+                                    .map(|output| match output {
+                                        OutputType::Dividend => format!(
+                                            "{} dividend{}",
+                                            result.dividends,
+                                            if result.dividends == 1 { "" } else { "s" },
+                                        ),
+                                        OutputType::Crypto => format!(
+                                            "{} crypto record{}",
+                                            result.cryptos,
+                                            if result.cryptos == 1 { "" } else { "s" },
+                                        ),
+                                        OutputType::Interest => format!(
+                                            "{} interest record{}",
+                                            result.interests,
+                                            if result.interests == 1 { "" } else { "s" },
+                                        ),
+                                    })
+                                    .collect::<Vec<_>>()
+                                    .join(" and ");
+                                Ok(format!("Imported {counts}."))
+                            },
+                            |this, result, _, cx| {
+                                this.status.saved(result);
+                                this.context.set_locked(false, cx);
+                                cx.notify();
+                            },
+                        ));
                     }
-                    result => {
+                    Ok(None) => {
+                        // Dismissing the native picker restores the idle card.
                         this.status.busy = false;
-                        this.status.error = result.err().map(Into::into);
+                        this.active_importer = None;
+                        this.context.set_locked(false, cx);
+                    }
+                    Err(error) => {
+                        this.status.busy = false;
+                        this.status.error = Some(error.into());
                         this.context.set_locked(false, cx);
                     }
                 }
@@ -74,6 +122,8 @@ impl PageView for ImportsPage {
         if !self.status.busy {
             self.status.error = None;
             self.status.message = None;
+            self.active_importer = None;
+            self.file_name = None;
             cx.notify();
         }
     }
@@ -81,15 +131,7 @@ impl PageView for ImportsPage {
 
 impl Render for ImportsPage {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        components::scroll(
-            v_flex()
-                .gap_4()
-                .p_5()
-                .when(self.status.is_visible(), |view| {
-                    view.child(self.status.render(cx))
-                })
-                .child(self.imports(cx)),
-        )
+        components::scroll(components::page_content().child(self.imports(cx)))
     }
 }
 
@@ -98,15 +140,18 @@ impl ImportsPage {
         v_flex()
             .gap_3()
             .children(IMPORTERS.iter().enumerate().map(|(index, importer)| {
+                let active = self.active_importer == Some(index);
+                let importing = active && self.status.busy;
                 let outputs = importer
                     .output
                     .iter()
                     .map(|value| match value {
-                        OutputType::Dividend => "Dividend",
+                        OutputType::Dividend => "Dividends",
                         OutputType::Crypto => "Crypto",
                         OutputType::Interest => "Interest",
                     })
-                    .collect::<Vec<_>>();
+                    .collect::<Vec<_>>()
+                    .join(" & ");
                 let formats = importer
                     .input
                     .iter()
@@ -116,61 +161,102 @@ impl ImportsPage {
                     })
                     .collect::<Vec<_>>()
                     .join(" / ");
-                ListItem::new(("importer", index))
-                    .accessibility_label(format!("Import {}", importer.name))
-                    .disabled(self.status.busy)
-                    .text_sm()
-                    .on_click(
-                        cx.listener(move |this, _, window, cx| this.pick_file(index, window, cx)),
-                    )
-                    .gap_4()
-                    .p_4()
-                    .border_1()
-                    .border_color(cx.theme().border)
-                    .rounded(cx.theme().radius)
+                let file_label = if active {
+                    self.file_name.as_deref().unwrap_or(&formats)
+                } else {
+                    &formats
+                };
+                GroupBox::new()
+                    .id(("importer", index))
+                    .outline()
+                    .content_style(StyleRefinement::default().p_4().gap_3().bg(if active {
+                        cx.theme().group_box
+                    } else {
+                        cx.theme().background
+                    }))
                     .child(
                         h_flex()
                             .w_full()
                             .gap_4()
+                            .flex_wrap()
                             .child(
                                 v_flex()
                                     .flex_1()
+                                    .min_w(px(180.))
                                     .gap_1()
-                                    .child(div().font_semibold().child(importer.name))
+                                    .child(components::section_heading(importer.name))
                                     .child(
                                         div()
-                                            .text_sm()
+                                            .text_base()
+                                            .truncate()
                                             .text_color(cx.theme().muted_foreground)
-                                            .child(formats),
+                                            .child(format!("{file_label} · {outputs}")),
                                     ),
                             )
-                            .child(
-                                h_flex().gap_2().children(
-                                    outputs
-                                        .into_iter()
-                                        .map(|output| Tag::secondary().outline().child(output)),
-                                ),
-                            ),
-                    )
-                    .suffix({
-                        let busy = self.status.busy;
-                        let page = cx.entity().downgrade();
-                        move |_, _| {
-                            Button::new(("import-file", index))
-                                .icon(IconName::Upload)
-                                .ghost()
-                                .accessibility_label(format!("Import {}", importer.name))
-                                .disabled(busy)
-                                .on_click({
-                                    let page = page.clone();
-                                    move |_, window, cx| {
-                                        cx.stop_propagation();
-                                        let _ = page.update(cx, |this, cx| {
+                            .when(importing, |row| {
+                                row.child(
+                                    h_flex()
+                                        .flex_shrink_0()
+                                        .h_8()
+                                        .gap_2()
+                                        .child(Spinner::new().small())
+                                        .child(if self.file_name.is_some() {
+                                            "Importing…"
+                                        } else {
+                                            "Choosing file…"
+                                        }),
+                                )
+                            })
+                            .when(!importing, |row| {
+                                row.child(
+                                    Button::new(("import-file", index))
+                                        .icon(IconName::Upload)
+                                        .label(if active && self.status.error.is_some() {
+                                            "Try another file".to_owned()
+                                        } else {
+                                            format!("Choose {formats}")
+                                        })
+                                        .outline()
+                                        .flex_shrink_0()
+                                        .accessibility_label(format!(
+                                            "Choose {formats} file for {}",
+                                            importer.name,
+                                        ))
+                                        .disabled(self.status.busy)
+                                        .on_click(cx.listener(move |this, _, window, cx| {
                                             this.pick_file(index, window, cx)
-                                        });
-                                    }
-                                })
-                        }
+                                        })),
+                                )
+                            }),
+                    )
+                    .when(active, |card| {
+                        card.when_some(self.status.message.clone(), |card, message| {
+                            card.child(
+                                h_flex()
+                                    .items_start()
+                                    .gap_2()
+                                    .pt_3()
+                                    .border_t_1()
+                                    .border_color(cx.theme().border)
+                                    .child(Icon::new(IconName::Check).small())
+                                    .child(div().flex_1().min_w_0().child(message)),
+                            )
+                        })
+                        .when_some(
+                            self.status.error.clone(),
+                            |card, error| {
+                                card.child(
+                                    v_flex()
+                                        .gap_1()
+                                        .pt_3()
+                                        .border_t_1()
+                                        .border_color(cx.theme().border)
+                                        .text_color(cx.theme().danger)
+                                        .child(div().font_medium().child("Couldn't import file"))
+                                        .child(error),
+                                )
+                            },
+                        )
                     })
             }))
     }

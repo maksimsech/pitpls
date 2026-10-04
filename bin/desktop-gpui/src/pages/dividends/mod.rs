@@ -187,8 +187,10 @@ impl DividendsPage {
             || self.editor.is_some()
             || self.confirmation.is_some();
         h_flex()
+            .w_full()
             .flex_shrink_0()
             .flex_wrap()
+            .justify_between()
             .gap_2()
             .child(
                 Button::new("add-record")
@@ -321,12 +323,14 @@ impl DividendsPage {
 
 impl PageView for DividendsPage {
     fn refresh(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if self.status.busy || self.editor.is_some() || self.confirmation.is_some() {
+        if self.status.busy
+            || self.status.loading
+            || self.editor.is_some()
+            || self.confirmation.is_some()
+        {
             return;
         }
-        self.status.begin_load();
-        self.selected.clear();
-        self.expanded.clear();
+        self.status.begin_load(window, cx, |this| &mut this.status);
         let year = self.year;
         self.status.task = Some(self.context.services.run(
             window,
@@ -342,9 +346,17 @@ impl PageView for DividendsPage {
                             ("Paid (G-48)", pln(data.paid)),
                         ],
                     }];
+                    let rows = data
+                        .calculated
+                        .iter()
+                        .map(Self::display_record)
+                        .collect::<Vec<_>>();
+                    if rows != this.table_state.rows {
+                        this.selected.clear();
+                        this.expanded.clear();
+                        this.table_state.reset(rows);
+                    }
                     this.records = data.calculated;
-                    this.table_state
-                        .reset(this.records.iter().map(Self::display_record).collect());
                 }
                 cx.notify();
             },
@@ -355,7 +367,7 @@ impl PageView for DividendsPage {
 
 impl Render for DividendsPage {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let mut content = v_flex()
+        let mut content = components::page_content()
             .id("record-page")
             .track_focus(&self.focus)
             .tab_index(-1)
@@ -367,11 +379,9 @@ impl Render for DividendsPage {
             .lock_scroll_axis()
             .track_scroll(&self.page_scroll)
             .gap_4()
-            .p_5()
             .when(self.status.is_visible(), |view| {
                 view.child(self.status.render(cx))
             });
-        content = content.child(self.actions(cx));
         if self.status.error.is_some() || (!self.status.ready && !self.status.loading) {
             content = content.child(
                 h_flex()
@@ -399,13 +409,31 @@ impl Render for DividendsPage {
         if self.status.ready {
             content = content
                 .child(components::summaries(&self.summaries, cx))
+                .child(self.actions(cx))
                 .child(self.records(window, cx));
+        } else if self.status.loading {
+            content = content
+                .child(components::summary_skeleton(
+                    "Dividend totals",
+                    &["Income (I-65)", "To pay (G-47)", "Paid (G-48)"],
+                    self.status.loading_visible,
+                    cx,
+                ))
+                .child(self.actions(cx))
+                .child(components::records::record_skeleton(
+                    Self::base_columns(),
+                    self.status.loading_visible,
+                    cx,
+                ));
+        } else {
+            content = content.child(self.actions(cx));
         }
         div()
             .relative()
             .size_full()
             .min_h_0()
             .child(content)
+            .child(self.status.refreshing(cx))
             .vertical_scrollbar(&self.page_scroll)
             .into_any_element()
     }

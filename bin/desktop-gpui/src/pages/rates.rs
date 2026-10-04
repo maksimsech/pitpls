@@ -16,7 +16,7 @@ use gpui_kit::{
 use pitpls_app::use_case::rate;
 use std::ops::Range;
 
-#[derive(Default)]
+#[derive(Default, PartialEq)]
 struct RateData {
     columns: Vec<Column>,
     rows: Vec<Vec<SharedString>>,
@@ -258,7 +258,7 @@ impl RatesPage {
             || self.confirm_reset;
         let mut content = v_flex()
             .gap_4()
-            .p_5()
+            .flex_shrink_0()
             .when(self.status.is_visible(), |view| {
                 view.child(self.status.render(cx))
             });
@@ -303,10 +303,11 @@ impl RatesPage {
 
 impl PageView for RatesPage {
     fn refresh(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if self.status.busy || self.nbp_year.is_some() || self.confirm_reset {
+        if self.status.busy || self.status.loading || self.nbp_year.is_some() || self.confirm_reset
+        {
             return;
         }
-        self.status.begin_load();
+        self.status.begin_load(window, cx, |this| &mut this.status);
         self.status.task = Some(self.context.services.run(
             window,
             cx,
@@ -337,8 +338,10 @@ impl PageView for RatesPage {
             },
             |this, result, _, cx| {
                 if let Some(data) = this.status.loaded(result) {
-                    this.data = data;
-                    this.rate_scroll = UniformListScrollHandle::new();
+                    if data != this.data {
+                        this.data = data;
+                        this.rate_scroll = UniformListScrollHandle::new();
+                    }
                 }
                 cx.notify();
             },
@@ -350,15 +353,29 @@ impl PageView for RatesPage {
 impl Render for RatesPage {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         if !self.status.ready {
-            return components::scroll(self.controls(cx));
+            return components::scroll(
+                components::page_content()
+                    .gap_4()
+                    .child(self.controls(cx))
+                    .when(self.status.loading, |view| {
+                        view.child(components::records::skeleton(
+                            &[Column::text("Date", 130.), Column::number("Rate", 125.)],
+                            self.status.loading_visible,
+                            cx,
+                        ))
+                    }),
+            );
         }
-        v_flex()
+        components::page_content()
+            .relative()
             .size_full()
             .min_w_0()
             .overflow_hidden()
             .flex_1()
             .min_h_0()
+            .gap_4()
             .child(self.controls(cx))
+            .child(self.status.refreshing(cx))
             .child(
                 div()
                     .flex()
@@ -366,8 +383,6 @@ impl Render for RatesPage {
                     .min_h_0()
                     .min_w_0()
                     .overflow_hidden()
-                    .px_5()
-                    .pb_5()
                     .child(self.rates(cx)),
             )
             .into_any_element()
@@ -418,12 +433,11 @@ impl RatesPage {
             .flex_shrink_0()
             .h_full()
             .min_h_0()
-            .border_1()
-            .border_color(cx.theme().border)
             .child(
                 h_flex()
                     .flex_shrink_0()
                     .h(px(42.))
+                    .rounded_t(cx.theme().radius)
                     .bg(cx.theme().muted)
                     .children(
                         self.data
@@ -440,6 +454,9 @@ impl RatesPage {
             .flex_1()
             .min_w_0()
             .min_h_0()
+            .border_1()
+            .border_color(cx.theme().border)
+            .rounded(cx.theme().radius)
             .overflow_hidden()
             .child(
                 div()

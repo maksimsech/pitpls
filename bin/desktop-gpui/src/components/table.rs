@@ -1,6 +1,7 @@
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::{component::*, *};
 
+#[derive(PartialEq)]
 pub struct Column {
     pub label: SharedString,
     pub width: f32,
@@ -31,7 +32,7 @@ pub fn cell(value: SharedString, column: &Column, heading: bool, cx: &App) -> Di
         .flex_shrink_0()
         .px_3()
         .py_2()
-        .overflow_hidden()
+        .truncate()
         .when(column.numeric, |cell| cell.text_right())
         .when(!heading && column.numeric, |cell| {
             cell.font_family(cx.theme().mono_font_family.clone())

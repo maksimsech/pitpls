@@ -5,12 +5,9 @@ use crate::{
 };
 use gpui_kit::{assets::IconName, component::checkbox::Checkbox};
 
-use crate::components::records::RowDisplay;
+use crate::components::records::{ACTION_WIDTH, RowDisplay, SELECT_WIDTH};
 use gpui_kit::component::{scroll::ScrollableElement, v_virtual_list};
 use gpui_kit::prelude::FluentBuilder;
-
-const SELECT_WIDTH: f32 = 42.;
-const ACTION_WIDTH: f32 = 108.;
 
 impl DividendsPage {
     pub(super) fn display_record(record: &CalculatedDividend) -> RowDisplay {
@@ -45,13 +42,13 @@ impl DividendsPage {
         RowDisplay { cells, details }
     }
 
-    fn base_columns() -> Vec<Column> {
+    pub(super) fn base_columns() -> Vec<Column> {
         vec![
-            Column::text("Date", 120.),
-            Column::text("Ticker", 95.),
-            Column::text("Provider", 140.),
-            Column::number("Value", 155.),
-            Column::number("Tax paid", 155.),
+            Column::text("Date", 110.),
+            Column::text("Ticker", 75.),
+            Column::text("Provider", 120.),
+            Column::number("Value", 135.),
+            Column::number("Tax paid", 135.),
             Column::text("Country", 85.),
         ]
     }
@@ -61,8 +58,9 @@ impl DividendsPage {
         let available = self.table_state.width / px(1.) * 14. / self.table_state.rem_size;
         let minimum =
             columns.iter().map(|column| column.width).sum::<f32>() + SELECT_WIDTH + ACTION_WIDTH;
-        let extra = (available - minimum).max(0.) / columns.len() as f32;
-        for column in &mut columns {
+        let flexible = columns.iter().filter(|column| column.numeric).count();
+        let extra = (available - minimum).max(0.) / flexible.max(1) as f32;
+        for column in columns.iter_mut().filter(|column| column.numeric) {
             column.width += extra;
         }
         columns
@@ -71,6 +69,7 @@ impl DividendsPage {
     fn table_header(&self, columns: &[Column], cx: &mut Context<Self>) -> Div {
         let mut row = h_flex()
             .h(px(42.))
+            .rounded_t(cx.theme().radius)
             .bg(cx.theme().muted)
             .border_b_1()
             .border_color(cx.theme().border);
@@ -87,6 +86,7 @@ impl DividendsPage {
                         )
                         .disabled(
                             self.status.busy
+                                || self.status.loading
                                 || self.editor.is_some()
                                 || self.confirmation.is_some(),
                         )
@@ -128,7 +128,10 @@ impl DividendsPage {
         let delete_id = record.id.clone();
         let edit_id = record.id.clone();
         let expanded = self.expanded.contains(&record.id);
-        let disabled = self.status.busy || self.editor.is_some() || self.confirmation.is_some();
+        let disabled = self.status.busy
+            || self.status.loading
+            || self.editor.is_some()
+            || self.confirmation.is_some();
         let label = format!("Dividend record on {}", record.date);
         v_flex()
             .w(self.table_state.width)
@@ -276,10 +279,14 @@ impl DividendsPage {
         let columns = Self::base_columns();
         let width =
             columns.iter().map(|column| column.width).sum::<f32>() + SELECT_WIDTH + ACTION_WIDTH;
-        // Match the page padding and table borders. The width is explicit in both
-        // measurement and presentation, including horizontally overflowing tables.
-        let width = (window.viewport_size().width - window.rem_size() * 2.5 - px(2.))
-            .max(window.rem_size() * (width / 14.));
+        // The page can be narrower than the window. Size and measure rows using
+        // the actual table viewport, with horizontal scrolling below the minimum.
+        let minimum = window.rem_size() * (width / 14.);
+        let width = self
+            .table_state
+            .viewport_width
+            .unwrap_or(minimum)
+            .max(minimum);
         self.table_state.width = width;
         self.table_state.rem_size = window.rem_size() / px(1.);
         let columns = self.columns();
@@ -338,12 +345,9 @@ impl DividendsPage {
         .flex_1()
         .min_h_0();
         let table = v_flex()
-            .w(width + px(2.))
+            .w(width)
             .h_full()
             .flex_shrink_0()
-            .border_1()
-            .border_color(cx.theme().border)
-            .rounded(cx.theme().radius)
             .child(self.table_header(&columns, cx).flex_shrink_0())
             .child(
                 div()
@@ -371,12 +375,20 @@ impl DividendsPage {
             );
         div()
             .id("records-horizontal")
+            .border_1()
+            .border_color(cx.theme().border)
+            .rounded(cx.theme().radius)
             .w_full()
             .min_w_0()
             .flex_1()
             .min_h(rems(17.))
             .relative()
             .overflow_hidden()
+            .child(components::records::measure_width(
+                self.table_state.viewport_width,
+                |page: &mut Self| &mut page.table_state,
+                cx,
+            ))
             .child(
                 div()
                     .id("records-pan")
@@ -395,7 +407,12 @@ impl DividendsPage {
             Button::new("empty-import")
                 .label("Open imports")
                 .outline()
-                .disabled(self.status.busy || self.editor.is_some() || self.confirmation.is_some())
+                .disabled(
+                    self.status.busy
+                        || self.status.loading
+                        || self.editor.is_some()
+                        || self.confirmation.is_some(),
+                )
                 .on_click(cx.listener(|this, _, _, cx| this.context.navigate(Page::Imports, cx))),
         )
     }

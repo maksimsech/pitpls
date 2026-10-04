@@ -8,7 +8,7 @@ impl Desktop {
         let Some(context) = &self.context else {
             return;
         };
-        self.status.begin_load();
+        self.status.begin_load(window, cx, |this| &mut this.status);
         self.status.task = Some(context.services.run(
             window,
             cx,

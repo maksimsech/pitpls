@@ -8,7 +8,11 @@ use crate::{
 };
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::{
-    component::{button::*, *},
+    component::{
+        button::*,
+        group_box::{GroupBox, GroupBoxVariants},
+        *,
+    },
     *,
 };
 use pitpls_app::use_case::settings;
@@ -81,11 +85,10 @@ impl SettingsPage {
 
 impl PageView for SettingsPage {
     fn refresh(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if self.status.busy {
+        if self.status.busy || self.status.loading {
             return;
         }
-        self.status.begin_load();
-        self.dividend_rounding = None;
+        self.status.begin_load(window, cx, |this| &mut this.status);
         self.status.task = Some(self.context.services.run(
             window,
             cx,
@@ -126,40 +129,81 @@ impl PageView for SettingsPage {
 
 impl Render for SettingsPage {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let mut content = v_flex()
+        let mut content = components::page_content()
             .gap_4()
-            .p_5()
             .when(self.status.is_visible(), |view| {
                 view.child(self.status.render(cx))
             });
         if let Some(dividend_rounding) = &self.dividend_rounding {
-            content = content
-                .child(
-                    div()
-                        .text_lg()
-                        .font_semibold()
-                        .child("Calculation settings"),
-                )
-                .child(form::select_field(
-                    "Dividend rounding",
-                    dividend_rounding,
-                    self.status.busy,
-                    cx,
-                ))
-                .child(
-                    h_flex().child(
-                        Button::new("save-settings")
-                            .label(if self.status.busy {
-                                "Saving…"
-                            } else {
-                                "Save"
-                            })
-                            .primary()
-                            .disabled(self.status.busy || !self.has_changes(cx))
-                            .on_click(cx.listener(|this, _, window, cx| this.save(window, cx))),
+            content = content.child(
+                GroupBox::new()
+                    .id("dividend-rounding-settings")
+                    .fill()
+                    .content_style(StyleRefinement::default().p_5().gap_4())
+                    .child(components::section_heading("Calculation settings"))
+                    .child(
+                        h_flex()
+                            .w_full()
+                            .items_end()
+                            .gap_3()
+                            .flex_wrap()
+                            .child(
+                                form::select_field(
+                                    "Dividend rounding",
+                                    dividend_rounding,
+                                    self.status.busy || self.status.loading,
+                                    cx,
+                                )
+                                .flex_1()
+                                .min_w(px(240.)),
+                            )
+                            .child(
+                                Button::new("save-settings")
+                                    .flex_shrink_0()
+                                    .label(if self.status.busy {
+                                        "Saving…"
+                                    } else {
+                                        "Save changes"
+                                    })
+                                    .primary()
+                                    .disabled(
+                                        self.status.busy
+                                            || self.status.loading
+                                            || !self.has_changes(cx),
+                                    )
+                                    .on_click(
+                                        cx.listener(|this, _, window, cx| this.save(window, cx)),
+                                    ),
+                            ),
+                    )
+                    .when(self.has_changes(cx) && !self.status.busy, |view| {
+                        view.child(
+                            div()
+                                .text_base()
+                                .text_color(cx.theme().muted_foreground)
+                                .child("Unsaved changes"),
+                        )
+                    }),
+            );
+        } else if self.status.loading {
+            content = content.child(
+                GroupBox::new()
+                    .id("dividend-rounding-loading")
+                    .fill()
+                    .content_style(StyleRefinement::default().p_5().gap_4())
+                    .child(components::section_heading("Calculation settings"))
+                    .child(div().text_base().font_medium().child("Dividend rounding"))
+                    .child(
+                        div()
+                            .h_8()
+                            .w_full()
+                            .rounded(cx.theme().radius)
+                            .bg(cx.theme().skeleton)
+                            .opacity(if self.status.loading_visible { 1. } else { 0. }),
                     ),
-                );
-        } else if self.status.error.is_some() {
+            );
+        }
+        if self.status.error.is_some() && !self.status.loading {
             content = content.child(
                 h_flex().child(
                     Button::new("retry")
@@ -169,6 +213,11 @@ impl Render for SettingsPage {
                 ),
             );
         }
-        components::scroll(content)
+        v_flex()
+            .relative()
+            .size_full()
+            .min_h_0()
+            .child(components::scroll(content))
+            .child(self.status.refreshing(cx))
     }
 }

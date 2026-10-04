@@ -10,7 +10,10 @@ use gpui_kit::{
 };
 
 const SIDEBAR_WIDTH: Pixels = px(230.);
-const RAIL_WIDTH: Pixels = px(68.);
+const RAIL_WIDTH: Pixels = px(52.);
+const NAV_BUTTON_SIZE: Pixels = px(36.);
+const NAV_PADDING: Pixels = px(8.);
+const NAV_GAP: Pixels = px(4.);
 
 impl Desktop {
     pub fn toolbar(&self, progress: f32, window: &Window, cx: &mut Context<Self>) -> AnyElement {
@@ -75,7 +78,8 @@ impl Desktop {
             .flex_1()
             .min_w_0()
             .gap_2()
-            .px(px(24.))
+            .pl(px(8.))
+            .pr(px(24.))
             .when(!self.history.is_empty(), |view| {
                 view.child(
                     Button::new("back")
@@ -114,8 +118,8 @@ impl Desktop {
         let desktop = cx.entity().downgrade();
         let controls = h_flex()
             .flex_shrink_0()
-            .gap_2()
-            .pr(px(24.))
+            .gap_1()
+            .pr(px(12.))
             .when(self.page.has_year(), |view| {
                 view.child(
                     Button::new("reporting-year")
@@ -246,14 +250,14 @@ impl Desktop {
                 button.bg(cx.theme().sidebar_accent).font_medium()
             })
             .w_full()
-            .h(px(40.))
-            .px(px(12.))
+            .h(NAV_BUTTON_SIZE)
+            .px(px(10.))
             .child(
                 h_flex()
                     .w_full()
                     .overflow_hidden()
-                    .gap(px(12.))
-                    .child(div().flex_shrink_0().child(Icon::new(icon).size(px(18.))))
+                    .gap(px(10.))
+                    .child(div().flex_shrink_0().child(Icon::new(icon).size(px(16.))))
                     .when(progress > 0., |view| {
                         view.child(
                             div()
@@ -284,7 +288,9 @@ impl Desktop {
     }
 
     pub fn navigation_panel(&self, progress: f32, cx: &mut Context<Self>) -> Div {
-        let inner_width = Self::sidebar_width(progress) - px(24.);
+        let inner_width = Self::sidebar_width(progress) - NAV_PADDING * 2.;
+        let footer_step = NAV_BUTTON_SIZE + NAV_GAP;
+        let footer_top = NAV_PADDING + px(1.);
         let theme_button = Button::new("theme")
             .icon(if cx.theme().is_dark() {
                 IconName::Moon
@@ -292,7 +298,7 @@ impl Desktop {
                 IconName::Sun
             })
             .ghost()
-            .size(px(40.))
+            .size(NAV_BUTTON_SIZE)
             .accessibility_label("Toggle light and dark theme")
             .disabled(self.context.is_none())
             .on_click(cx.listener(|this, _, window, cx| {
@@ -317,14 +323,14 @@ impl Desktop {
             .flex_shrink_0()
             .overflow_hidden()
             .bg(cx.theme().sidebar.mix_oklab(cx.theme().title_bar, progress))
-            .p(px(12.))
+            .p(NAV_PADDING)
             .child(
                 v_flex()
                     .id("sidebar-navigation")
                     .flex_1()
                     .min_h_0()
                     .overflow_y_scroll()
-                    .gap(px(6.))
+                    .gap(NAV_GAP)
                     .children(
                         Page::ALL
                             .into_iter()
@@ -336,17 +342,17 @@ impl Desktop {
                 div()
                     .relative()
                     .flex_shrink_0()
-                    .h(px(101.) - px(48.) * progress)
-                    .mt_3()
+                    .h(footer_top + NAV_BUTTON_SIZE + footer_step * (1. - progress))
+                    .mt_2()
                     .border_t_1()
                     .border_color(cx.theme().sidebar_border)
                     .child(
                         div()
                             .absolute()
                             .left_0()
-                            .top(px(13.))
+                            .top(footer_top)
                             .min_w_0()
-                            .w(inner_width - px(48.) * progress)
+                            .w(inner_width - footer_step * progress)
                             .child(self.navigation_button(Page::Settings, progress, cx)),
                     )
                     .child(
@@ -362,8 +368,8 @@ impl Desktop {
                             &self.hover_labels,
                         )
                         .absolute()
-                        .left((inner_width - px(40.)) * progress)
-                        .top(px(13.) + px(48.) * (1. - progress)),
+                        .left((inner_width - NAV_BUTTON_SIZE) * progress)
+                        .top(footer_top + footer_step * (1. - progress)),
                     ),
             )
     }

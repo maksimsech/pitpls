@@ -18,6 +18,8 @@ use gpui_kit::{
 pub struct Status {
     pub busy: bool,
     pub loading: bool,
+    pub loading_visible: bool,
+    loading_delay: Option<Task<()>>,
     // A dismissed form error must not make a failed load look like empty data.
     pub ready: bool,
     pub error: Option<SharedString>,
@@ -29,17 +31,37 @@ pub struct Status {
 
 impl Status {
     pub fn is_visible(&self) -> bool {
-        self.busy || self.loading || self.error.is_some() || self.message.is_some()
+        self.busy || self.error.is_some() || self.message.is_some()
     }
 
-    pub fn begin_load(&mut self) {
+    pub fn begin_load<V: 'static>(
+        &mut self,
+        window: &Window,
+        cx: &Context<V>,
+        status: fn(&mut V) -> &mut Status,
+    ) {
         self.loading = true;
-        self.ready = false;
+        self.loading_visible = false;
         self.error = None;
+        let timer = cx
+            .background_executor()
+            .timer(std::time::Duration::from_millis(180));
+        self.loading_delay = Some(cx.spawn_in(window, async move |view, cx| {
+            timer.await;
+            let _ = view.update_in(cx, |view, _, cx| {
+                let status = status(view);
+                if status.loading {
+                    status.loading_visible = true;
+                    cx.notify();
+                }
+            });
+        }));
     }
 
     pub fn loaded<T>(&mut self, result: Result<T, String>) -> Option<T> {
         self.loading = false;
+        self.loading_visible = false;
+        self.loading_delay = None;
         self.ready = result.is_ok();
         match result {
             Ok(value) => Some(value),
@@ -84,7 +106,19 @@ impl Status {
                 )
             })
             .when(self.busy, |view| view.child("Working…"))
-            .when(self.loading, |view| view.child("Loading…"))
+    }
+
+    /// An overlay keeps background feedback out of the page's layout flow.
+    pub fn refreshing(&self, cx: &App) -> Div {
+        div()
+            .absolute()
+            .top_1()
+            .right_5()
+            .text_xs()
+            .text_color(cx.theme().muted_foreground)
+            .when(self.ready && self.loading_visible, |view| {
+                view.child("Refreshing…")
+            })
     }
 }
 
@@ -116,9 +150,68 @@ pub fn scroll(content: impl IntoElement) -> AnyElement {
         .into_any_element()
 }
 
+/// Center a 1200 px content column with responsive side gutters.
+/// This only sets geometry; pages retain their own scrolling behavior.
+pub fn page_content() -> Div {
+    v_flex()
+        .w_full()
+        .max_w(px(1232.))
+        .min_w_0()
+        .mx_auto()
+        .px(px(16.))
+        .py(px(24.))
+}
+
 pub struct SummaryGroup {
     pub title: &'static str,
     pub values: Vec<(&'static str, SharedString)>,
+}
+
+pub fn section_heading(title: &'static str) -> Div {
+    div().text_xl().font_semibold().child(title)
+}
+
+/// Use the same card geometry as loaded summaries; only the values are pending.
+pub fn summary_skeleton(
+    title: &'static str,
+    labels: &[&'static str],
+    visible: bool,
+    cx: &App,
+) -> Div {
+    v_flex()
+        .flex_shrink_0()
+        .gap_3()
+        .child(section_heading(title))
+        .child(
+            h_flex()
+                .flex_wrap()
+                .gap_3()
+                .children(labels.iter().map(|label| {
+                    GroupBox::new()
+                        .id(SharedString::from(format!("pending-{title}-{label}")))
+                        .outline()
+                        .min_w(rems(15.7))
+                        .flex_1()
+                        .content_style(gpui_kit::StyleRefinement::default().gap_2())
+                        .child(
+                            div()
+                                .text_base()
+                                .font_medium()
+                                .text_color(cx.theme().muted_foreground)
+                                .child(*label),
+                        )
+                        .child(
+                            div().text_lg().child(
+                                div()
+                                    .h(rems(1.75))
+                                    .w(rems(9.))
+                                    .rounded(px(4.))
+                                    .bg(cx.theme().skeleton)
+                                    .opacity(if visible { 1. } else { 0. }),
+                            ),
+                        )
+                })),
+        )
 }
 
 pub fn summaries(groups: &[SummaryGroup], cx: &App) -> Div {
@@ -126,37 +219,35 @@ pub fn summaries(groups: &[SummaryGroup], cx: &App) -> Div {
         .flex_shrink_0()
         .gap_5()
         .children(groups.iter().map(|group| {
-            v_flex()
-                .gap_3()
-                .child(div().font_semibold().child(group.title))
-                .child(
-                    h_flex()
-                        .flex_wrap()
-                        .gap_3()
-                        .children(group.values.iter().map(|(label, value)| {
-                            GroupBox::new()
-                                .id(SharedString::from(format!(
-                                    "summary-{}-{label}",
-                                    group.title
-                                )))
-                                .outline()
-                                .min_w(rems(15.7))
-                                .flex_1()
-                                .content_style(gpui_kit::StyleRefinement::default().gap_2())
-                                .child(
-                                    div()
-                                        .text_sm()
-                                        .text_color(cx.theme().muted_foreground)
-                                        .child(*label),
-                                )
-                                .child(
-                                    div()
-                                        .text_lg()
-                                        .font_family(cx.theme().mono_font_family.clone())
-                                        .child(value.clone()),
-                                )
-                        })),
-                )
+            v_flex().gap_3().child(section_heading(group.title)).child(
+                h_flex()
+                    .flex_wrap()
+                    .gap_3()
+                    .children(group.values.iter().map(|(label, value)| {
+                        GroupBox::new()
+                            .id(SharedString::from(format!(
+                                "summary-{}-{label}",
+                                group.title
+                            )))
+                            .outline()
+                            .min_w(rems(15.7))
+                            .flex_1()
+                            .content_style(gpui_kit::StyleRefinement::default().gap_2())
+                            .child(
+                                div()
+                                    .text_base()
+                                    .font_medium()
+                                    .text_color(cx.theme().muted_foreground)
+                                    .child(*label),
+                            )
+                            .child(
+                                div()
+                                    .text_lg()
+                                    .font_family(cx.theme().mono_font_family.clone())
+                                    .child(value.clone()),
+                            )
+                    })),
+            )
         }))
 }
 
