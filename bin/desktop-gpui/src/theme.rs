@@ -1,18 +1,21 @@
-use gpui_kit::{component::Theme, *};
+use gpui_kit::{
+    component::{ActiveTheme, Theme},
+    *,
+};
 
 pub fn configure_theme(cx: &mut App) {
     Theme::update(cx, |theme| {
         theme.radius = px(10.);
         theme.radius_lg = px(10.);
         theme.font_size = px(14.);
-        // The native title bar is outside the content viewport. Sheets should
-        // start at its top edge, without reserving a second title bar's height.
-        theme.sheet.margin_top = px(0.);
-        // Match the neutral palette in bin/desktop/src/index.css (sRGB
-        // equivalents of its OKLCH tokens), including translucent dark borders.
+        // On macOS the toolbar shares the native title bar's content area.
+        // Keep sheets below its window controls and app actions.
+        theme.sheet.margin_top = px(if cfg!(target_os = "macos") { 64. } else { 0. });
+        // Neutral desktop surfaces: the sidebar and header sit one shade above
+        // the content canvas, with quiet borders in either appearance.
         let dark = theme.is_dark();
         let c = &mut theme.colors;
-        c.background = rgb(if dark { 0x0a0a0a } else { 0xffffff }).into();
+        c.background = rgb(if dark { 0x141414 } else { 0xffffff }).into();
         c.foreground = rgb(if dark { 0xfafafa } else { 0x0a0a0a }).into();
         c.border = if dark {
             rgba(0xffffff1a).into()
@@ -30,6 +33,8 @@ pub fn configure_theme(cx: &mut App) {
         c.accent_foreground = c.foreground;
         c.secondary = c.muted;
         c.secondary_foreground = c.foreground;
+        c.secondary_hover = rgb(if dark { 0x303030 } else { 0xe5e5e5 }).into();
+        c.secondary_active = c.secondary_hover;
         c.primary = rgb(if dark { 0xe5e5e5 } else { 0x171717 }).into();
         c.primary_foreground = rgb(if dark { 0x171717 } else { 0xfafafa }).into();
         c.primary_hover = c.primary.opacity(0.9);
@@ -63,9 +68,9 @@ pub fn configure_theme(cx: &mut App) {
         c.button_danger_foreground = c.danger;
         c.button_danger_hover = c.danger.opacity(0.3);
         c.button_danger_active = c.danger.opacity(0.4);
-        c.sidebar = c.background;
+        c.sidebar = rgb(if dark { 0x202020 } else { 0xf5f5f5 }).into();
         c.sidebar_foreground = c.foreground;
-        c.sidebar_accent = c.muted;
+        c.sidebar_accent = rgb(if dark { 0x303030 } else { 0xe5e5e5 }).into();
         c.sidebar_accent_foreground = c.foreground;
         c.sidebar_border = c.border;
         c.list = c.background;
@@ -80,4 +85,11 @@ pub fn configure_theme(cx: &mut App) {
         c.table_active = c.muted;
         c.table_row_border = c.border;
     });
+    // Keep the native title bar and window border in sync on startup,
+    // when restoring preferences, and when toggling the app theme.
+    cx.set_window_appearance(Some(if cx.theme().is_dark() {
+        WindowAppearance::Dark
+    } else {
+        WindowAppearance::Light
+    }));
 }

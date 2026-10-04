@@ -8,15 +8,19 @@ mod navigation;
 mod pages;
 mod services;
 mod theme;
+#[cfg(target_os = "macos")]
+mod window_chrome;
 
 use gpui_kit::*;
 use std::sync::Arc;
+
+pub(crate) const APP_NAME: &str = "pitpls";
 
 actions!(desktop_gpui, [Quit]);
 
 fn main() {
     if let Err(error) = run() {
-        eprintln!("desktop-gpui: {error}");
+        eprintln!("{APP_NAME}: {error}");
         std::process::exit(1);
     }
 }
@@ -56,12 +60,24 @@ fn run() -> Result<(), String> {
             gpui_kit::open_window(
                 WindowOptions {
                     window_bounds: Some(WindowBounds::centered(size(px(1180.), px(780.)), cx)),
+                    #[cfg(target_os = "macos")]
+                    titlebar: Some(TitlebarOptions {
+                        title: None,
+                        appears_transparent: true,
+                        // Center the native controls in the 64px app toolbar.
+                        traffic_light_position: Some(point(px(16.), px(25.))),
+                    }),
+                    #[cfg(target_os = "macos")]
+                    app_owns_titlebar_drag: true,
+                    #[cfg(target_os = "macos")]
+                    window_min_size: Some(size(px(760.), px(480.))),
+                    #[cfg(not(target_os = "macos"))]
                     window_min_size: Some(size(px(640.), px(480.))),
                     ..Default::default()
                 },
                 cx,
                 |window, cx| {
-                    window.set_window_title("pitpls");
+                    window.set_window_title(APP_NAME);
                     cx.new(|cx| app::Desktop::new(Arc::new(config), runtime, window, cx))
                 },
             )

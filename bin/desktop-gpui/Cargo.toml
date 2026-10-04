@@ -5,6 +5,10 @@ authors.workspace = true
 license.workspace = true
 publish = false
 
+[[bin]]
+name = "pitpls"
+path = "src/main.rs"
+
 [dependencies]
 gpui-kit = "0.7.0"
 pitpls-core.workspace = true
@@ -20,5 +24,6 @@ serde_json = "1"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6"
-objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSApplication", "NSImage"] }
+objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSApplication", "NSImage", "NSView", "NSWindow"] }
 objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSData"] }
+raw-window-handle = "0.6"

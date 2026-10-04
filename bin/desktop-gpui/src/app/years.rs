@@ -13,36 +13,14 @@ impl Desktop {
             window,
             cx,
             |app| async move { year::list_years(&app).await },
-            |this, result, window, cx| {
+            |this, result, _, cx| {
                 if let Some(years) = this.status.loaded(result) {
                     this.years = years;
-                    this.sync_year_select(window, cx);
                 }
                 cx.notify();
             },
         ));
         cx.notify();
-    }
-
-    fn sync_year_select(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let mut years = self.years.clone();
-        if let Some(year) = self.preferences.year
-            && !years.contains(&year)
-        {
-            years.push(year);
-        }
-        years.sort_unstable_by(|a, b| b.cmp(a));
-        let mut choices = vec![Choice::new(None, "All years")];
-        choices.extend(
-            years
-                .iter()
-                .map(|year| Choice::new(Some(*year), year.to_string())),
-        );
-        let value = self.preferences.year;
-        self.year_select.update(cx, |state, cx| {
-            state.set_items(choices, window, cx);
-            state.set_selected_value(&value, window, cx);
-        });
     }
 
     fn open_year_form(&mut self, window: &mut Window, cx: &mut Context<Self>) {

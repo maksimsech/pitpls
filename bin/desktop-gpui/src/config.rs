@@ -19,7 +19,8 @@ impl Config {
                 }
                 Some("--help" | "-h") => {
                     println!(
-                        "desktop-gpui [--database PATH]\n\nDefaults to the existing pitpls application database."
+                        "{} [--database PATH]\n\nDefaults to the existing pitpls application database.",
+                        crate::APP_NAME
                     );
                     return Ok(None);
                 }
@@ -45,6 +46,8 @@ impl Config {
 pub struct Preferences {
     pub year: Option<i32>,
     pub dark: Option<bool>,
+    #[serde(default)]
+    pub sidebar_collapsed: bool,
 }
 
 pub async fn read_preferences(path: &std::path::Path) -> Result<Preferences, String> {

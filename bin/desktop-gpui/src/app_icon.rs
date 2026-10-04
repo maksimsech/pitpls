@@ -7,7 +7,7 @@ pub fn install() {
     // Same icon bundled by the Swift app on feat/macos-native.
     let data = NSData::with_bytes(include_bytes!("../assets/AppIcon.icns"));
     let Some(icon) = NSImage::initWithData(NSImage::alloc(), &data) else {
-        eprintln!("desktop-gpui: could not load the app icon");
+        eprintln!("{}: could not load the app icon", crate::APP_NAME);
         return;
     };
     // SAFETY: AppKit receives a valid, non-null image on the main thread.

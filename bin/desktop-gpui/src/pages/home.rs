@@ -89,7 +89,7 @@ impl Render for HomePage {
         components::scroll(
             v_flex()
                 .gap_4()
-                .p_5()
+                .p(px(24.))
                 .when(self.status.is_visible(), |view| {
                     view.child(self.status.render(cx))
                 })

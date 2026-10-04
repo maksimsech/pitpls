@@ -2,10 +2,7 @@ mod toolbar;
 mod years;
 
 use crate::{
-    components::{
-        self, Status,
-        form::{self, Choice, ChoiceState},
-    },
+    components::{self, Status, form},
     config::{self, Config, Preferences},
     navigation::{Page, PageContext, PageEvent, PageEvents},
     pages::{self, PageHandle},
@@ -14,7 +11,7 @@ use crate::{
 };
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::{
-    component::{button::ButtonVariants, input::InputState, select::*, *},
+    component::{button::ButtonVariants, input::InputState, *},
     *,
 };
 use std::sync::Arc;
@@ -33,9 +30,7 @@ pub struct Desktop {
     preference_task: Option<Task<()>>,
     status: Status,
     years: Vec<i32>,
-    year_select: Entity<ChoiceState<Option<i32>>>,
     manage_years: bool,
-    menu_open: bool,
     navigation_focus: FocusHandle,
     year_form: Option<Entity<InputState>>,
     delete_year: Option<i32>,
@@ -50,22 +45,6 @@ impl Desktop {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
-        let year_select = form::select(vec![Choice::new(None, "All years")], None, window, cx);
-        let year_subscription =
-            cx.subscribe_in(&year_select, window, |this, _, event, window, cx| {
-                let SelectEvent::Confirm(Some(value)) = event else {
-                    return;
-                };
-                if this.locked() {
-                    return;
-                }
-                let year = *value;
-                if this.preferences.year != year {
-                    this.preferences.year = year;
-                    this.save_preferences(window, cx);
-                    this.mount_page(window, cx);
-                }
-            });
         let events = cx.new(|_| PageEvents);
         let page_subscription = cx.subscribe_in(&events, window, |this, _, event, window, cx| {
             match event {
@@ -92,15 +71,24 @@ impl Desktop {
             preference_task: None,
             status: Status::default(),
             years: vec![],
-            year_select,
             manage_years: false,
-            menu_open: false,
             navigation_focus: cx.focus_handle(),
             year_form: None,
             delete_year: None,
             return_focus: None,
-            _subscriptions: vec![year_subscription, page_subscription],
+            _subscriptions: vec![page_subscription],
         };
+        #[cfg(target_os = "macos")]
+        {
+            crate::window_chrome::sync_fullscreen_title(window);
+            view._subscriptions
+                .push(cx.observe_window_bounds(window, |_, window, cx| {
+                    // Apply after AppKit/GPUI finish updating the native window.
+                    cx.defer_in(window, |_, window, _| {
+                        crate::window_chrome::sync_fullscreen_title(window);
+                    });
+                }));
+        }
         view.connect(window, cx);
         view
     }
@@ -234,12 +222,7 @@ impl Render for Desktop {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         // Keep one bounded content region in every state, including startup and
         // connection failures, so page content cannot displace the window chrome.
-        let mut content = v_flex()
-            .flex_1()
-            .min_h_0()
-            .min_w_0()
-            .pt_16()
-            .overflow_hidden();
+        let mut content = v_flex().flex_1().min_h_0().min_w_0().overflow_hidden();
         if self.context.is_none() {
             content = content.child(components::scroll(
                 v_flex()
@@ -287,12 +270,6 @@ impl Render for Desktop {
         v_flex()
             .id("desktop")
             .track_focus(&self.navigation_focus)
-            .on_key_down(cx.listener(|this, event: &KeyDownEvent, _, cx| {
-                if this.menu_open && event.keystroke.key == "escape" {
-                    this.menu_open = false;
-                    cx.notify();
-                }
-            }))
             .relative()
             .size_full()
             .overflow_hidden()
@@ -300,17 +277,15 @@ impl Render for Desktop {
             .text_color(cx.theme().foreground)
             .font_family(cx.theme().font_family.clone())
             .text_sm()
-            .child(content)
-            .when(self.menu_open, |view| {
-                view.child(self.navigation_panel(window, cx))
-            })
+            .child(self.toolbar(window, cx))
             .child(
-                div()
-                    .absolute()
-                    .top_0()
-                    .left_0()
-                    .right_0()
-                    .child(self.toolbar(cx)),
+                h_flex()
+                    .flex_1()
+                    .min_h_0()
+                    .w_full()
+                    .items_stretch()
+                    .child(self.navigation_panel(cx))
+                    .child(content),
             )
     }
 }
