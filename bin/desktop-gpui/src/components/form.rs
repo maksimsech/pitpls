@@ -77,6 +77,10 @@ pub fn text(state: &Entity<InputState>, cx: &App) -> String {
     state.read(cx).value().trim().to_string()
 }
 
+pub fn optional(state: &Entity<InputState>, cx: &App) -> Option<String> {
+    Some(text(state, cx)).filter(|value| !value.is_empty())
+}
+
 pub fn required(state: &Entity<InputState>, label: &str, cx: &App) -> Result<String, String> {
     let value = text(state, cx);
     if value.is_empty() {
@@ -152,7 +156,6 @@ pub fn select_field<T: Clone + PartialEq + 'static>(
     )
 }
 
-/// Lay out supplied Input and Select controls as one amount/currency field.
 pub fn amount_field(
     label: &'static str,
     currency_label: &'static str,
@@ -213,7 +216,6 @@ pub fn date_picker(value: NaiveDate, window: &mut Window, cx: &mut App) -> Entit
     })
 }
 
-/// The picked date in the format the use cases parse.
 pub fn selected_date(
     state: &Entity<DatePickerState>,
     label: &str,

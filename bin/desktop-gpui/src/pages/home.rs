@@ -6,7 +6,7 @@ use crate::{
 };
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::{
-    component::{button::*, *},
+    component::{alert::Alert, button::*, *},
     *,
 };
 use pitpls_app::use_case::{tax, warnings};
@@ -96,12 +96,12 @@ impl Render for HomePage {
                 components::page_content()
                     .gap_4()
                     .when(self.status.is_visible(), |view| {
-                        view.child(self.status.render(cx))
+                        view.child(self.status.render())
                     })
                     .when(self.warning, |view| {
-                        view.child(components::notice(
+                        view.child(Alert::warning(
+                            "page-notice",
                             "No rates loaded for this period. Open Rates to import exchange rates.",
-                            cx,
                         ))
                     })
                     .when(self.warning || self.status.error.is_some(), |view| {

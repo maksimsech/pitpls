@@ -1,15 +1,13 @@
-mod crypto;
-mod dividends;
 mod home;
 mod imports;
-mod interests;
 mod rates;
+mod records;
 mod settings;
 
 use crate::navigation::{Page, PageContext};
 use gpui_kit::*;
+use records::{Crypto, Dividends, Interests, RecordsPage};
 
-/// The shell can refresh a page, but cannot reach into its state or controls.
 pub trait PageView: Render {
     fn refresh(&mut self, window: &mut Window, cx: &mut Context<Self>);
 }
@@ -48,14 +46,14 @@ pub fn open(
         Page::Imports => {
             PageHandle::new(cx.new(|cx| imports::ImportsPage::new(context, window, cx)))
         }
-        Page::Crypto => {
-            PageHandle::new(cx.new(|cx| crypto::CryptoPage::new(context, year, window, cx)))
-        }
         Page::Dividends => {
-            PageHandle::new(cx.new(|cx| dividends::DividendsPage::new(context, year, window, cx)))
+            PageHandle::new(cx.new(|cx| RecordsPage::<Dividends>::new(context, year, window, cx)))
         }
         Page::Interests => {
-            PageHandle::new(cx.new(|cx| interests::InterestsPage::new(context, year, window, cx)))
+            PageHandle::new(cx.new(|cx| RecordsPage::<Interests>::new(context, year, window, cx)))
+        }
+        Page::Crypto => {
+            PageHandle::new(cx.new(|cx| RecordsPage::<Crypto>::new(context, year, window, cx)))
         }
         Page::Rates => PageHandle::new(cx.new(|cx| rates::RatesPage::new(context, window, cx))),
         Page::Settings => {

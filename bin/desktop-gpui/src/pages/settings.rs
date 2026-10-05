@@ -132,7 +132,7 @@ impl Render for SettingsPage {
         let mut content = components::page_content()
             .gap_4()
             .when(self.status.is_visible(), |view| {
-                view.child(self.status.render(cx))
+                view.child(self.status.render())
             });
         if let Some(dividend_rounding) = &self.dividend_rounding {
             content = content.child(

@@ -4,14 +4,12 @@ use pitpls_core::common::Amount;
 use rust_decimal::{Decimal, RoundingStrategy};
 use std::fmt::Display;
 
-/// Dates are shown day first.
 pub const DATE_FORMAT: &str = "%d.%m.%Y";
 
 pub fn date(value: NaiveDate) -> DisplayText {
     DisplayText::plain(value.format(DATE_FORMAT).to_string())
 }
 
-/// Text for display, with the full value when the text is shortened.
 #[derive(Clone, PartialEq)]
 pub struct DisplayText {
     pub text: SharedString,

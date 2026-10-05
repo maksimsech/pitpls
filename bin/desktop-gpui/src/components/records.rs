@@ -1,3 +1,4 @@
+use super::table::{self, Column};
 use crate::format::DisplayText;
 use gpui_kit::{
     assets::IconName,
@@ -14,15 +15,14 @@ use std::rc::Rc;
 pub const SELECT_WIDTH: f32 = 42.;
 pub const ACTION_WIDTH: f32 = 108.;
 
-pub fn record_skeleton(mut columns: Vec<super::table::Column>, visible: bool, cx: &App) -> Div {
-    columns.insert(0, super::table::Column::text("", SELECT_WIDTH));
-    columns.push(super::table::Column::text("", ACTION_WIDTH));
+pub fn record_skeleton(mut columns: Vec<Column>, visible: bool, cx: &App) -> Div {
+    columns.insert(0, Column::text("", SELECT_WIDTH));
+    columns.push(Column::text("", ACTION_WIDTH));
     skeleton(&columns, visible, cx)
 }
 
-/// Static placeholders avoid introducing another flashing animation. The header
-/// and rows reserve space even during the short indicator delay.
-pub fn skeleton(columns: &[super::table::Column], visible: bool, cx: &App) -> Div {
+/// Placeholders reserve their space at once but stay hidden until `visible`.
+pub fn skeleton(columns: &[Column], visible: bool, cx: &App) -> Div {
     v_flex()
         .w_full()
         .min_w_0()
@@ -43,7 +43,7 @@ pub fn skeleton(columns: &[super::table::Column], visible: bool, cx: &App) -> Di
                 .children(
                     columns
                         .iter()
-                        .map(|column| super::table::cell(column.label.clone(), column, true, cx)),
+                        .map(|column| table::cell(column.label.clone(), column, true, cx)),
                 ),
         )
         .children((0..5).map(|_| {
@@ -82,8 +82,6 @@ pub struct RowDisplay {
     pub details: Vec<DetailGroup>,
 }
 
-/// Keep expanded records in the table's visual flow. Groups wrap when needed;
-/// the virtual list measures this same layout to reserve the correct row height.
 pub fn record_details(record_id: &str, groups: &[DetailGroup], disabled: bool, cx: &App) -> Div {
     h_flex()
         .w_full()
@@ -197,8 +195,8 @@ impl Default for RecordTableState {
     }
 }
 
-/// Observe the stationary viewport, independently of the horizontally scrolling
-/// table. Defer the update until after layout so virtual rows can be remeasured.
+/// Reports the width of the stationary table viewport, not the horizontally
+/// scrolling table, after layout so that rows can be remeasured.
 pub fn measure_width<V: 'static>(
     current: Option<Pixels>,
     state: fn(&mut V) -> &mut RecordTableState,
@@ -226,8 +224,6 @@ pub fn measure_width<V: 'static>(
 impl RecordTableState {
     pub fn reset(&mut self, rows: Vec<RowDisplay>) {
         self.rows = rows;
-        // A reload can reorder or remove IDs. Reset position and measured sizes
-        // together with the page's selection/expansion instead of reusing indices.
         self.scroll.set_offset(point(px(0.), px(0.)));
         self.sizes = Rc::new(vec![]);
         self.invalidate_measurements();
@@ -239,8 +235,7 @@ impl RecordTableState {
     }
 
     pub fn set_sizes(&mut self, sizes: Vec<Size<Pixels>>) {
-        // Preserve the first visible item's offset when a preceding item changes
-        // height (expansion or typography/width changes). Kit clamps at the end.
+        // Keep the first visible row in place when rows above it change height.
         let mut top = px(0.);
         let mut offset = self.scroll.offset();
         let first = self.sizes.iter().position(|item| {

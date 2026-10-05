@@ -71,21 +71,13 @@ impl ImportsPage {
                                     .output
                                     .iter()
                                     .map(|output| match output {
-                                        OutputType::Dividend => format!(
-                                            "{} dividend{}",
-                                            result.dividends,
-                                            if result.dividends == 1 { "" } else { "s" },
-                                        ),
-                                        OutputType::Crypto => format!(
-                                            "{} crypto record{}",
-                                            result.cryptos,
-                                            if result.cryptos == 1 { "" } else { "s" },
-                                        ),
-                                        OutputType::Interest => format!(
-                                            "{} interest record{}",
-                                            result.interests,
-                                            if result.interests == 1 { "" } else { "s" },
-                                        ),
+                                        OutputType::Dividend => count(result.dividends, "dividend"),
+                                        OutputType::Crypto => {
+                                            count(result.cryptos, "crypto record")
+                                        }
+                                        OutputType::Interest => {
+                                            count(result.interests, "interest record")
+                                        }
                                     })
                                     .collect::<Vec<_>>()
                                     .join(" and ");
@@ -102,7 +94,6 @@ impl ImportsPage {
                         ));
                     }
                     Ok(None) => {
-                        // Dismissing the native picker restores the idle card.
                         this.status.busy = false;
                         this.active_importer = None;
                         this.context.set_locked(false, cx);
@@ -263,4 +254,8 @@ impl ImportsPage {
                     })
             }))
     }
+}
+
+fn count(count: u64, noun: &str) -> String {
+    format!("{count} {noun}{}", if count == 1 { "" } else { "s" })
 }

@@ -1,6 +1,6 @@
 use gpui_kit::*;
 
-/// A retained, window-scoped native picker. Cancellation is not an error.
+/// Cancelling the picker completes with `Ok(None)`.
 pub fn pick<V: 'static>(
     extension: &'static str,
     window: &Window,
@@ -12,11 +12,11 @@ pub fn pick<V: 'static>(
         .add_filter(extension.to_uppercase(), &[extension])
         .set_parent(window);
     cx.spawn_in(window, async move |view, cx| {
-        // Opening the panel from this task keeps AppKit's window callbacks
-        // outside the update that requested it.
+        // Open the panel outside the update that requested it, so AppKit's
+        // window callbacks don't re-enter it.
         let result = match dialog.pick_file().await {
             None => Ok(None),
-            // The filter is advisory on some platforms; keep the check.
+            // Some platforms treat the filter as a hint only.
             Some(file) => {
                 let path = file.path();
                 if !path

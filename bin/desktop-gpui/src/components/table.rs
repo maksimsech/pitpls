@@ -47,7 +47,6 @@ pub fn cell(value: SharedString, column: &Column, heading: bool, cx: &App) -> Di
     frame(column, heading, cx).child(value)
 }
 
-/// A body cell whose text can be selected and copied.
 pub fn value_cell(
     id: impl Into<ElementId>,
     value: &DisplayText,

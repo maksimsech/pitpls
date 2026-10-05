@@ -12,7 +12,11 @@ use crate::{
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::{
     base::{Transition, transition},
-    component::{button::ButtonVariants, input::InputState, *},
+    component::{
+        button::{Button, ButtonVariants},
+        input::InputState,
+        *,
+    },
     *,
 };
 use std::sync::Arc;
@@ -32,7 +36,7 @@ pub struct Desktop {
     status: Status,
     years: Vec<i32>,
     manage_years: bool,
-    navigation_focus: FocusHandle,
+    focus: FocusHandle,
     year_form: Option<Entity<InputState>>,
     delete_year: Option<i32>,
     _page_subscription: Subscription,
@@ -61,7 +65,6 @@ impl Desktop {
             cx.notify();
         });
         let appearance_subscription = cx.observe_window_appearance(window, |this, window, cx| {
-            // Without a chosen theme the app follows the system's.
             if this.preferences.dark.is_none() {
                 Theme::sync_system_appearance(Some(window), cx);
                 configure_theme(cx);
@@ -81,7 +84,7 @@ impl Desktop {
             status: Status::default(),
             years: vec![],
             manage_years: false,
-            navigation_focus: cx.focus_handle(),
+            focus: cx.focus_handle(),
             year_form: None,
             delete_year: None,
             _page_subscription: page_subscription,
@@ -144,8 +147,6 @@ impl Desktop {
             return;
         };
         self.page_locked = false;
-        // Replacing the page drops its tasks and controls. Late results cannot
-        // update the entity for a different route or reporting year.
         self.active = Some(pages::open(
             self.page,
             context,
@@ -188,7 +189,7 @@ impl Desktop {
         let runtime = self.runtime.clone();
         let path = self.config.preferences.clone();
         let preferences = self.preferences;
-        // Preserve write order when theme or reporting year changes quickly.
+        // Chain saves so that quick successive changes are written in order.
         self.preference_task = Some(cx.spawn_in(window, async move |this, cx| {
             if let Some(previous) = previous {
                 previous.await;
@@ -211,8 +212,8 @@ impl Render for Desktop {
         } else {
             1.
         };
-        // Initialize from restored preferences; only user changes animate.
-        // One shared value keeps the header, content edge, and labels in sync.
+        // Animate only once preferences are restored, so the saved state
+        // doesn't animate in.
         let sidebar_progress = if self.context.is_some() {
             let motion = cx.theme().motion_tokens();
             transition(
@@ -225,15 +226,12 @@ impl Render for Desktop {
         } else {
             target
         };
-        // Keep one bounded content region in every state, including startup and
-        // connection failures, so page content cannot displace the window chrome.
         let mut content = v_flex()
             .flex_1()
             .min_h_0()
             .min_w_0()
             .overflow_hidden()
             .bg(cx.theme().background)
-            // The frame starts to the right of navigation in both sidebar states.
             .border_1()
             .border_color(cx.theme().border)
             .rounded(px(12.));
@@ -246,11 +244,11 @@ impl Render for Desktop {
                     .child(div().text_color(cx.theme().muted_foreground).child(
                         "Your records will appear when the database connection is available.",
                     ))
-                    .child(self.status.render(cx))
+                    .child(self.status.render())
                     .when(!self.status.busy, |view| {
                         view.child(
                             h_flex().child(
-                                gpui_kit::component::button::Button::new("retry-connection")
+                                Button::new("retry-connection")
                                     .label("Retry connection")
                                     .primary()
                                     .on_click(
@@ -268,7 +266,7 @@ impl Render for Desktop {
                             .flex_shrink_0()
                             .px_5()
                             .pt_4()
-                            .child(self.status.render(cx)),
+                            .child(self.status.render()),
                     )
                 })
                 .when_some(self.active.as_ref(), |view, page| {
@@ -277,7 +275,7 @@ impl Render for Desktop {
         }
         v_flex()
             .id("desktop")
-            .track_focus(&self.navigation_focus)
+            .track_focus(&self.focus)
             .relative()
             .size_full()
             .overflow_hidden()

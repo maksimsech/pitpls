@@ -22,6 +22,7 @@ struct RateData {
     columns: Vec<Column>,
     rows: Vec<Vec<SharedString>>,
 }
+
 enum Change {
     Csv(String),
     Nbp(i32),
@@ -196,7 +197,7 @@ impl RatesPage {
                 }
             }))
             .when(self.status.is_visible(), |view| {
-                view.child(self.status.render(cx))
+                view.child(self.status.render())
             })
             .child(form::input_field("Year", year, self.status.busy, cx))
             .footer(
@@ -237,11 +238,24 @@ impl RatesPage {
         window.open_dialog(cx, move |dialog, _, cx| {
             page.update(cx, |_, cx| {
                 let confirm = cx.entity().downgrade();
-                dialog.title("Reset rates").footer(components::confirmation_footer("Reset"))
-                    .child("Remove all imported exchange rates? Calculations will be unavailable until rates are reimported.")
-                    .on_ok(move |_, window, cx| confirm.update(cx, |this, cx| this.change(Change::Reset, window, cx)).is_ok())
-                    .on_close(cx.listener(|this, _, _, cx| { this.confirm_reset = false; this.notify(cx); }))
-            }).unwrap_or_else(|_| Dialog::new(cx))
+                dialog
+                    .title("Reset rates")
+                    .footer(components::confirmation_footer("Reset"))
+                    .child(
+                        "Remove all imported exchange rates? \
+                         Calculations will be unavailable until rates are reimported.",
+                    )
+                    .on_ok(move |_, window, cx| {
+                        confirm
+                            .update(cx, |this, cx| this.change(Change::Reset, window, cx))
+                            .is_ok()
+                    })
+                    .on_close(cx.listener(|this, _, _, cx| {
+                        this.confirm_reset = false;
+                        this.notify(cx);
+                    }))
+            })
+            .unwrap_or_else(|_| Dialog::new(cx))
         });
         self.notify(cx);
     }
@@ -255,7 +269,7 @@ impl RatesPage {
             .gap_4()
             .flex_shrink_0()
             .when(self.status.is_visible(), |view| {
-                view.child(self.status.render(cx))
+                view.child(self.status.render())
             });
         content = content.child(
             h_flex()
@@ -335,11 +349,11 @@ impl PageView for RatesPage {
                 Ok(RateData { columns, rows })
             },
             |this, result, _, cx| {
-                if let Some(data) = this.status.loaded(result) {
-                    if data != this.data {
-                        this.data = data;
-                        this.rate_scroll = UniformListScrollHandle::new();
-                    }
+                if let Some(data) = this.status.loaded(result)
+                    && data != this.data
+                {
+                    this.data = data;
+                    this.rate_scroll = UniformListScrollHandle::new();
                 }
                 cx.notify();
             },
@@ -399,8 +413,6 @@ impl RatesPage {
             .iter()
             .map(|column| column.width)
             .sum::<f32>();
-        // Rate rows are uniform, unlike the expandable financial record rows.
-        // Keep their header and virtual list in one horizontal scroll container.
         let mut list = uniform_list(
             "rate-days",
             self.data.rows.len(),
@@ -454,8 +466,6 @@ impl RatesPage {
                     ),
             )
             .child(list);
-        // Scrollbar overlays belong to the stationary viewport, outside the
-        // element whose content offset changes while panning across currencies.
         div()
             .relative()
             .flex_1()

@@ -26,8 +26,6 @@ impl Services {
         let job = self.runtime.spawn(async move { work(app).await });
         cx.spawn_in(window, async move |view, cx| {
             let result = finish(job).await;
-            // A closed page/window is an expected lifecycle outcome. The job can
-            // finish without retaining that page or calling its former parent.
             let _ = view.update_in(cx, |view, window, cx| complete(view, result, window, cx));
         })
     }

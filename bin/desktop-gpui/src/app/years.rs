@@ -144,7 +144,7 @@ impl Desktop {
                     this.close_year_form(cx);
                 }
             }))
-            .child(self.status.render(cx))
+            .child(self.status.render())
             .child(form::input_field("Year", year, self.status.busy, cx))
             .footer(
                 h_flex()

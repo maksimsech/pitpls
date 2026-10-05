@@ -48,7 +48,7 @@ fn run() -> Result<(), String> {
             .map_err(|error| error.to_string())?,
     );
     gpui_kit::application()
-        // The component-only bundle omits app icons such as SquarePen and Trash.
+        // The default bundle lacks icons such as SquarePen and Trash.
         .with_assets(gpui_kit::assets::AllAssets)
         .run(move |cx| {
             #[cfg(target_os = "macos")]
@@ -78,7 +78,7 @@ fn run() -> Result<(), String> {
                     titlebar: Some(TitlebarOptions {
                         title: None,
                         appears_transparent: true,
-                        // Center the 14px native controls in the compact toolbar.
+                        // Center the 14px traffic lights in the toolbar.
                         traffic_light_position: Some(point(
                             px(16.),
                             (TOOLBAR_HEIGHT - px(14.)) / 2.,
@@ -104,7 +104,6 @@ fn run() -> Result<(), String> {
     Ok(())
 }
 
-/// The standard application, Edit and Window menus with their shortcuts.
 #[cfg(target_os = "macos")]
 fn install_macos_menus(cx: &mut App) {
     use gpui_kit::component::input::{Copy, Cut, Paste, Redo, SelectAll, Undo};
@@ -144,8 +143,7 @@ fn install_macos_menus(cx: &mut App) {
             MenuItem::os_action("Paste", Paste, OsAction::Paste),
             MenuItem::os_action("Select All", SelectAll, OsAction::SelectAll),
         ]),
-        // GPUI registers the menu named "Window" as AppKit's window menu, which
-        // AppKit extends with its own full screen and tiling items.
+        // AppKit adds full screen and tiling items to the menu named "Window".
         Menu::new("Window").items([
             MenuItem::action("Minimize", Minimize),
             MenuItem::action("Zoom", Zoom),
@@ -155,8 +153,8 @@ fn install_macos_menus(cx: &mut App) {
     ]);
 }
 
-/// Window actions are dispatched while that window is being updated, so act
-/// on it once the dispatch has finished.
+/// Window actions are dispatched while the window is being updated, so act on
+/// it after the dispatch.
 #[cfg(target_os = "macos")]
 fn with_active_window(cx: &mut App, action: impl FnOnce(&mut Window) + 'static) {
     let Some(handle) = cx.active_window() else {

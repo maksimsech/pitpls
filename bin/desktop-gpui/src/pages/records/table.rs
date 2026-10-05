@@ -1,67 +1,20 @@
 use super::*;
 use crate::{
-    components::table::{Column, cell, value_cell},
-    format::{DisplayText, amount, date, pln},
+    components::{
+        records::{ACTION_WIDTH, SELECT_WIDTH, record_details},
+        table::{cell, value_cell},
+    },
+    format::date,
 };
-use gpui_kit::{assets::IconName, component::checkbox::Checkbox};
-
-use crate::components::records::{
-    ACTION_WIDTH, DetailGroup, RowDisplay, SELECT_WIDTH, record_details,
+use gpui_kit::{
+    assets::IconName,
+    component::{checkbox::Checkbox, v_virtual_list},
 };
-use gpui_kit::component::{scroll::ScrollableElement, v_virtual_list};
-use gpui_kit::prelude::FluentBuilder;
 
-impl DividendsPage {
-    pub(super) fn display_record(record: &CalculatedDividend) -> RowDisplay {
-        let cells = vec![
-            date(record.date),
-            DisplayText::plain(record.ticker.clone()),
-            DisplayText::plain(record.provider.clone()),
-            amount(record.value),
-            amount(record.tax_paid),
-            DisplayText::plain(record.country.to_string()),
-        ];
-        let details = vec![
-            DetailGroup {
-                title: "Original amounts",
-                fields: vec![
-                    ("Original value", amount(record.value)),
-                    ("Original tax paid", amount(record.tax_paid)),
-                ],
-            },
-            DetailGroup {
-                title: "Conversion",
-                fields: vec![
-                    ("NBP date", date(record.nbp_date)),
-                    ("Calculated value", pln(record.calculated_value)),
-                    ("Calculated tax paid", pln(record.calculated_tax_paid)),
-                ],
-            },
-            DetailGroup {
-                title: "Tax calculation",
-                fields: vec![
-                    ("Calculated to pay", pln(record.calculated_to_pay)),
-                    ("Max tax paid", pln(record.max_tax_paid)),
-                    ("Used tax paid", pln(record.used_tax_paid)),
-                ],
-            },
-        ];
-        RowDisplay { cells, details }
-    }
-
-    pub(super) fn base_columns() -> Vec<Column> {
-        vec![
-            Column::text("Date", 110.),
-            Column::text("Ticker", 75.),
-            Column::text("Provider", 120.),
-            Column::number("Value", 135.),
-            Column::number("Tax paid", 135.),
-            Column::text("Country", 85.),
-        ]
-    }
-
+impl<K: RecordKind> RecordsPage<K> {
+    /// Numeric columns share the width left over by the minimum layout.
     fn columns(&self) -> Vec<Column> {
-        let mut columns = Self::base_columns();
+        let mut columns = K::columns();
         let available = self.table_state.width / px(1.) * 14. / self.table_state.rem_size;
         let minimum =
             columns.iter().map(|column| column.width).sum::<f32>() + SELECT_WIDTH + ACTION_WIDTH;
@@ -74,74 +27,72 @@ impl DividendsPage {
     }
 
     fn table_header(&self, columns: &[Column], cx: &mut Context<Self>) -> Div {
-        let mut row = h_flex()
+        h_flex()
             .h(px(42.))
             .rounded_t(cx.theme().radius)
             .bg(cx.theme().table_head)
             .border_b_1()
-            .border_color(cx.theme().border);
-        row = row.child(
-            div()
-                .w(rems(SELECT_WIDTH / 14.))
-                .flex_shrink_0()
-                .px_3()
-                .child(
-                    Checkbox::new("select-all")
-                        .accessibility_label("Select all records")
-                        .checked(
-                            !self.records.is_empty() && self.selected.len() == self.records.len(),
-                        )
-                        .disabled(
-                            self.status.busy
-                                || self.status.loading
-                                || self.editor.is_some()
-                                || self.confirmation.is_some(),
-                        )
-                        .on_click(cx.listener(|this, checked, _, cx| {
-                            this.selected = if *checked {
-                                this.records.iter().map(|row| row.id.clone()).collect()
-                            } else {
-                                HashSet::new()
-                            };
-                            cx.notify();
-                        })),
-                ),
-        );
-        row.children(
-            columns
-                .iter()
-                .map(|column| cell(column.label.clone(), column, true, cx)),
-        )
-        .child(
-            div()
-                .w(rems(ACTION_WIDTH / 14.))
-                .flex_shrink_0()
-                .px_3()
-                .text_sm()
-                .font_medium()
-                .text_color(cx.theme().table_head_foreground)
-                .child("Actions"),
-        )
+            .border_color(cx.theme().border)
+            .child(
+                div()
+                    .w(rems(SELECT_WIDTH / 14.))
+                    .flex_shrink_0()
+                    .px_3()
+                    .child(
+                        Checkbox::new("select-all")
+                            .accessibility_label("Select all records")
+                            .checked(
+                                !self.records.is_empty()
+                                    && self.selected.len() == self.records.len(),
+                            )
+                            .disabled(self.disabled())
+                            .on_click(cx.listener(|this, checked, _, cx| {
+                                this.selected = if *checked {
+                                    this.records
+                                        .iter()
+                                        .map(|record| K::id(record).to_owned())
+                                        .collect()
+                                } else {
+                                    HashSet::new()
+                                };
+                                cx.notify();
+                            })),
+                    ),
+            )
+            .children(
+                columns
+                    .iter()
+                    .map(|column| cell(column.label.clone(), column, true, cx)),
+            )
+            .child(
+                div()
+                    .w(rems(ACTION_WIDTH / 14.))
+                    .flex_shrink_0()
+                    .px_3()
+                    .text_sm()
+                    .font_medium()
+                    .text_color(cx.theme().table_head_foreground)
+                    .child("Actions"),
+            )
     }
 
     fn record_row(
         &self,
-        record: &CalculatedDividend,
+        record: &K::Record,
         index: usize,
         columns: &[Column],
         cx: &mut Context<Self>,
     ) -> Div {
         let display = &self.table_state.rows[index];
-        let selected_id = record.id.clone();
-        let expand_id = record.id.clone();
-        let delete_id = record.id.clone();
-        let edit_id = record.id.clone();
-        let expanded = self.expanded.contains(&record.id);
-        let disabled = self.status.busy
-            || self.status.loading
-            || self.editor.is_some()
-            || self.confirmation.is_some();
-        let label = format!("Dividend record on {}", date(record.date).text);
+        let id = K::id(record);
+        let selected_id = id.to_owned();
+        let expand_id = id.to_owned();
+        let delete_id = id.to_owned();
+        let edit_id = id.to_owned();
+        let selected = self.selected.contains(id);
+        let expanded = self.expanded.contains(id);
+        let disabled = self.disabled();
+        let label = format!("{} record on {}", K::NAME, date(K::date(record)).text);
         v_flex()
             .w(self.table_state.width)
             .text_sm()
@@ -151,18 +102,16 @@ impl DividendsPage {
             .child(
                 h_flex()
                     .min_h(px(40.))
-                    .when(self.selected.contains(&record.id), |row| {
-                        row.bg(cx.theme().muted)
-                    })
+                    .when(selected, |row| row.bg(cx.theme().muted))
                     .child(
                         div()
                             .w(rems(SELECT_WIDTH / 14.))
                             .flex_shrink_0()
                             .px_3()
                             .child(
-                                Checkbox::new(SharedString::from(format!("select-{}", record.id)))
+                                Checkbox::new(SharedString::from(format!("select-{id}")))
                                     .accessibility_label(format!("Select {label}"))
-                                    .checked(self.selected.contains(&record.id))
+                                    .checked(selected)
                                     .disabled(disabled)
                                     .on_click(cx.listener(move |this, checked, _, cx| {
                                         if *checked {
@@ -184,7 +133,7 @@ impl DividendsPage {
                             .gap_1()
                             .px_2()
                             .child(
-                                Button::new(SharedString::from(format!("expand-{}", record.id)))
+                                Button::new(SharedString::from(format!("expand-{id}")))
                                     .icon(if expanded {
                                         IconName::ChevronDown
                                     } else {
@@ -206,24 +155,25 @@ impl DividendsPage {
                                     })),
                             )
                             .child(
-                                Button::new(SharedString::from(format!("edit-{}", record.id)))
+                                Button::new(SharedString::from(format!("edit-{id}")))
                                     .icon(IconName::SquarePen)
                                     .ghost()
                                     .small()
                                     .accessibility_label(format!("Edit {label}"))
                                     .disabled(disabled)
                                     .on_click(cx.listener(move |this, _, window, cx| {
-                                        if let Some(record) =
-                                            this.records.iter().find(|record| record.id == edit_id)
+                                        if let Some(record) = this
+                                            .records
+                                            .iter()
+                                            .find(|record| K::id(record) == edit_id)
                                         {
-                                            let editor =
-                                                DividendForm::new(Some(record), window, cx);
-                                            this.open_editor(editor, window, cx);
+                                            let form = K::Form::new(Some(record), window, cx);
+                                            this.open_editor(form, window, cx);
                                         }
                                     })),
                             )
                             .child(
-                                Button::new(SharedString::from(format!("delete-{}", record.id)))
+                                Button::new(SharedString::from(format!("delete-{id}")))
                                     .icon(IconName::Trash)
                                     .danger()
                                     .small()
@@ -245,24 +195,19 @@ impl DividendsPage {
                     ),
             )
             .when(expanded, |row| {
-                row.child(record_details(&record.id, &display.details, disabled, cx))
+                row.child(record_details(id, &display.details, disabled, cx))
             })
     }
 
-    pub fn records(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
+    pub(super) fn records(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         if self.records.is_empty() {
-            return self
-                .empty_state(
-                    "No records for this period. Add a record or import a file.",
-                    cx,
-                )
-                .into_any_element();
+            return self.empty_state(cx).into_any_element();
         }
-        let columns = Self::base_columns();
-        let width =
-            columns.iter().map(|column| column.width).sum::<f32>() + SELECT_WIDTH + ACTION_WIDTH;
-        // The page can be narrower than the window. Size and measure rows using
-        // the actual table viewport, with horizontal scrolling below the minimum.
+        let width = K::columns().iter().map(|column| column.width).sum::<f32>()
+            + SELECT_WIDTH
+            + ACTION_WIDTH;
+        // The page can be narrower than the window, so rows are sized to the
+        // table viewport and scroll horizontally below the minimum width.
         let minimum = window.rem_size() * (width / 14.);
         let width = self
             .table_state
@@ -280,13 +225,12 @@ impl DividendsPage {
         );
         if self.table_state.layout_key.as_ref() != Some(&key) {
             self.table_state.layout_key = Some(key);
-            self.table_state.width = width;
             self.table_state.invalidate_measurements();
         }
         if self.table_state.dirty {
             let mut sizes = Vec::with_capacity(self.records.len());
             for (index, record) in self.records.iter().enumerate() {
-                let expanded = usize::from(self.expanded.contains(&record.id));
+                let expanded = usize::from(self.expanded.contains(K::id(record)));
                 let measured = if let Some(measured) = self.table_state.measured[index][expanded] {
                     measured
                 } else {
@@ -316,7 +260,7 @@ impl DividendsPage {
                     .map(|index| {
                         let record = &this.records[index];
                         div()
-                            .id(SharedString::from(record.id.clone()))
+                            .id(SharedString::from(K::id(record).to_owned()))
                             .child(this.record_row(record, index, &columns, cx))
                     })
                     .collect()
@@ -334,11 +278,9 @@ impl DividendsPage {
             .child(
                 div()
                     .relative()
+                    .flex()
                     .flex_1()
                     .min_h_0()
-                    // Explicit flex/overflow containment keeps the list's
-                    // viewport independent of the total height of its records.
-                    .flex()
                     .overflow_hidden()
                     .child(list)
                     .vertical_scrollbar(&scroll),
@@ -384,17 +326,16 @@ impl DividendsPage {
             .into_any_element()
     }
 
-    fn empty_state(&self, message: &'static str, cx: &mut Context<Self>) -> Div {
-        components::empty(message, cx).child(
+    fn empty_state(&self, cx: &mut Context<Self>) -> Div {
+        components::empty(
+            "No records for this period. Add a record or import a file.",
+            cx,
+        )
+        .child(
             Button::new("empty-import")
                 .label("Open imports")
                 .outline()
-                .disabled(
-                    self.status.busy
-                        || self.status.loading
-                        || self.editor.is_some()
-                        || self.confirmation.is_some(),
-                )
+                .disabled(self.disabled())
                 .on_click(cx.listener(|this, _, _, cx| this.context.navigate(Page::Imports, cx))),
         )
     }

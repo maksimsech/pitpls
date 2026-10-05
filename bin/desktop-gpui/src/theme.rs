@@ -8,15 +8,13 @@ pub fn configure_theme(cx: &mut App) {
         theme.radius = px(10.);
         theme.radius_lg = px(10.);
         theme.font_size = px(14.);
-        // On macOS the toolbar shares the native title bar's content area.
-        // Keep sheets below its window controls and app actions.
+        // On macOS the toolbar is the title bar; keep sheets below it.
         theme.sheet.margin_top = if cfg!(target_os = "macos") {
             crate::TOOLBAR_HEIGHT
         } else {
             px(0.)
         };
-        // sRGB equivalents of the light/dark tokens in bin/desktop/src/index.css.
-        // Window chrome and navigation share Tauri's sidebar surface.
+        // sRGB equivalents of the tokens in bin/desktop/src/index.css.
         let dark = theme.is_dark();
         let c = &mut theme.colors;
         c.background = rgb(if dark { 0x0a0a0a } else { 0xffffff }).into();
@@ -118,10 +116,7 @@ pub fn configure_theme(cx: &mut App) {
     });
 }
 
-/// Apply the user's theme choice, or follow the system when there is none.
 pub fn apply_theme(dark: Option<bool>, window: &mut Window, cx: &mut App) {
-    // A choice pins the native title bar and window border to it. Clearing
-    // the override lets them, and window appearance events, follow the system.
     cx.set_window_appearance(dark.map(|dark| {
         if dark {
             WindowAppearance::Dark

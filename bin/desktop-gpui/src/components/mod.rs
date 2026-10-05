@@ -1,10 +1,10 @@
-use gpui_kit::prelude::FluentBuilder;
 pub mod file_picker;
 pub mod form;
 pub mod records;
 pub mod table;
 
 use crate::format::DisplayText;
+use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::{
     base::SelectableText,
     component::{
@@ -23,12 +23,13 @@ pub struct Status {
     pub loading: bool,
     pub loading_visible: bool,
     loading_delay: Option<Task<()>>,
-    // A dismissed form error must not make a failed load look like empty data.
+    /// Whether the last load succeeded. Forms also set and clear `error`, so
+    /// it cannot tell a failed load from empty data.
     pub ready: bool,
     pub error: Option<SharedString>,
     pub message: Option<SharedString>,
-    // The page owns its pending UI callback; replacing/dropping it cancels the
-    // stale callback while already-started service writes can safely finish.
+    /// Replacing or dropping this cancels the pending UI callback. Work already
+    /// started in the background still finishes.
     pub task: Option<Task<()>>,
 }
 
@@ -95,7 +96,7 @@ impl Status {
         }
     }
 
-    pub fn render(&self, _: &App) -> Div {
+    pub fn render(&self) -> Div {
         v_flex()
             .flex_shrink_0()
             .gap_3()
@@ -111,7 +112,6 @@ impl Status {
             .when(self.busy, |view| view.child("Working…"))
     }
 
-    /// An overlay keeps background feedback out of the page's layout flow.
     pub fn refreshing(&self, cx: &App) -> Div {
         div()
             .absolute()
@@ -123,10 +123,6 @@ impl Status {
                 view.child("Refreshing…")
             })
     }
-}
-
-pub fn notice(message: impl Into<SharedString>, _: &App) -> Alert {
-    Alert::warning("page-notice", message.into())
 }
 
 pub fn empty(message: &'static str, cx: &App) -> Div {
@@ -153,8 +149,6 @@ pub fn scroll(content: impl IntoElement) -> AnyElement {
         .into_any_element()
 }
 
-/// Center a 1200 px content column with responsive side gutters.
-/// This only sets geometry; pages retain their own scrolling behavior.
 pub fn page_content() -> Div {
     v_flex()
         .w_full()
@@ -170,8 +164,6 @@ pub struct SummaryGroup {
     pub values: Vec<(&'static str, DisplayText)>,
 }
 
-/// Show a value as text that can be selected and copied. A shortened value
-/// also shows its full value on hover and can copy it from the context menu.
 pub fn display_text(element: Stateful<Div>, value: &DisplayText) -> AnyElement {
     let element = element.child(SelectableText::new("text", value.text.clone()));
     let Some(full) = value.full.clone() else {
@@ -195,47 +187,61 @@ pub fn section_heading(title: &'static str) -> Div {
     div().text_xl().font_semibold().child(title)
 }
 
-/// Use the same card geometry as loaded summaries; only the values are pending.
+fn summary_section(title: &'static str, cards: impl IntoIterator<Item = GroupBox>) -> Div {
+    v_flex()
+        .gap_3()
+        .child(section_heading(title))
+        .child(h_flex().flex_wrap().gap_3().children(cards))
+}
+
+fn summary_card(
+    id: impl Into<ElementId>,
+    label: &'static str,
+    value: impl IntoElement,
+    cx: &App,
+) -> GroupBox {
+    GroupBox::new()
+        .id(id)
+        .outline()
+        .min_w(rems(15.7))
+        .flex_1()
+        .content_style(StyleRefinement::default().gap_2())
+        .child(
+            div()
+                .text_base()
+                .font_medium()
+                .text_color(cx.theme().muted_foreground)
+                .child(label),
+        )
+        .child(value)
+}
+
+/// Placeholders reserve their space at once but stay hidden until `visible`.
 pub fn summary_skeleton(
     title: &'static str,
     labels: &[&'static str],
     visible: bool,
     cx: &App,
 ) -> Div {
-    v_flex()
-        .flex_shrink_0()
-        .gap_3()
-        .child(section_heading(title))
-        .child(
-            h_flex()
-                .flex_wrap()
-                .gap_3()
-                .children(labels.iter().map(|label| {
-                    GroupBox::new()
-                        .id(SharedString::from(format!("pending-{title}-{label}")))
-                        .outline()
-                        .min_w(rems(15.7))
-                        .flex_1()
-                        .content_style(gpui_kit::StyleRefinement::default().gap_2())
-                        .child(
-                            div()
-                                .text_base()
-                                .font_medium()
-                                .text_color(cx.theme().muted_foreground)
-                                .child(*label),
-                        )
-                        .child(
-                            div().text_lg().child(
-                                div()
-                                    .h(rems(1.75))
-                                    .w(rems(9.))
-                                    .rounded(px(4.))
-                                    .bg(cx.theme().skeleton)
-                                    .opacity(if visible { 1. } else { 0. }),
-                            ),
-                        )
-                })),
-        )
+    summary_section(
+        title,
+        labels.iter().map(|label| {
+            summary_card(
+                SharedString::from(format!("pending-{title}-{label}")),
+                label,
+                div().text_lg().child(
+                    div()
+                        .h(rems(1.75))
+                        .w(rems(9.))
+                        .rounded(px(4.))
+                        .bg(cx.theme().skeleton)
+                        .opacity(if visible { 1. } else { 0. }),
+                ),
+                cx,
+            )
+        }),
+    )
+    .flex_shrink_0()
 }
 
 pub fn summaries(groups: &[SummaryGroup], cx: &App) -> Div {
@@ -243,41 +249,28 @@ pub fn summaries(groups: &[SummaryGroup], cx: &App) -> Div {
         .flex_shrink_0()
         .gap_5()
         .children(groups.iter().map(|group| {
-            v_flex().gap_3().child(section_heading(group.title)).child(
-                h_flex()
-                    .flex_wrap()
-                    .gap_3()
-                    .children(group.values.iter().map(|(label, value)| {
-                        GroupBox::new()
-                            .id(SharedString::from(format!(
-                                "summary-{}-{label}",
-                                group.title
-                            )))
-                            .outline()
-                            .min_w(rems(15.7))
-                            .flex_1()
-                            .content_style(gpui_kit::StyleRefinement::default().gap_2())
-                            .child(
-                                div()
-                                    .text_base()
-                                    .font_medium()
-                                    .text_color(cx.theme().muted_foreground)
-                                    .child(*label),
-                            )
-                            .child(display_text(
-                                div()
-                                    .id("value")
-                                    .text_lg()
-                                    .font_family(cx.theme().mono_font_family.clone()),
-                                value,
-                            ))
-                    })),
+            summary_section(
+                group.title,
+                group.values.iter().map(|(label, value)| {
+                    summary_card(
+                        SharedString::from(format!("summary-{}-{label}", group.title)),
+                        label,
+                        display_text(
+                            div()
+                                .id("value")
+                                .text_lg()
+                                .font_family(cx.theme().mono_font_family.clone()),
+                            value,
+                        ),
+                        cx,
+                    )
+                }),
             )
         }))
 }
 
-/// Keep confirmations dismissible while routing both buttons through the
-/// dialog's existing callbacks (including its close/focus cleanup).
+/// The buttons dispatch the dialog's own Cancel and Confirm actions, so its
+/// `on_ok` and `on_close` callbacks and focus cleanup run as usual.
 pub fn confirmation_footer(label: &'static str) -> Div {
     use gpui_kit::component::{
         button::*,

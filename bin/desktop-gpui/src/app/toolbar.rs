@@ -11,6 +11,7 @@ use gpui_kit::{
 
 const SIDEBAR_WIDTH: Pixels = px(230.);
 const RAIL_WIDTH: Pixels = px(52.);
+const TRAFFIC_LIGHTS_WIDTH: Pixels = px(96.);
 const NAV_BUTTON_SIZE: Pixels = px(36.);
 const NAV_PADDING: Pixels = px(8.);
 const NAV_GAP: Pixels = px(4.);
@@ -21,10 +22,10 @@ impl Desktop {
         let collapsed = self.preferences.sidebar_collapsed;
         let fullscreen = window.is_fullscreen() || window.is_simple_fullscreen();
         let integrated_titlebar = cfg!(target_os = "macos") && !fullscreen;
-        // Expanded navigation and the page title share the same vertical edge.
-        // The collapsed header still reserves room for the native window controls.
+        // Line the title up with the content edge; the traffic lights take
+        // part of the sidebar's width.
         let leading_width = if integrated_titlebar {
-            px(52.) + (SIDEBAR_WIDTH - px(96.) - px(52.)) * progress
+            RAIL_WIDTH + (SIDEBAR_WIDTH - TRAFFIC_LIGHTS_WIDTH - RAIL_WIDTH) * progress
         } else {
             Self::sidebar_width(progress)
         };
@@ -34,8 +35,6 @@ impl Desktop {
             .w(leading_width)
             .flex_shrink_0()
             .px_3()
-            // Keep the toolbar divider inset in both sidebar states. When
-            // expanded, it lines up with the navigation panel's right edge.
             .child(
                 div()
                     .absolute()
@@ -147,7 +146,7 @@ impl Desktop {
         if integrated_titlebar {
             return TitleBar::new()
                 .h(TOOLBAR_HEIGHT)
-                .pl(px(96.))
+                .pl(TRAFFIC_LIGHTS_WIDTH)
                 .pr_0()
                 .border_b_0()
                 .bg(cx.theme().title_bar)
@@ -155,9 +154,6 @@ impl Desktop {
                 .into_any_element();
         }
 
-        // Fullscreen keeps the same single header flush with the viewport top.
-        // AppKit owns the temporary system-bar reveal; it gets no permanent
-        // space in our layout. Windowed mode restores the traffic-light inset.
         div()
             .h(TOOLBAR_HEIGHT)
             .flex_shrink_0()

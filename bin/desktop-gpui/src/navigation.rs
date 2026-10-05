@@ -49,7 +49,6 @@ pub enum PageEvent {
     YearsChanged,
 }
 
-/// An explicit window-owned event channel; pages never hold the app shell.
 pub struct PageEvents;
 impl EventEmitter<PageEvent> for PageEvents {}
 
