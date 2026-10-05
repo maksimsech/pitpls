@@ -1,7 +1,7 @@
 use super::*;
 use crate::{
-    components::table::{Column, cell},
-    format::{amount, money, pln},
+    components::table::{Column, cell, value_cell},
+    format::{DisplayText, amount, date, money, pln},
 };
 use gpui_kit::{assets::IconName, component::checkbox::Checkbox};
 
@@ -13,9 +13,9 @@ use gpui_kit::prelude::FluentBuilder;
 
 impl InterestsPage {
     pub(super) fn display_record(record: &CalculatedInterest) -> RowDisplay {
-        let cells: Vec<SharedString> = vec![
-            record.date.to_string().into(),
-            record.provider.clone().into(),
+        let cells = vec![
+            date(record.date),
+            DisplayText::plain(record.provider.clone()),
             amount(record.value),
             money(record.calculated_value),
             money(record.to_pay),
@@ -23,18 +23,18 @@ impl InterestsPage {
         let details = vec![
             DetailGroup {
                 title: "Original amounts",
-                fields: vec![("Original value".into(), amount(record.value))],
+                fields: vec![("Original value", amount(record.value))],
             },
             DetailGroup {
                 title: "Conversion",
                 fields: vec![
-                    ("NBP date".into(), record.nbp_date.to_string().into()),
-                    ("Calculated value".into(), pln(record.calculated_value)),
+                    ("NBP date", date(record.nbp_date)),
+                    ("Calculated value", pln(record.calculated_value)),
                 ],
             },
             DetailGroup {
                 title: "Tax calculation",
-                fields: vec![("To pay".into(), pln(record.to_pay))],
+                fields: vec![("To pay", pln(record.to_pay))],
             },
         ];
         RowDisplay { cells, details }
@@ -131,7 +131,7 @@ impl InterestsPage {
             || self.status.loading
             || self.editor.is_some()
             || self.confirmation.is_some();
-        let label = format!("Interest record on {}", record.date);
+        let label = format!("Interest record on {}", date(record.date).text);
         v_flex()
             .w(self.table_state.width)
             .text_sm()
@@ -164,13 +164,9 @@ impl InterestsPage {
                                     })),
                             ),
                     )
-                    .children(
-                        display
-                            .cells
-                            .iter()
-                            .zip(columns)
-                            .map(|(value, column)| cell(value.clone(), column, false, cx)),
-                    )
+                    .children(display.cells.iter().zip(columns).enumerate().map(
+                        |(index, (value, column))| value_cell(("cell", index), value, column, cx),
+                    ))
                     .child(
                         h_flex()
                             .w(rems(ACTION_WIDTH / 14.))

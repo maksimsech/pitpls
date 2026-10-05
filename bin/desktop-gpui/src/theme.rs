@@ -1,5 +1,5 @@
 use gpui_kit::{
-    component::{ActiveTheme, Theme},
+    component::{Theme, ThemeMode},
     *,
 };
 
@@ -116,11 +116,30 @@ pub fn configure_theme(cx: &mut App) {
         c.chart_5 = rgb(0x262626).into();
         c.chart_grid = c.border;
     });
-    // Keep the native title bar and window border in sync on startup,
-    // when restoring preferences, and when toggling the app theme.
-    cx.set_window_appearance(Some(if cx.theme().is_dark() {
-        WindowAppearance::Dark
-    } else {
-        WindowAppearance::Light
+}
+
+/// Apply the user's theme choice, or follow the system when there is none.
+pub fn apply_theme(dark: Option<bool>, window: &mut Window, cx: &mut App) {
+    // A choice pins the native title bar and window border to it. Clearing
+    // the override lets them, and window appearance events, follow the system.
+    cx.set_window_appearance(dark.map(|dark| {
+        if dark {
+            WindowAppearance::Dark
+        } else {
+            WindowAppearance::Light
+        }
     }));
+    match dark {
+        Some(dark) => Theme::change(
+            if dark {
+                ThemeMode::Dark
+            } else {
+                ThemeMode::Light
+            },
+            Some(window),
+            cx,
+        ),
+        None => Theme::sync_system_appearance(Some(window), cx),
+    }
+    configure_theme(cx);
 }

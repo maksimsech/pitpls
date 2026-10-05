@@ -198,24 +198,41 @@ impl CryptoPage {
                     })),
             )
             .child(
-                Button::new("delete-selected")
-                    .label("Remove selected")
-                    .danger()
-                    .disabled(disabled || self.selected.is_empty())
-                    .on_click(cx.listener(|this, _, window, cx| {
-                        this.open_confirmation(
-                            Confirmation {
-                                message: format!(
-                                    "Delete {} selected record(s)? This cannot be undone.",
-                                    this.selected.len()
-                                )
-                                .into(),
-                                ids: this.selected.iter().cloned().collect(),
-                            },
-                            window,
-                            cx,
-                        );
-                    })),
+                h_flex()
+                    .gap_2()
+                    .when(!self.expanded.is_empty(), |row| {
+                        row.child(
+                            Button::new("collapse-all")
+                                .label("Collapse all")
+                                .outline()
+                                .disabled(disabled)
+                                .on_click(cx.listener(|this, _, _, cx| {
+                                    this.expanded.clear();
+                                    this.table_state.dirty = true;
+                                    cx.notify();
+                                })),
+                        )
+                    })
+                    .child(
+                        Button::new("delete-selected")
+                            .label("Remove selected")
+                            .danger()
+                            .disabled(disabled || self.selected.is_empty())
+                            .on_click(cx.listener(|this, _, window, cx| {
+                                this.open_confirmation(
+                                    Confirmation {
+                                        message: format!(
+                                            "Delete {} selected record(s)? This cannot be undone.",
+                                            this.selected.len()
+                                        )
+                                        .into(),
+                                        ids: this.selected.iter().cloned().collect(),
+                                    },
+                                    window,
+                                    cx,
+                                );
+                            })),
+                    ),
             )
     }
 

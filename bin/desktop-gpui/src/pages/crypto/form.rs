@@ -1,5 +1,8 @@
 use crate::components::form::{self, Choice, ChoiceState};
-use gpui_kit::{component::input::InputState, *};
+use gpui_kit::{
+    component::{date_picker::DatePickerState, input::InputState},
+    *,
+};
 use pitpls_app::use_case::crypto::{CreateCryptoInput, UpdateCryptoInput};
 use pitpls_core::{
     common::Currency,
@@ -14,7 +17,7 @@ pub enum CryptoSubmission {
 pub struct CryptoForm {
     existing_id: Option<String>,
     id: Entity<InputState>,
-    date: Entity<InputState>,
+    date: Entity<DatePickerState>,
     action: Entity<ChoiceState<Action>>,
     value: Entity<InputState>,
     value_currency: Entity<ChoiceState<Currency>>,
@@ -32,10 +35,10 @@ impl CryptoForm {
                 window,
                 cx,
             ),
-            date: form::date_input(
+            date: form::date_picker(
                 record
-                    .map(|record| record.date.to_string())
-                    .unwrap_or_else(|| chrono::Local::now().date_naive().to_string()),
+                    .map(|record| record.date)
+                    .unwrap_or_else(|| chrono::Local::now().date_naive()),
                 window,
                 cx,
             ),
@@ -89,8 +92,10 @@ impl CryptoForm {
     }
 
     pub fn focus(&self, window: &mut Window, cx: &mut App) {
+        // Enter opens a focused date picker, so editing starts at a text field
+        // where Enter still saves.
         let state = if self.existing_id.is_some() {
-            &self.date
+            &self.value
         } else {
             &self.id
         };
@@ -116,7 +121,7 @@ impl CryptoForm {
         let id = form::text(&self.id, cx);
         Ok(CreateCryptoInput {
             id: (!id.is_empty()).then_some(id),
-            date: form::required(&self.date, "Date", cx)?,
+            date: form::selected_date(&self.date, "Date", cx)?,
             action: form::selected(&self.action, "Action", cx)?,
             value: form::required(&self.value, "Value", cx)?,
             value_currency: form::selected(&self.value_currency, "Value currency", cx)?,
@@ -132,7 +137,7 @@ impl CryptoForm {
                 .existing_id
                 .clone()
                 .ok_or("No record selected for editing")?,
-            date: form::required(&self.date, "Date", cx)?,
+            date: form::selected_date(&self.date, "Date", cx)?,
             action: form::selected(&self.action, "Action", cx)?,
             value: form::required(&self.value, "Value", cx)?,
             value_currency: form::selected(&self.value_currency, "Value currency", cx)?,
@@ -150,7 +155,7 @@ impl CryptoForm {
             .gap_4()
             .max_w(px(700.))
             .child(form::input_field("ID", &self.id, busy || editing, cx))
-            .child(form::input_field("Date", &self.date, busy, cx))
+            .child(form::date_field("Date", &self.date, busy, cx))
             .child(form::select_field("Action", &self.action, busy, cx))
             .child(form::amount_field(
                 "Value",

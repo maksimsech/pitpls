@@ -7,7 +7,7 @@ use crate::{
     navigation::{Page, PageContext, PageEvent, PageEvents},
     pages::{self, PageHandle},
     services::{Services, finish},
-    theme::configure_theme,
+    theme::{apply_theme, configure_theme},
 };
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::{
@@ -36,6 +36,7 @@ pub struct Desktop {
     year_form: Option<Entity<InputState>>,
     delete_year: Option<i32>,
     _page_subscription: Subscription,
+    _appearance_subscription: Subscription,
 }
 
 impl Desktop {
@@ -59,6 +60,13 @@ impl Desktop {
             }
             cx.notify();
         });
+        let appearance_subscription = cx.observe_window_appearance(window, |this, window, cx| {
+            // Without a chosen theme the app follows the system's.
+            if this.preferences.dark.is_none() {
+                Theme::sync_system_appearance(Some(window), cx);
+                configure_theme(cx);
+            }
+        });
         let mut view = Self {
             config,
             runtime,
@@ -77,6 +85,7 @@ impl Desktop {
             year_form: None,
             delete_year: None,
             _page_subscription: page_subscription,
+            _appearance_subscription: appearance_subscription,
         };
         view.connect(window, cx);
         view
@@ -118,18 +127,7 @@ impl Desktop {
                         ));
                         this.preferences = preferences;
                         this.status.message = warning.map(Into::into);
-                        if let Some(dark) = preferences.dark {
-                            Theme::change(
-                                if dark {
-                                    ThemeMode::Dark
-                                } else {
-                                    ThemeMode::Light
-                                },
-                                Some(window),
-                                cx,
-                            );
-                            configure_theme(cx);
-                        }
+                        apply_theme(preferences.dark, window, cx);
                         this.mount_page(window, cx);
                         this.load_years(window, cx);
                     }

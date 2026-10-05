@@ -1,7 +1,7 @@
 use super::*;
 use crate::{
-    components::table::{Column, cell},
-    format::{amount, pln},
+    components::table::{Column, cell, value_cell},
+    format::{DisplayText, amount, date, pln},
 };
 use gpui_kit::{assets::IconName, component::checkbox::Checkbox};
 
@@ -13,39 +13,36 @@ use gpui_kit::prelude::FluentBuilder;
 
 impl DividendsPage {
     pub(super) fn display_record(record: &CalculatedDividend) -> RowDisplay {
-        let cells: Vec<SharedString> = vec![
-            record.date.to_string().into(),
-            record.ticker.clone().into(),
-            record.provider.clone().into(),
+        let cells = vec![
+            date(record.date),
+            DisplayText::plain(record.ticker.clone()),
+            DisplayText::plain(record.provider.clone()),
             amount(record.value),
             amount(record.tax_paid),
-            record.country.to_string().into(),
+            DisplayText::plain(record.country.to_string()),
         ];
         let details = vec![
             DetailGroup {
                 title: "Original amounts",
                 fields: vec![
-                    ("Original value".into(), amount(record.value)),
-                    ("Original tax paid".into(), amount(record.tax_paid)),
+                    ("Original value", amount(record.value)),
+                    ("Original tax paid", amount(record.tax_paid)),
                 ],
             },
             DetailGroup {
                 title: "Conversion",
                 fields: vec![
-                    ("NBP date".into(), record.nbp_date.to_string().into()),
-                    ("Calculated value".into(), pln(record.calculated_value)),
-                    (
-                        "Calculated tax paid".into(),
-                        pln(record.calculated_tax_paid),
-                    ),
+                    ("NBP date", date(record.nbp_date)),
+                    ("Calculated value", pln(record.calculated_value)),
+                    ("Calculated tax paid", pln(record.calculated_tax_paid)),
                 ],
             },
             DetailGroup {
                 title: "Tax calculation",
                 fields: vec![
-                    ("Calculated to pay".into(), pln(record.calculated_to_pay)),
-                    ("Max tax paid".into(), pln(record.max_tax_paid)),
-                    ("Used tax paid".into(), pln(record.used_tax_paid)),
+                    ("Calculated to pay", pln(record.calculated_to_pay)),
+                    ("Max tax paid", pln(record.max_tax_paid)),
+                    ("Used tax paid", pln(record.used_tax_paid)),
                 ],
             },
         ];
@@ -144,7 +141,7 @@ impl DividendsPage {
             || self.status.loading
             || self.editor.is_some()
             || self.confirmation.is_some();
-        let label = format!("Dividend record on {}", record.date);
+        let label = format!("Dividend record on {}", date(record.date).text);
         v_flex()
             .w(self.table_state.width)
             .text_sm()
@@ -177,13 +174,9 @@ impl DividendsPage {
                                     })),
                             ),
                     )
-                    .children(
-                        display
-                            .cells
-                            .iter()
-                            .zip(columns)
-                            .map(|(value, column)| cell(value.clone(), column, false, cx)),
-                    )
+                    .children(display.cells.iter().zip(columns).enumerate().map(
+                        |(index, (value, column))| value_cell(("cell", index), value, column, cx),
+                    ))
                     .child(
                         h_flex()
                             .w(rems(ACTION_WIDTH / 14.))

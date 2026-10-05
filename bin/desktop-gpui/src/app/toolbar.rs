@@ -277,18 +277,8 @@ impl Desktop {
             .tooltip_placement(Placement::Right)
             .disabled(self.context.is_none())
             .on_click(cx.listener(|this, _, window, cx| {
-                let dark = !cx.theme().is_dark();
-                Theme::change(
-                    if dark {
-                        ThemeMode::Dark
-                    } else {
-                        ThemeMode::Light
-                    },
-                    Some(window),
-                    cx,
-                );
-                configure_theme(cx);
-                this.preferences.dark = Some(dark);
+                this.preferences.dark = Some(!cx.theme().is_dark());
+                apply_theme(this.preferences.dark, window, cx);
                 this.save_preferences(window, cx);
                 cx.notify();
             }));

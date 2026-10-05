@@ -16,6 +16,19 @@ pub(crate) const APP_NAME: &str = "pitpls";
 pub(crate) const TOOLBAR_HEIGHT: Pixels = px(44.);
 
 actions!(desktop_gpui, [Quit]);
+#[cfg(target_os = "macos")]
+actions!(
+    desktop_gpui,
+    [
+        Hide,
+        HideOthers,
+        ShowAll,
+        Minimize,
+        Zoom,
+        ToggleFullScreen,
+        CloseWindow
+    ]
+);
 
 fn main() {
     if let Err(error) = run() {
@@ -50,6 +63,8 @@ fn run() -> Result<(), String> {
                 KeyBinding::new("alt-f4", Quit, None),
             ]);
             cx.on_action(|_: &Quit, cx| cx.quit());
+            #[cfg(target_os = "macos")]
+            install_macos_menus(cx);
             cx.on_window_closed(|cx, _| {
                 if cx.windows().is_empty() {
                     cx.quit();
@@ -87,4 +102,67 @@ fn run() -> Result<(), String> {
             cx.activate(true);
         });
     Ok(())
+}
+
+/// The standard application, Edit and Window menus with their shortcuts.
+#[cfg(target_os = "macos")]
+fn install_macos_menus(cx: &mut App) {
+    use gpui_kit::component::input::{Copy, Cut, Paste, Redo, SelectAll, Undo};
+
+    cx.bind_keys([
+        KeyBinding::new("cmd-h", Hide, None),
+        KeyBinding::new("alt-cmd-h", HideOthers, None),
+        KeyBinding::new("cmd-m", Minimize, None),
+        KeyBinding::new("ctrl-cmd-f", ToggleFullScreen, None),
+        KeyBinding::new("cmd-w", CloseWindow, None),
+    ]);
+    cx.on_action(|_: &Hide, cx| cx.hide());
+    cx.on_action(|_: &HideOthers, cx| cx.hide_other_apps());
+    cx.on_action(|_: &ShowAll, cx| cx.unhide_other_apps());
+    cx.on_action(|_: &Minimize, cx| with_active_window(cx, |window| window.minimize_window()));
+    cx.on_action(|_: &Zoom, cx| with_active_window(cx, |window| window.zoom_window()));
+    cx.on_action(|_: &ToggleFullScreen, cx| {
+        with_active_window(cx, |window| window.toggle_fullscreen())
+    });
+    cx.on_action(|_: &CloseWindow, cx| with_active_window(cx, |window| window.remove_window()));
+    cx.set_menus([
+        Menu::new(APP_NAME).items([
+            MenuItem::os_submenu("Services", SystemMenuType::Services),
+            MenuItem::separator(),
+            MenuItem::action(format!("Hide {APP_NAME}"), Hide),
+            MenuItem::action("Hide Others", HideOthers),
+            MenuItem::action("Show All", ShowAll),
+            MenuItem::separator(),
+            MenuItem::action(format!("Quit {APP_NAME}"), Quit),
+        ]),
+        Menu::new("Edit").items([
+            MenuItem::os_action("Undo", Undo, OsAction::Undo),
+            MenuItem::os_action("Redo", Redo, OsAction::Redo),
+            MenuItem::separator(),
+            MenuItem::os_action("Cut", Cut, OsAction::Cut),
+            MenuItem::os_action("Copy", Copy, OsAction::Copy),
+            MenuItem::os_action("Paste", Paste, OsAction::Paste),
+            MenuItem::os_action("Select All", SelectAll, OsAction::SelectAll),
+        ]),
+        // GPUI registers the menu named "Window" as AppKit's window menu, which
+        // AppKit extends with its own full screen and tiling items.
+        Menu::new("Window").items([
+            MenuItem::action("Minimize", Minimize),
+            MenuItem::action("Zoom", Zoom),
+            MenuItem::separator(),
+            MenuItem::action("Close Window", CloseWindow),
+        ]),
+    ]);
+}
+
+/// Window actions are dispatched while that window is being updated, so act
+/// on it once the dispatch has finished.
+#[cfg(target_os = "macos")]
+fn with_active_window(cx: &mut App, action: impl FnOnce(&mut Window) + 'static) {
+    let Some(handle) = cx.active_window() else {
+        return;
+    };
+    cx.defer(move |cx| {
+        let _ = handle.update(cx, |_, window, _| action(window));
+    });
 }

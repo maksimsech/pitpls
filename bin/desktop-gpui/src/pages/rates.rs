@@ -2,11 +2,12 @@ use super::PageView;
 use crate::{
     components::{
         self, Status, file_picker, form,
-        table::{Column, cell},
+        table::{Column, cell, value_cell},
     },
+    format::{self, DisplayText},
     navigation::PageContext,
 };
-use chrono::Datelike;
+use chrono::{Datelike, NaiveDate};
 use gpui_kit::component::{dialog::Dialog, input::InputState};
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::{
@@ -317,7 +318,10 @@ impl PageView for RatesPage {
                     .rows
                     .into_iter()
                     .map(|row| {
-                        let mut cells = vec![row.date.into()];
+                        let day = NaiveDate::parse_from_str(&row.date, "%Y-%m-%d")
+                            .map(|day| format::date(day).text)
+                            .unwrap_or_else(|_| row.date.into());
+                        let mut cells = vec![day];
                         cells.extend(data.currencies.iter().map(|currency| {
                             row.rates
                                 .iter()
@@ -404,6 +408,7 @@ impl RatesPage {
                 range
                     .map(|index| {
                         h_flex()
+                            .id(("rate-day", index))
                             .h(px(40.))
                             .border_b_1()
                             .border_color(cx.theme().border)
@@ -411,7 +416,15 @@ impl RatesPage {
                                 this.data.rows[index]
                                     .iter()
                                     .zip(&this.data.columns)
-                                    .map(|(value, column)| cell(value.clone(), column, false, cx)),
+                                    .enumerate()
+                                    .map(|(column_index, (value, column))| {
+                                        value_cell(
+                                            ("rate", column_index),
+                                            &DisplayText::plain(value.clone()),
+                                            column,
+                                            cx,
+                                        )
+                                    }),
                             )
                     })
                     .collect::<Vec<_>>()

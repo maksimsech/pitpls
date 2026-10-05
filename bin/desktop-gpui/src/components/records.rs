@@ -1,11 +1,10 @@
+use crate::format::DisplayText;
 use gpui_kit::{
     assets::IconName,
     component::{
         ActiveTheme, Disableable, Sizable, StyledExt, VirtualListScrollHandle,
         button::{Button, ButtonVariants},
-        h_flex,
-        tooltip::Tooltip,
-        v_flex,
+        h_flex, v_flex,
     },
     prelude::FluentBuilder,
     *,
@@ -74,12 +73,12 @@ pub fn skeleton(columns: &[super::table::Column], visible: bool, cx: &App) -> Di
 #[derive(PartialEq)]
 pub struct DetailGroup {
     pub title: &'static str,
-    pub fields: Vec<(SharedString, SharedString)>,
+    pub fields: Vec<(&'static str, DisplayText)>,
 }
 
 #[derive(PartialEq)]
 pub struct RowDisplay {
-    pub cells: Vec<SharedString>,
+    pub cells: Vec<DisplayText>,
     pub details: Vec<DetailGroup>,
 }
 
@@ -110,7 +109,6 @@ pub fn record_details(record_id: &str, groups: &[DetailGroup], disabled: bool, c
                         .child(group.title),
                 )
                 .children(group.fields.iter().map(|(label, value)| {
-                    let full_value = value.clone();
                     h_flex()
                         .w_full()
                         .min_h(rems(1.5))
@@ -119,21 +117,18 @@ pub fn record_details(record_id: &str, groups: &[DetailGroup], disabled: bool, c
                             div()
                                 .flex_shrink_0()
                                 .text_color(cx.theme().muted_foreground)
-                                .child(label.clone()),
+                                .child(*label),
                         )
-                        .child(
+                        .child(super::display_text(
                             div()
                                 .id(SharedString::from(format!("detail-{record_id}-{label}")))
                                 .flex_1()
                                 .min_w_0()
                                 .text_right()
                                 .font_family(cx.theme().mono_font_family.clone())
-                                .truncate()
-                                .tooltip(move |window, cx| {
-                                    Tooltip::new(full_value.clone()).build(window, cx)
-                                })
-                                .child(value.clone()),
-                        )
+                                .truncate(),
+                            value,
+                        ))
                 }))
                 .when(index == 0, |group| {
                     let copy_id = record_id.to_owned();

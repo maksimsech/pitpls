@@ -4,10 +4,14 @@ pub mod form;
 pub mod records;
 pub mod table;
 
+use crate::format::DisplayText;
 use gpui_kit::{
+    base::SelectableText,
     component::{
         alert::Alert,
         group_box::{GroupBox, GroupBoxVariants},
+        menu::{ContextMenuExt, PopupMenuItem},
+        tooltip::Tooltip,
         *,
     },
     *,
@@ -163,7 +167,28 @@ pub fn page_content() -> Div {
 
 pub struct SummaryGroup {
     pub title: &'static str,
-    pub values: Vec<(&'static str, SharedString)>,
+    pub values: Vec<(&'static str, DisplayText)>,
+}
+
+/// Show a value as text that can be selected and copied. A shortened value
+/// also shows its full value on hover and can copy it from the context menu.
+pub fn display_text(element: Stateful<Div>, value: &DisplayText) -> AnyElement {
+    let element = element.child(SelectableText::new("text", value.text.clone()));
+    let Some(full) = value.full.clone() else {
+        return element.into_any_element();
+    };
+    let copied = full.clone();
+    element
+        .tooltip(move |window, cx| Tooltip::new(full.clone()).build(window, cx))
+        .context_menu(move |menu, _, _| {
+            let copied = copied.clone();
+            menu.item(
+                PopupMenuItem::new("Copy full value").on_click(move |_, _, cx| {
+                    cx.write_to_clipboard(ClipboardItem::new_string(copied.to_string()))
+                }),
+            )
+        })
+        .into_any_element()
 }
 
 pub fn section_heading(title: &'static str) -> Div {
@@ -239,12 +264,13 @@ pub fn summaries(groups: &[SummaryGroup], cx: &App) -> Div {
                                     .text_color(cx.theme().muted_foreground)
                                     .child(*label),
                             )
-                            .child(
+                            .child(display_text(
                                 div()
+                                    .id("value")
                                     .text_lg()
-                                    .font_family(cx.theme().mono_font_family.clone())
-                                    .child(value.clone()),
-                            )
+                                    .font_family(cx.theme().mono_font_family.clone()),
+                                value,
+                            ))
                     })),
             )
         }))

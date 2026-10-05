@@ -1,3 +1,4 @@
+use crate::format::DisplayText;
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::{component::*, *};
 
@@ -26,7 +27,7 @@ impl Column {
     }
 }
 
-pub fn cell(value: SharedString, column: &Column, heading: bool, cx: &App) -> Div {
+fn frame(column: &Column, heading: bool, cx: &App) -> Div {
     div()
         .w(rems(column.width / 14.))
         .flex_shrink_0()
@@ -40,5 +41,18 @@ pub fn cell(value: SharedString, column: &Column, heading: bool, cx: &App) -> Di
         .when(heading, |cell| {
             cell.font_medium().text_color(cx.theme().muted_foreground)
         })
-        .child(value)
+}
+
+pub fn cell(value: SharedString, column: &Column, heading: bool, cx: &App) -> Div {
+    frame(column, heading, cx).child(value)
+}
+
+/// A body cell whose text can be selected and copied.
+pub fn value_cell(
+    id: impl Into<ElementId>,
+    value: &DisplayText,
+    column: &Column,
+    cx: &App,
+) -> AnyElement {
+    super::display_text(frame(column, false, cx).id(id), value)
 }

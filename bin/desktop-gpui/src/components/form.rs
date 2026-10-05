@@ -1,8 +1,17 @@
+use chrono::{NaiveDate, Weekday};
 use gpui_kit::{
-    component::{input::*, select::*, *},
+    component::{
+        date_picker::{DatePicker, DatePickerState},
+        input::*,
+        select::*,
+        *,
+    },
     *,
 };
 use pitpls_core::common::Currency;
+
+/// The format the use cases parse.
+const INPUT_DATE_FORMAT: &str = "%Y-%m-%d";
 
 #[derive(Clone)]
 pub struct Choice<T> {
@@ -194,14 +203,35 @@ pub fn optional_id(
     })
 }
 
-pub fn date_input(
-    value: impl Into<SharedString>,
-    window: &mut Window,
-    cx: &mut App,
-) -> Entity<InputState> {
+pub fn date_picker(value: NaiveDate, window: &mut Window, cx: &mut App) -> Entity<DatePickerState> {
     cx.new(|cx| {
-        InputState::new(window, cx)
-            .default_value(value)
-            .placeholder("YYYY-MM-DD")
+        let mut state = DatePickerState::new(window, cx)
+            .date_format(crate::format::DATE_FORMAT)
+            .first_day_of_week(Weekday::Mon);
+        state.set_date(value, window, cx);
+        state
     })
+}
+
+/// The picked date in the format the use cases parse.
+pub fn selected_date(
+    state: &Entity<DatePickerState>,
+    label: &str,
+    cx: &App,
+) -> Result<String, String> {
+    state
+        .read(cx)
+        .date()
+        .start()
+        .map(|date| date.format(INPUT_DATE_FORMAT).to_string())
+        .ok_or_else(|| format!("{label} is required"))
+}
+
+pub fn date_field(
+    label: &'static str,
+    state: &Entity<DatePickerState>,
+    disabled: bool,
+    cx: &App,
+) -> Div {
+    field(label, DatePicker::new(state).disabled(disabled), cx)
 }

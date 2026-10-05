@@ -1,7 +1,7 @@
 use super::*;
 use crate::{
-    components::table::{Column, cell},
-    format::{amount, money, pln},
+    components::table::{Column, cell, value_cell},
+    format::{DisplayText, amount, date, money, pln},
 };
 use gpui_kit::{assets::IconName, component::checkbox::Checkbox};
 use pitpls_core::crypto::Action;
@@ -14,14 +14,13 @@ use gpui_kit::prelude::FluentBuilder;
 
 impl CryptoPage {
     pub(super) fn display_record(record: &CalculatedCrypto) -> RowDisplay {
-        let cells: Vec<SharedString> = vec![
-            record.date.to_string().into(),
-            record.provider.clone().into(),
-            match record.action {
+        let cells = vec![
+            date(record.date),
+            DisplayText::plain(record.provider.clone()),
+            DisplayText::plain(match record.action {
                 Action::FiatBuy => "Buy",
                 Action::FiatSell => "Sell",
-            }
-            .into(),
+            }),
             amount(record.value),
             amount(record.fee),
             money(record.calculated_value),
@@ -31,16 +30,16 @@ impl CryptoPage {
             DetailGroup {
                 title: "Original amounts",
                 fields: vec![
-                    ("Original value".into(), amount(record.value)),
-                    ("Original fee".into(), amount(record.fee)),
+                    ("Original value", amount(record.value)),
+                    ("Original fee", amount(record.fee)),
                 ],
             },
             DetailGroup {
                 title: "Conversion",
                 fields: vec![
-                    ("NBP date".into(), record.nbp_date.to_string().into()),
-                    ("Calculated value".into(), pln(record.calculated_value)),
-                    ("Calculated fee".into(), pln(record.calculated_fee)),
+                    ("NBP date", date(record.nbp_date)),
+                    ("Calculated value", pln(record.calculated_value)),
+                    ("Calculated fee", pln(record.calculated_fee)),
                 ],
             },
         ];
@@ -140,7 +139,7 @@ impl CryptoPage {
             || self.status.loading
             || self.editor.is_some()
             || self.confirmation.is_some();
-        let label = format!("Crypto record on {}", record.date);
+        let label = format!("Crypto record on {}", date(record.date).text);
         v_flex()
             .w(self.table_state.width)
             .text_sm()
@@ -173,13 +172,9 @@ impl CryptoPage {
                                     })),
                             ),
                     )
-                    .children(
-                        display
-                            .cells
-                            .iter()
-                            .zip(columns)
-                            .map(|(value, column)| cell(value.clone(), column, false, cx)),
-                    )
+                    .children(display.cells.iter().zip(columns).enumerate().map(
+                        |(index, (value, column))| value_cell(("cell", index), value, column, cx),
+                    ))
                     .child(
                         h_flex()
                             .w(rems(ACTION_WIDTH / 14.))

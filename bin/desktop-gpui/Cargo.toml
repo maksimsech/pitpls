@@ -19,6 +19,8 @@ chrono.workspace = true
 rust_decimal.workspace = true
 tokio = { workspace = true, features = ["rt-multi-thread", "sync"] }
 dirs = "6"
+# GPUI's path prompt cannot filter by file type. Same features as Tauri's dialog plugin.
+rfd = { version = "0.16", default-features = false, features = ["gtk3"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
