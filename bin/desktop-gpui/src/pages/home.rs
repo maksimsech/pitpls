@@ -1,6 +1,6 @@
 use super::PageView;
 use crate::{
-    components::{self, Status, SummaryGroup},
+    components::{self, Status, SummaryGroup, header},
     format::pln,
     navigation::{Page, PageContext},
 };
@@ -87,11 +87,26 @@ impl PageView for HomePage {
 }
 
 impl Render for HomePage {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         v_flex()
-            .relative()
             .size_full()
             .min_h_0()
+            .child(
+                header::page(
+                    Page::Home.title(),
+                    Some(header::year_label(self.year)),
+                    window,
+                    cx,
+                )
+                .child(header::actions().child(self.status.refreshing(cx)).child(
+                    header::refresh(self.status.loading, cx).on_click(cx.listener(
+                        |this, _, window, cx| {
+                            this.context.years_changed(cx);
+                            this.refresh(window, cx);
+                        },
+                    )),
+                )),
+            )
             .child(components::scroll(
                 components::page_content()
                     .gap_4()
@@ -143,6 +158,5 @@ impl Render for HomePage {
                         )
                     }),
             ))
-            .child(self.status.refreshing(cx))
     }
 }

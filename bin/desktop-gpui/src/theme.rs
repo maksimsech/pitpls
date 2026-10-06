@@ -7,6 +7,7 @@ use std::sync::Arc;
 /// The design D tokens from docs/gpui-redesign-plan.md. `configure_theme`
 /// maps them onto the kit theme; read the ones it has no slot for, such as
 /// `faint`, `raised` and `ok`, with [`palette`].
+#[derive(Clone, Copy)]
 pub struct Palette {
     /// Sidebar and window chrome.
     pub chrome: Hsla,
@@ -101,9 +102,9 @@ pub fn configure_theme(cx: &mut App) {
         theme.radius = px(10.);
         theme.radius_lg = px(12.);
         theme.font_size = px(14.);
-        // On macOS the toolbar is the title bar; keep sheets below it.
+        // Keep sheets below the traffic lights on macOS.
         theme.sheet.margin_top = if cfg!(target_os = "macos") {
-            crate::TOOLBAR_HEIGHT
+            crate::TITLE_ROW_HEIGHT
         } else {
             px(0.)
         };

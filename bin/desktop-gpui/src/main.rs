@@ -13,7 +13,8 @@ use gpui_kit::*;
 use std::sync::Arc;
 
 pub(crate) const APP_NAME: &str = "pitpls";
-pub(crate) const TOOLBAR_HEIGHT: Pixels = px(44.);
+/// The sidebar's top row, which holds the traffic lights.
+pub(crate) const TITLE_ROW_HEIGHT: Pixels = px(44.);
 
 actions!(desktop_gpui, [Quit]);
 #[cfg(target_os = "macos")]
@@ -78,10 +79,10 @@ fn run() -> Result<(), String> {
                     titlebar: Some(TitlebarOptions {
                         title: None,
                         appears_transparent: true,
-                        // Center the 14px traffic lights in the toolbar.
+                        // Center the 14px traffic lights in the sidebar's top row.
                         traffic_light_position: Some(point(
                             px(16.),
-                            (TOOLBAR_HEIGHT - px(14.)) / 2.,
+                            (TITLE_ROW_HEIGHT - px(14.)) / 2.,
                         )),
                     }),
                     #[cfg(target_os = "macos")]

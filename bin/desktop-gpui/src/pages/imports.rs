@@ -1,7 +1,7 @@
 use super::PageView;
 use crate::{
-    components::{self, Status, file_picker},
-    navigation::PageContext,
+    components::{self, Status, file_picker, header},
+    navigation::{Page, PageContext},
 };
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::{
@@ -120,8 +120,14 @@ impl PageView for ImportsPage {
 }
 
 impl Render for ImportsPage {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        components::scroll(components::page_content().child(self.imports(cx)))
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        v_flex()
+            .size_full()
+            .min_h_0()
+            .child(header::page(Page::Imports.title(), None, window, cx))
+            .child(components::scroll(
+                components::page_content().child(self.imports(cx)),
+            ))
     }
 }
 

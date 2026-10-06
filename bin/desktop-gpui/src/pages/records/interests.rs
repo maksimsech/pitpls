@@ -1,4 +1,5 @@
 use super::{RecordForm, RecordKind, Submission};
+use crate::navigation::Page;
 use crate::{
     components::{
         form::{self, ChoiceState},
@@ -23,6 +24,7 @@ impl RecordKind for Interests {
     type Record = CalculatedInterest;
     type Form = InterestForm;
 
+    const PAGE: Page = Page::Interests;
     const NAME: &'static str = "Interest";
     const TOTALS_TITLE: &'static str = "Interest totals";
     const TOTAL_LABELS: &'static [&'static str] = &["Income (I-65)", "To pay (G-47)"];

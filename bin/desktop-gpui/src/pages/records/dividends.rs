@@ -1,4 +1,5 @@
 use super::{RecordForm, RecordKind, Submission};
+use crate::navigation::Page;
 use crate::{
     components::{
         form::{self, ChoiceState},
@@ -23,6 +24,7 @@ impl RecordKind for Dividends {
     type Record = CalculatedDividend;
     type Form = DividendForm;
 
+    const PAGE: Page = Page::Dividends;
     const NAME: &'static str = "Dividend";
     const TOTALS_TITLE: &'static str = "Dividend totals";
     const TOTAL_LABELS: &'static [&'static str] =

@@ -1,16 +1,17 @@
 use super::PageView;
 use crate::{
     components::{
-        self, Status, dialog, file_picker, form,
+        self, Status, dialog, file_picker, form, header,
         table::{Column, cell},
     },
     format,
-    navigation::PageContext,
+    navigation::{Page, PageContext},
 };
 use chrono::{Datelike, NaiveDate};
 use gpui_kit::component::{dialog::Dialog, input::InputState};
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::{
+    assets::IconName,
     component::{button::*, scroll::ScrollableElement, *},
     *,
 };
@@ -197,43 +198,50 @@ impl RatesPage {
         self.notify(cx);
     }
 
-    fn controls(&self, cx: &mut Context<Self>) -> Div {
-        let disabled = self.status.busy
-            || self.status.loading
-            || self.nbp_year.is_some()
-            || self.confirm_reset;
+    fn disabled(&self) -> bool {
+        self.status.busy || self.status.loading || self.nbp_year.is_some() || self.confirm_reset
+    }
+
+    fn header(&self, window: &mut Window, cx: &mut Context<Self>) -> Stateful<Div> {
+        let disabled = self.disabled();
+        // Rows run from the oldest day to the newest.
+        let range = match (self.data.rows.first(), self.data.rows.last()) {
+            (Some(first), Some(last)) => format!("NBP table A · {} – {}", first[0], last[0]),
+            _ => "NBP table A".into(),
+        };
+        header::page(Page::Rates.title(), Some(range.into()), window, cx).child(
+            header::actions()
+                .child(self.status.refreshing(cx))
+                .child(
+                    header::button("rates-csv", IconName::Upload, "Upload CSV")
+                        .disabled(disabled)
+                        .on_click(cx.listener(|this, _, window, cx| this.pick_file(window, cx))),
+                )
+                .child(
+                    header::button("rates-nbp", IconName::Download, "Import from NBP")
+                        .primary()
+                        .disabled(disabled)
+                        .on_click(cx.listener(|this, _, window, cx| this.open_nbp(window, cx))),
+                )
+                .child(
+                    header::button("rates-reset", None, "Reset")
+                        .ghost()
+                        .text_color(cx.theme().danger)
+                        .disabled(disabled || !self.status.ready || self.data.rows.is_empty())
+                        .on_click(cx.listener(|this, _, window, cx| this.open_reset(window, cx))),
+                ),
+        )
+    }
+
+    /// Operation results and, after a failed load, Retry.
+    fn notices(&self, cx: &mut Context<Self>) -> Div {
+        let disabled = self.disabled();
         let mut content = v_flex()
             .gap_4()
             .flex_shrink_0()
             .when(self.status.is_visible(), |view| {
                 view.child(self.status.render())
             });
-        content = content.child(
-            h_flex()
-                .flex_wrap()
-                .gap_2()
-                .child(
-                    Button::new("rates-csv")
-                        .label("Upload CSV")
-                        .primary()
-                        .disabled(disabled)
-                        .on_click(cx.listener(|this, _, window, cx| this.pick_file(window, cx))),
-                )
-                .child(
-                    Button::new("rates-nbp")
-                        .label("Import from NBP")
-                        .outline()
-                        .disabled(disabled)
-                        .on_click(cx.listener(|this, _, window, cx| this.open_nbp(window, cx))),
-                )
-                .child(
-                    Button::new("rates-reset")
-                        .label("Reset")
-                        .danger()
-                        .disabled(disabled || !self.status.ready || self.data.rows.is_empty())
-                        .on_click(cx.listener(|this, _, window, cx| this.open_reset(window, cx))),
-                ),
-        );
         if self.status.error.is_some() || (!self.status.ready && !self.status.loading) {
             content = content.child(
                 Button::new("retry-rates")
@@ -249,8 +257,7 @@ impl RatesPage {
 
 impl PageView for RatesPage {
     fn refresh(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if self.status.busy || self.status.loading || self.nbp_year.is_some() || self.confirm_reset
-        {
+        if self.disabled() {
             return;
         }
         self.status.begin_load(window, cx, |this| &mut this.status);
@@ -300,12 +307,14 @@ impl PageView for RatesPage {
 }
 
 impl Render for RatesPage {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let header = self.header(window, cx);
+        let page = v_flex().size_full().min_h_0().child(header);
         if !self.status.ready {
-            return components::scroll(
+            return page.child(components::scroll(
                 components::page_content()
                     .gap_4()
-                    .child(self.controls(cx))
+                    .child(self.notices(cx))
                     .when(self.status.loading, |view| {
                         view.child(components::records::skeleton(
                             &[Column::text("Date", 130.), Column::number("Rate", 125.)],
@@ -313,28 +322,27 @@ impl Render for RatesPage {
                             cx,
                         ))
                     }),
-            );
+            ));
         }
-        components::page_content()
-            .relative()
-            .size_full()
-            .min_w_0()
-            .overflow_hidden()
-            .flex_1()
-            .min_h_0()
-            .gap_4()
-            .child(self.controls(cx))
-            .child(self.status.refreshing(cx))
-            .child(
-                div()
-                    .flex()
-                    .flex_1()
-                    .min_h_0()
-                    .min_w_0()
-                    .overflow_hidden()
-                    .child(self.rates(cx)),
-            )
-            .into_any_element()
+        page.child(
+            components::page_content()
+                .relative()
+                .min_w_0()
+                .overflow_hidden()
+                .flex_1()
+                .min_h_0()
+                .gap_4()
+                .child(self.notices(cx))
+                .child(
+                    div()
+                        .flex()
+                        .flex_1()
+                        .min_h_0()
+                        .min_w_0()
+                        .overflow_hidden()
+                        .child(self.rates(cx)),
+                ),
+        )
     }
 }
 

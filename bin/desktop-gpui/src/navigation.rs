@@ -13,19 +13,9 @@ pub enum Page {
 }
 
 impl Page {
-    pub const ALL: [Self; 7] = [
-        Self::Home,
-        Self::Imports,
-        Self::Dividends,
-        Self::Interests,
-        Self::Crypto,
-        Self::Rates,
-        Self::Settings,
-    ];
-
     pub fn title(self) -> &'static str {
         match self {
-            Self::Home => "Home",
+            Self::Home => "Summary",
             Self::Imports => "Imports",
             Self::Dividends => "Dividends",
             Self::Interests => "Interests",
@@ -33,13 +23,6 @@ impl Page {
             Self::Rates => "Rates",
             Self::Settings => "Settings",
         }
-    }
-
-    pub fn has_year(self) -> bool {
-        matches!(
-            self,
-            Self::Home | Self::Dividends | Self::Interests | Self::Crypto
-        )
     }
 }
 

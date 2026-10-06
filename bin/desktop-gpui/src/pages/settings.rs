@@ -3,8 +3,9 @@ use crate::{
     components::{
         self, Status,
         form::{self, Choice, ChoiceState},
+        header,
     },
-    navigation::PageContext,
+    navigation::{Page, PageContext},
 };
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::{
@@ -128,7 +129,7 @@ impl PageView for SettingsPage {
 }
 
 impl Render for SettingsPage {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let mut content = components::page_content()
             .gap_4()
             .when(self.status.is_visible(), |view| {
@@ -214,10 +215,12 @@ impl Render for SettingsPage {
             );
         }
         v_flex()
-            .relative()
             .size_full()
             .min_h_0()
+            .child(
+                header::page(Page::Settings.title(), None, window, cx)
+                    .child(header::actions().child(self.status.refreshing(cx))),
+            )
             .child(components::scroll(content))
-            .child(self.status.refreshing(cx))
     }
 }

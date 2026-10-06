@@ -8,29 +8,20 @@ use crate::navigation::{Page, PageContext};
 use gpui_kit::*;
 use records::{Crypto, Dividends, Interests, RecordsPage};
 
+/// A page reloads its data itself, from its header's Refresh button.
 pub trait PageView: Render {
     fn refresh(&mut self, window: &mut Window, cx: &mut Context<Self>);
 }
 
-type Refresh = Box<dyn Fn(&mut Window, &mut App)>;
-
 pub struct PageHandle {
     pub view: AnyView,
-    refresh: Refresh,
 }
 
 impl PageHandle {
     fn new<V: PageView>(entity: Entity<V>) -> Self {
         Self {
-            view: entity.clone().into(),
-            refresh: Box::new(move |window, cx| {
-                entity.update(cx, |view, cx| view.refresh(window, cx))
-            }),
+            view: entity.into(),
         }
-    }
-
-    pub fn refresh(&self, window: &mut Window, cx: &mut App) {
-        (self.refresh)(window, cx);
     }
 }
 

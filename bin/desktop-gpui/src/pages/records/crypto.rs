@@ -1,4 +1,5 @@
 use super::{RecordForm, RecordKind, Submission};
+use crate::navigation::Page;
 use crate::{
     components::{
         form::{self, Choice, ChoiceState},
@@ -26,6 +27,7 @@ impl RecordKind for Crypto {
     type Record = CalculatedCrypto;
     type Form = CryptoForm;
 
+    const PAGE: Page = Page::Crypto;
     const NAME: &'static str = "Crypto";
     const TOTALS_TITLE: &'static str = "Crypto totals";
     const TOTAL_LABELS: &'static [&'static str] = &["Income (E-36)", "Costs (E-37)"];

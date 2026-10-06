@@ -1,24 +1,26 @@
-mod toolbar;
+mod sidebar;
 mod years;
 
 use crate::{
-    components::{self, Status, dialog, form},
+    components::{Status, form, header},
     config::{self, Config, Preferences},
     navigation::{Page, PageContext, PageEvent, PageEvents},
     pages::{self, PageHandle},
     services::{Services, finish},
-    theme::{apply_theme, configure_theme},
+    theme::{apply_theme, configure_theme, palette},
 };
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::{
     base::{Transition, transition},
     component::{
         button::{Button, ButtonVariants},
-        input::InputState,
+        input::{InputEvent, InputState},
         *,
     },
     *,
 };
+use pitpls_app::use_case::year::YearInfo;
+use sidebar::Expansion;
 use std::sync::Arc;
 use tokio::runtime::Runtime;
 
@@ -29,18 +31,17 @@ pub struct Desktop {
     events: Entity<PageEvents>,
     page: Page,
     active: Option<PageHandle>,
-    history: Vec<Page>,
     page_locked: bool,
     preferences: Preferences,
     preference_task: Option<Task<()>>,
     status: Status,
-    years: Vec<i32>,
-    manage_years: bool,
+    years: Vec<YearInfo>,
+    years_task: Option<Task<()>>,
+    year_menu_open: bool,
+    year_input: Entity<InputState>,
+    year_error: Option<SharedString>,
     focus: FocusHandle,
-    year_form: Option<Entity<InputState>>,
-    delete_year: Option<i32>,
-    _page_subscription: Subscription,
-    _appearance_subscription: Subscription,
+    _subscriptions: [Subscription; 3],
 }
 
 impl Desktop {
@@ -58,6 +59,9 @@ impl Desktop {
                         return;
                     }
                     this.page_locked = *locked;
+                    if *locked {
+                        this.year_menu_open = false;
+                    }
                 }
                 PageEvent::Navigate(page) => this.navigate(*page, window, cx),
                 PageEvent::YearsChanged => this.load_years(window, cx),
@@ -70,6 +74,20 @@ impl Desktop {
                 configure_theme(cx);
             }
         });
+        let year_input =
+            cx.new(|cx| InputState::new(window, cx).placeholder("Add year, e.g. 2023"));
+        let input_subscription = cx.subscribe_in(
+            &year_input,
+            window,
+            |this, _, event, window, cx| match event {
+                InputEvent::PressEnter { .. } => this.add_year(window, cx),
+                InputEvent::Change if this.year_error.is_some() => {
+                    this.year_error = None;
+                    cx.notify();
+                }
+                _ => {}
+            },
+        );
         let mut view = Self {
             config,
             runtime,
@@ -77,29 +95,30 @@ impl Desktop {
             events,
             page: Page::Home,
             active: None,
-            history: vec![],
             page_locked: false,
             preferences: Preferences::default(),
             preference_task: None,
             status: Status::default(),
             years: vec![],
-            manage_years: false,
+            years_task: None,
+            year_menu_open: false,
+            year_input,
+            year_error: None,
             focus: cx.focus_handle(),
-            year_form: None,
-            delete_year: None,
-            _page_subscription: page_subscription,
-            _appearance_subscription: appearance_subscription,
+            _subscriptions: [
+                page_subscription,
+                appearance_subscription,
+                input_subscription,
+            ],
         };
         view.connect(window, cx);
         view
     }
 
+    /// Navigation and the tax year stay put while the shell or a page is
+    /// saving, or while a page has an editor or confirmation open.
     fn locked(&self) -> bool {
-        self.status.busy
-            || self.manage_years
-            || self.page_locked
-            || self.year_form.is_some()
-            || self.delete_year.is_some()
+        self.status.busy || self.page_locked
     }
 
     fn connect(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -157,28 +176,12 @@ impl Desktop {
         cx.notify();
     }
 
-    fn reload(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if self.locked() {
-            return;
-        }
-        if self.context.is_none() {
-            self.connect(window, cx);
-            return;
-        }
-        self.load_years(window, cx);
-        if let Some(page) = &self.active {
-            page.refresh(window, cx);
-        }
-    }
-
     fn navigate(&mut self, page: Page, window: &mut Window, cx: &mut Context<Self>) {
         if self.locked() {
             return;
         }
         if page != self.page {
-            self.history.push(self.page);
             self.page = page;
-            self.manage_years = false;
             self.mount_page(window, cx);
         }
         cx.notify();
@@ -203,98 +206,98 @@ impl Desktop {
             }
         }));
     }
-}
 
-impl Render for Desktop {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let target = if self.preferences.sidebar_collapsed {
-            0.
-        } else {
-            1.
-        };
-        // Animate only once preferences are restored, so the saved state
-        // doesn't animate in.
-        let sidebar_progress = if self.context.is_some() {
-            let motion = cx.theme().motion_tokens();
-            transition(
-                "desktop-sidebar-expansion",
-                target,
-                Transition::new(motion.duration_normal).easing(motion.easing_move.clone()),
-                window,
-                cx,
-            )
-        } else {
-            target
-        };
-        let mut content = v_flex()
+    /// The inset panel that holds the page, or the connection state before
+    /// the database opens.
+    fn main_panel(&self, window: &mut Window, cx: &mut Context<Self>) -> Div {
+        let panel = v_flex()
             .flex_1()
-            .min_h_0()
             .min_w_0()
+            .min_h_0()
+            .mt(px(6.))
+            .mr(px(6.))
+            .mb(px(6.))
             .overflow_hidden()
             .bg(cx.theme().background)
             .border_1()
             .border_color(cx.theme().border)
-            .rounded(px(12.));
+            .rounded(px(10.));
         if self.context.is_none() {
-            content = content.child(components::scroll(
-                v_flex()
-                    .p_5()
-                    .gap_4()
-                    .child(div().text_lg().font_semibold().child("Database connection"))
-                    .child(div().text_color(cx.theme().muted_foreground).child(
-                        "Your records will appear when the database connection is available.",
-                    ))
-                    .child(self.status.render())
-                    .when(!self.status.busy, |view| {
-                        view.child(
-                            h_flex().child(
-                                Button::new("retry-connection")
-                                    .label("Retry connection")
-                                    .primary()
-                                    .on_click(
-                                        cx.listener(|this, _, window, cx| this.connect(window, cx)),
-                                    ),
-                            ),
-                        )
-                    }),
-            ));
-        } else {
-            content = content
-                .when(self.status.is_visible(), |view| {
-                    view.child(
+            return panel
+                .child(header::page("Database connection", None, window, cx))
+                .child(
+                    v_flex()
+                        .px(px(20.))
+                        .pb_5()
+                        .gap_4()
+                        .child(div().text_color(cx.theme().muted_foreground).child(
+                            "Your records will appear when the database connection is available.",
+                        ))
+                        .child(self.status.render())
+                        .when(!self.status.busy, |view| {
+                            view.child(
+                                h_flex().child(
+                                    Button::new("retry-connection")
+                                        .label("Retry connection")
+                                        .primary()
+                                        .on_click(cx.listener(|this, _, window, cx| {
+                                            this.connect(window, cx)
+                                        })),
+                                ),
+                            )
+                        }),
+                );
+        }
+        panel
+            .when_some(self.active.as_ref(), |panel, page| {
+                panel.child(
+                    v_flex()
+                        .flex_1()
+                        .min_h_0()
+                        .min_w_0()
+                        .child(page.view.clone()),
+                )
+            })
+            // Shell errors, such as a failed year change, below the page.
+            .when(
+                self.status.error.is_some() || self.status.message.is_some(),
+                |panel| {
+                    panel.child(
                         div()
                             .flex_shrink_0()
-                            .px_5()
-                            .pt_4()
+                            .px(px(20.))
+                            .py_3()
+                            .border_t_1()
+                            .border_color(cx.theme().border)
                             .child(self.status.render()),
                     )
-                })
-                .when_some(self.active.as_ref(), |view, page| {
-                    view.child(page.view.clone())
-                });
-        }
-        v_flex()
+                },
+            )
+    }
+}
+
+impl Render for Desktop {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let expanded = !self.preferences.sidebar_collapsed;
+        // Animate only once preferences are restored, so the saved state
+        // doesn't animate in.
+        let expansion = if self.context.is_some() {
+            Expansion::animate(expanded, window, cx)
+        } else {
+            Expansion::settled(expanded)
+        };
+        h_flex()
             .id("desktop")
             .track_focus(&self.focus)
             .relative()
             .size_full()
+            .items_stretch()
             .overflow_hidden()
-            .bg(cx.theme().title_bar)
+            .bg(palette(cx).chrome)
             .text_color(cx.theme().foreground)
             .font_family(cx.theme().font_family.clone())
             .text_sm()
-            .child(self.toolbar(sidebar_progress, window, cx))
-            .child(
-                h_flex()
-                    .flex_1()
-                    .min_h_0()
-                    .min_w_0()
-                    .mr(px(4.))
-                    .mb(px(4.))
-                    .overflow_hidden()
-                    .items_stretch()
-                    .child(self.navigation_panel(sidebar_progress, cx))
-                    .child(content),
-            )
+            .child(self.sidebar(expansion, window, cx))
+            .child(self.main_panel(window, cx))
     }
 }

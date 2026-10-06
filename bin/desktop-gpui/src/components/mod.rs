@@ -2,6 +2,7 @@ pub mod copy;
 pub mod dialog;
 pub mod file_picker;
 pub mod form;
+pub mod header;
 pub mod records;
 pub mod table;
 pub mod value;
@@ -112,13 +113,11 @@ impl Status {
             .when(self.busy, |view| view.child("Working…"))
     }
 
+    /// "Refreshing…" for the page header while loaded data reloads.
     pub fn refreshing(&self, cx: &App) -> Div {
         div()
-            .absolute()
-            .top_1()
-            .right_5()
-            .text_xs()
-            .text_color(cx.theme().muted_foreground)
+            .text_size(px(12.))
+            .text_color(crate::theme::palette(cx).faint)
             .when(self.ready && self.loading_visible, |view| {
                 view.child("Refreshing…")
             })

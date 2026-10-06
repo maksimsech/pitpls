@@ -8,7 +8,7 @@ pub use self::{crypto::Crypto, dividends::Dividends, interests::Interests};
 use super::PageView;
 use crate::{
     components::{
-        self, Status, SummaryGroup, dialog,
+        self, Status, SummaryGroup, dialog, header,
         records::{RecordTableState, RowDisplay},
         table::Column,
     },
@@ -18,6 +18,7 @@ use crate::{
 use chrono::NaiveDate;
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::{
+    assets::IconName,
     component::{button::*, dialog::Dialog, input::InputState, scroll::ScrollableElement, *},
     *,
 };
@@ -46,6 +47,7 @@ pub trait RecordKind: 'static {
     type Record: Send + 'static;
     type Form: RecordForm<Record = Self::Record>;
 
+    const PAGE: Page;
     /// Names a single record in accessibility labels.
     const NAME: &'static str;
     const TOTALS_TITLE: &'static str;
@@ -209,6 +211,7 @@ impl<K: RecordKind> RecordsPage<K> {
             },
             |this, result, window, cx| {
                 if this.status.saved(result) {
+                    this.context.years_changed(cx);
                     window.focus(&this.focus, cx);
                     this.refresh(window, cx);
                 }
@@ -218,24 +221,50 @@ impl<K: RecordKind> RecordsPage<K> {
         self.notify(cx);
     }
 
+    fn header(&self, window: &mut Window, cx: &mut Context<Self>) -> Stateful<Div> {
+        let disabled = self.disabled();
+        header::page(
+            K::PAGE.title(),
+            Some(header::year_label(self.year)),
+            window,
+            cx,
+        )
+        .child(
+            header::actions()
+                .child(self.status.refreshing(cx))
+                .child(header::refresh(disabled, cx).on_click(cx.listener(
+                    |this, _, window, cx| {
+                        this.context.years_changed(cx);
+                        this.refresh(window, cx);
+                    },
+                )))
+                .child(
+                    header::button("open-imports", IconName::Upload, "Import")
+                        .disabled(disabled)
+                        .on_click(
+                            cx.listener(|this, _, _, cx| this.context.navigate(Page::Imports, cx)),
+                        ),
+                )
+                .child(
+                    header::button("add-record", IconName::Plus, "Add new")
+                        .primary()
+                        .disabled(disabled)
+                        .on_click(cx.listener(|this, _, window, cx| {
+                            let form = K::Form::new(None, window, cx);
+                            this.open_editor(form, window, cx);
+                        })),
+                ),
+        )
+    }
+
     fn actions(&self, cx: &mut Context<Self>) -> Div {
         let disabled = self.disabled();
         h_flex()
             .w_full()
             .flex_shrink_0()
             .flex_wrap()
-            .justify_between()
+            .justify_end()
             .gap_2()
-            .child(
-                Button::new("add-record")
-                    .label("Add new")
-                    .primary()
-                    .disabled(disabled)
-                    .on_click(cx.listener(|this, _, window, cx| {
-                        let form = K::Form::new(None, window, cx);
-                        this.open_editor(form, window, cx);
-                    })),
-            )
             .child(
                 h_flex()
                     .gap_2()
@@ -355,7 +384,7 @@ impl<K: RecordKind> Render for RecordsPage<K> {
             .id("record-page")
             .track_focus(&self.focus)
             .tab_index(-1)
-            .size_full()
+            .flex_1()
             .min_h_0()
             // overflow_y_scrollbar() wraps its content in h_auto(), which
             // unbounds the virtual list below.
@@ -413,12 +442,17 @@ impl<K: RecordKind> Render for RecordsPage<K> {
         } else {
             content = content.child(self.actions(cx));
         }
-        div()
-            .relative()
+        v_flex()
             .size_full()
             .min_h_0()
-            .child(content)
-            .child(self.status.refreshing(cx))
-            .vertical_scrollbar(&self.page_scroll)
+            .child(self.header(window, cx))
+            .child(
+                v_flex()
+                    .relative()
+                    .flex_1()
+                    .min_h_0()
+                    .child(content)
+                    .vertical_scrollbar(&self.page_scroll),
+            )
     }
 }
