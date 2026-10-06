@@ -45,7 +45,12 @@ impl Desktop {
         cx.notify();
     }
 
-    fn select_year(&mut self, year: Option<i32>, window: &mut Window, cx: &mut Context<Self>) {
+    pub(super) fn select_year(
+        &mut self,
+        year: Option<i32>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         if self.locked() {
             return;
         }

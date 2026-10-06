@@ -1,23 +1,26 @@
-use super::{RecordForm, RecordKind, Submission};
+use super::{RecordForm, RecordKind, Submission, conversion, day};
 use crate::navigation::Page;
 use crate::{
     components::{
         form::{self, Choice, ChoiceState},
-        records::{DetailGroup, RowDisplay},
-        table::Column,
+        records::{CellStyle, RecordColumn, RowDisplay, Step, StepLine},
     },
-    format::{DisplayText, amount, date, money, pln},
+    format::{DisplayText, amount, date, pln},
 };
 use chrono::NaiveDate;
 use gpui_kit::{
     component::{date_picker::DatePickerState, input::InputState},
     *,
 };
-use pitpls_app::use_case::crypto::{self, CreateCryptoInput, UpdateCryptoInput};
+use pitpls_app::use_case::{
+    crypto::{self, CreateCryptoInput, UpdateCryptoInput},
+    year::YearInfo,
+};
 use pitpls_core::{
     common::Currency,
     crypto::{Action, CalculatedCrypto},
 };
+use pitpls_importers::OutputType;
 use rust_decimal::Decimal;
 use std::sync::Arc;
 
@@ -29,7 +32,7 @@ impl RecordKind for Crypto {
 
     const PAGE: Page = Page::Crypto;
     const NAME: &'static str = "Crypto";
-    const TOTALS_TITLE: &'static str = "Crypto totals";
+    const PLURAL: &'static str = "crypto";
     const TOTAL_LABELS: &'static [&'static str] = &["Income (E-36)", "Costs (E-37)"];
 
     fn id(record: &CalculatedCrypto) -> &str {
@@ -40,46 +43,123 @@ impl RecordKind for Crypto {
         record.date
     }
 
-    fn columns() -> Vec<Column> {
+    fn columns() -> Vec<RecordColumn> {
         vec![
-            Column::text("Date", 110.),
-            Column::text("Provider", 120.),
-            Column::text("Action", 85.),
-            Column::number("Value", 135.),
-            Column::number("Fee", 135.),
-            Column::number("Calculated value", 135.),
-            Column::number("Calculated fee", 135.),
+            RecordColumn::new("Date", CellStyle::Muted, 60., 50.),
+            RecordColumn::new("Action", CellStyle::Tag, 64., 56.),
+            RecordColumn::grow("Provider", CellStyle::Muted),
+            RecordColumn::new("Value", CellStyle::Number, 150., 120.),
+            RecordColumn::new("Fee", CellStyle::Number, 104., 90.),
+            RecordColumn::new("Calculated value", CellStyle::Number, 160., 124.),
+            RecordColumn::new("Calculated fee", CellStyle::Number, 120., 100.),
         ]
     }
 
     fn display(record: &CalculatedCrypto) -> RowDisplay {
+        let action = action_title(record.action);
         let cells = vec![
-            date(record.date),
+            day(record.date),
+            DisplayText::plain(action),
             DisplayText::plain(record.provider.clone()),
-            DisplayText::plain(action_title(record.action)),
             amount(record.value),
             amount(record.fee),
-            money(record.calculated_value),
-            money(record.calculated_fee),
+            pln(record.calculated_value),
+            pln(record.calculated_fee),
         ];
-        let details = vec![
-            DetailGroup {
-                title: "Original amounts",
-                fields: vec![
-                    ("Original value", amount(record.value)),
-                    ("Original fee", amount(record.fee)),
+        // Where the calculation adds the record, as in
+        // `calculate_sell_buy_values`; the sum is shown, never fed back.
+        let adds_to = match record.action {
+            Action::FiatBuy => vec![
+                StepLine::Formula("Buy · value + fee".into()),
+                StepLine::Result(
+                    format!(
+                        "Costs (E-37) +{}",
+                        pln(record.calculated_value + record.calculated_fee).full
+                    )
+                    .into(),
+                ),
+                StepLine::Caption(
+                    "A sale adds its value to Income (E-36) and its fee to Costs (E-37)".into(),
+                ),
+            ],
+            Action::FiatSell => vec![
+                StepLine::Formula("Sell · value to income, fee to costs".into()),
+                StepLine::Result(
+                    format!("Income (E-36) +{}", pln(record.calculated_value).full).into(),
+                ),
+                StepLine::Result(
+                    format!("Costs (E-37) +{}", pln(record.calculated_fee).full).into(),
+                ),
+                StepLine::Caption("A purchase adds its value and fee to Costs (E-37)".into()),
+            ],
+        };
+        let steps = vec![
+            Step {
+                title: "Value",
+                lines: vec![
+                    StepLine::Formula(conversion(record.value, record.nbp_rate).into()),
+                    StepLine::Result(pln(record.calculated_value).full),
+                    StepLine::Caption(
+                        format!("Calculated value · NBP date {}", date(record.nbp_date).main)
+                            .into(),
+                    ),
                 ],
             },
-            DetailGroup {
-                title: "Conversion",
-                fields: vec![
-                    ("NBP date", date(record.nbp_date)),
-                    ("Calculated value", pln(record.calculated_value)),
-                    ("Calculated fee", pln(record.calculated_fee)),
+            Step {
+                title: "Fee",
+                lines: vec![
+                    StepLine::Formula(conversion(record.fee, record.fee_nbp_rate).into()),
+                    StepLine::Result(pln(record.calculated_fee).full),
+                    StepLine::Caption("Calculated fee".into()),
                 ],
             },
+            Step {
+                title: "Adds to",
+                lines: adds_to,
+            },
         ];
-        RowDisplay { cells, details }
+        RowDisplay {
+            cells,
+            steps,
+            search: format!("{}\n{action}", record.provider).to_lowercase(),
+            label: format!("{action} {}", date(record.date).main).into(),
+        }
+    }
+
+    /// Income and costs as the calculation adds them up; a part shows only
+    /// when the month has records for it.
+    fn subtotal(records: &[&CalculatedCrypto]) -> Vec<(Option<&'static str>, Decimal)> {
+        let (mut income, mut costs) = (Decimal::ZERO, Decimal::ZERO);
+        let (mut sells, mut buys) = (false, false);
+        for record in records {
+            match record.action {
+                Action::FiatBuy => {
+                    buys = true;
+                    costs += record.calculated_value + record.calculated_fee;
+                }
+                Action::FiatSell => {
+                    sells = true;
+                    income += record.calculated_value;
+                    costs += record.calculated_fee;
+                }
+            }
+        }
+        let mut parts = vec![];
+        if sells {
+            parts.push((Some("income"), income));
+        }
+        if buys || !costs.is_zero() {
+            parts.push((Some("costs"), costs));
+        }
+        parts
+    }
+
+    fn imported(output: &OutputType) -> bool {
+        matches!(output, OutputType::Crypto)
+    }
+
+    fn count(year: &YearInfo) -> u32 {
+        year.cryptos
     }
 
     async fn load(

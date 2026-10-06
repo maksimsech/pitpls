@@ -65,6 +65,7 @@ impl Desktop {
                 }
                 PageEvent::Navigate(page) => this.navigate(*page, window, cx),
                 PageEvent::YearsChanged => this.load_years(window, cx),
+                PageEvent::SelectYear(year) => this.select_year(*year, window, cx),
             }
             cx.notify();
         });

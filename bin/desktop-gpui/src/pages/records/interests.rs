@@ -1,10 +1,9 @@
-use super::{RecordForm, RecordKind, Submission};
+use super::{RecordForm, RecordKind, Submission, conversion, day, percent};
 use crate::navigation::Page;
 use crate::{
     components::{
         form::{self, ChoiceState},
-        records::{DetailGroup, RowDisplay},
-        table::Column,
+        records::{CellStyle, RecordColumn, RowDisplay, Step, StepLine},
     },
     format::{DisplayText, amount, date, money, pln},
 };
@@ -13,8 +12,12 @@ use gpui_kit::{
     component::{date_picker::DatePickerState, input::InputState},
     *,
 };
-use pitpls_app::use_case::interest::{self, CreateInterestInput, UpdateInterestInput};
-use pitpls_core::{common::Currency, interest::CalculatedInterest};
+use pitpls_app::use_case::{
+    interest::{self, CreateInterestInput, UpdateInterestInput},
+    year::YearInfo,
+};
+use pitpls_core::{common::Currency, interest::CalculatedInterest, tax::POLAND_TAX};
+use pitpls_importers::OutputType;
 use rust_decimal::Decimal;
 use std::sync::Arc;
 
@@ -26,7 +29,7 @@ impl RecordKind for Interests {
 
     const PAGE: Page = Page::Interests;
     const NAME: &'static str = "Interest";
-    const TOTALS_TITLE: &'static str = "Interest totals";
+    const PLURAL: &'static str = "interest";
     const TOTAL_LABELS: &'static [&'static str] = &["Income (I-65)", "To pay (G-47)"];
 
     fn id(record: &CalculatedInterest) -> &str {
@@ -37,42 +40,72 @@ impl RecordKind for Interests {
         record.date
     }
 
-    fn columns() -> Vec<Column> {
+    fn columns() -> Vec<RecordColumn> {
         vec![
-            Column::text("Date", 110.),
-            Column::text("Provider", 120.),
-            Column::number("Value", 135.),
-            Column::number("Calculated value", 135.),
-            Column::number("To pay", 135.),
+            RecordColumn::new("Date", CellStyle::Muted, 76., 50.),
+            RecordColumn::grow("Provider", CellStyle::Muted),
+            RecordColumn::new("Value", CellStyle::Number, 150., 104.),
+            RecordColumn::new("Calculated value", CellStyle::Number, 170., 116.),
+            RecordColumn::new("To pay", CellStyle::Number, 140., 100.),
         ]
     }
 
     fn display(record: &CalculatedInterest) -> RowDisplay {
         let cells = vec![
-            date(record.date),
+            day(record.date),
             DisplayText::plain(record.provider.clone()),
             amount(record.value),
-            money(record.calculated_value),
-            money(record.to_pay),
+            pln(record.calculated_value),
+            pln(record.to_pay),
         ];
-        let details = vec![
-            DetailGroup {
-                title: "Original amounts",
-                fields: vec![("Original value", amount(record.value))],
-            },
-            DetailGroup {
+        let steps = vec![
+            Step {
                 title: "Conversion",
-                fields: vec![
-                    ("NBP date", date(record.nbp_date)),
-                    ("Calculated value", pln(record.calculated_value)),
+                lines: vec![
+                    StepLine::Formula(conversion(record.value, record.nbp_rate).into()),
+                    StepLine::Result(pln(record.calculated_value).full),
+                    StepLine::Caption(
+                        format!("Calculated value · NBP date {}", date(record.nbp_date).main)
+                            .into(),
+                    ),
                 ],
             },
-            DetailGroup {
-                title: "Tax calculation",
-                fields: vec![("To pay", pln(record.to_pay))],
+            Step {
+                title: "Polish tax",
+                lines: vec![
+                    StepLine::Formula(
+                        format!(
+                            "{} × {}",
+                            percent(POLAND_TAX),
+                            money(record.calculated_value).full
+                        )
+                        .into(),
+                    ),
+                    StepLine::Result(pln(record.to_pay).full),
+                    StepLine::Caption("To pay".into()),
+                ],
             },
         ];
-        RowDisplay { cells, details }
+        RowDisplay {
+            cells,
+            steps,
+            search: record.provider.to_lowercase(),
+            label: format!("{} {}", record.provider, date(record.date).main).into(),
+        }
+    }
+
+    fn subtotal(records: &[&CalculatedInterest]) -> Vec<(Option<&'static str>, Decimal)> {
+        let value = records.iter().map(|record| record.calculated_value).sum();
+        let to_pay = records.iter().map(|record| record.to_pay).sum();
+        vec![(None, value), (Some("to pay"), to_pay)]
+    }
+
+    fn imported(output: &OutputType) -> bool {
+        matches!(output, OutputType::Interest)
+    }
+
+    fn count(year: &YearInfo) -> u32 {
+        year.interests
     }
 
     async fn load(

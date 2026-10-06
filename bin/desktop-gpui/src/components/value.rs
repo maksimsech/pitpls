@@ -169,3 +169,25 @@ pub fn card_row(
                 .child(copy_button(&id, value)),
         )
 }
+
+/// A total's placeholder: its label, and a bar where the value will be.
+/// The bar reserves its space at once but stays hidden until `visible`.
+pub fn stat_skeleton(label: &'static str, visible: bool, cx: &App) -> Div {
+    v_flex()
+        .gap(px(2.))
+        .child(
+            div()
+                .text_size(px(12.))
+                .text_color(palette(cx).muted)
+                .child(label),
+        )
+        .child(
+            div()
+                .my(px(2.))
+                .h(px(22.))
+                .w(px(120.))
+                .rounded(px(4.))
+                .bg(gpui_kit::component::ActiveTheme::theme(cx).skeleton)
+                .opacity(if visible { 1. } else { 0. }),
+        )
+}

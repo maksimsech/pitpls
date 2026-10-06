@@ -1,4 +1,4 @@
-use gpui_kit::{App, Entity, EventEmitter};
+use gpui_kit::{App, Entity, EventEmitter, assets::IconName};
 
 #[derive(Clone, Copy, Default, PartialEq, Eq)]
 pub enum Page {
@@ -24,12 +24,26 @@ impl Page {
             Self::Settings => "Settings",
         }
     }
+
+    pub fn icon(self) -> IconName {
+        match self {
+            Self::Home => IconName::House,
+            Self::Imports => IconName::Upload,
+            Self::Dividends => IconName::Coins,
+            Self::Interests => IconName::Percent,
+            Self::Crypto => IconName::Bitcoin,
+            Self::Rates => IconName::ChartLine,
+            Self::Settings => IconName::Settings,
+        }
+    }
 }
 
 pub enum PageEvent {
     Navigate(Page),
     LockNavigation(bool),
     YearsChanged,
+    /// Selects the tax year, `None` meaning every year.
+    SelectYear(Option<i32>),
 }
 
 pub struct PageEvents;
@@ -59,5 +73,10 @@ impl PageContext {
     pub fn years_changed(&self, cx: &mut App) {
         self.events
             .update(cx, |_, cx| cx.emit(PageEvent::YearsChanged));
+    }
+
+    pub fn select_year(&self, year: Option<i32>, cx: &mut App) {
+        self.events
+            .update(cx, |_, cx| cx.emit(PageEvent::SelectYear(year)));
     }
 }

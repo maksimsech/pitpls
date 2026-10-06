@@ -1,4 +1,4 @@
-use crate::{format::DisplayText, theme::tabular_digits};
+use crate::theme::tabular_digits;
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::{component::*, *};
 
@@ -45,17 +45,4 @@ fn frame(column: &Column, heading: bool, cx: &App) -> Div {
 
 pub fn cell(value: SharedString, column: &Column, heading: bool, cx: &App) -> Div {
     frame(column, heading, cx).child(value)
-}
-
-/// Numbers keep a fixed slot for their extra decimals, so a column's decimal
-/// points line up. The cell is plain text: hundreds of selectable cells are too
-/// slow, and the full value is in the tooltip and context menu.
-pub fn value_cell(
-    id: impl Into<ElementId>,
-    value: &DisplayText,
-    column: &Column,
-    cx: &App,
-) -> AnyElement {
-    let text = super::value::text(value, column.numeric, true, cx);
-    super::value::reveal_full(frame(column, false, cx).id(id).child(text), value)
 }

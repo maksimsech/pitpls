@@ -80,18 +80,6 @@ fn padding(expansion: Expansion) -> Pixels {
     expansion.size(12., 8.)
 }
 
-fn icon(page: Page) -> IconName {
-    match page {
-        Page::Home => IconName::House,
-        Page::Imports => IconName::Upload,
-        Page::Dividends => IconName::Coins,
-        Page::Interests => IconName::Percent,
-        Page::Crypto => IconName::Bitcoin,
-        Page::Rates => IconName::ChartLine,
-        Page::Settings => IconName::Settings,
-    }
-}
-
 impl Desktop {
     pub fn sidebar(
         &self,
@@ -362,7 +350,7 @@ impl Desktop {
         nav_item(
             SharedString::from(format!("navigate-{}", page.title())),
             page.title(),
-            icon(page),
+            page.icon(),
             count,
             expansion,
         )

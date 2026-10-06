@@ -8,7 +8,7 @@ use crate::common::{Amount, Currency};
 
 mod model;
 
-pub use model::Rate;
+pub use model::{Conversion, Rate};
 
 const MAX_LOOKUP_STEPS: u8 = 10;
 
@@ -56,14 +56,22 @@ impl NbpRateProvider {
         &self,
         amount: &Amount,
         at: &NaiveDate,
-    ) -> std::result::Result<(Decimal, NaiveDate), RateConverterError> {
+    ) -> Result<Conversion, RateConverterError> {
         if matches!(amount.currency, Currency::PLN) {
-            return Ok((amount.value, *at));
+            return Ok(Conversion {
+                pln: amount.value,
+                rate: Decimal::ONE,
+                date: *at,
+            });
         }
 
         let (rate, rate_date) = self.get(at, &amount.currency)?;
 
-        Ok((rate * amount.value, rate_date))
+        Ok(Conversion {
+            pln: rate * amount.value,
+            rate,
+            date: rate_date,
+        })
     }
 
     fn get(
@@ -149,11 +157,11 @@ mod tests {
             rate: Decimal::ONE,
         }]);
 
-        let (value, rate_date) = provider
+        let conversion = provider
             .convert(&usd_amount(2), &date(2024, 1, 11))
             .unwrap();
 
-        assert_eq!(value, Decimal::from(2));
-        assert_eq!(rate_date, date(2024, 1, 1));
+        assert_eq!(conversion.pln, Decimal::from(2));
+        assert_eq!(conversion.date, date(2024, 1, 1));
     }
 }

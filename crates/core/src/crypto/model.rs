@@ -31,6 +31,10 @@ pub struct CalculatedCrypto {
     pub action: Action,
     pub date: NaiveDate,
     pub nbp_date: NaiveDate,
+    // The NBP rate of `nbp_date` for the value's currency (1 for PLN).
+    pub nbp_rate: Decimal,
+    // The NBP rate for the fee, whose currency can differ (1 for PLN).
+    pub fee_nbp_rate: Decimal,
     pub provider: String,
 }
 
@@ -40,6 +44,8 @@ impl CalculatedCrypto {
         calculated_value: Decimal,
         calculated_fee: Decimal,
         nbp_date: NaiveDate,
+        nbp_rate: Decimal,
+        fee_nbp_rate: Decimal,
     ) -> Self {
         Self {
             id: crypto.id,
@@ -50,6 +56,8 @@ impl CalculatedCrypto {
             action: crypto.action,
             date: crypto.date,
             nbp_date,
+            nbp_rate,
+            fee_nbp_rate,
             provider: crypto.provider,
         }
     }

@@ -1,7 +1,7 @@
 use super::PageView;
 use crate::{
     components::{
-        self, Status, dialog, file_picker, form, header,
+        self, Status, dialog, file_picker, header, nbp,
         table::{Column, cell},
     },
     format,
@@ -130,7 +130,7 @@ impl RatesPage {
     }
 
     fn open_nbp(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let year = form::input(chrono::Local::now().year().to_string(), window, cx);
+        let year = nbp::year_input(chrono::Local::now().year(), window, cx);
         self.nbp_year = Some(year.clone());
         self.status.error = None;
         dialog::open(window, cx, Self::nbp_dialog);
@@ -145,15 +145,7 @@ impl RatesPage {
         let Some(year) = &self.nbp_year else {
             return;
         };
-        let current_year = chrono::Local::now().year();
-        let year = form::year(year, cx).and_then(|year| {
-            if (2002..=current_year).contains(&year) {
-                Ok(year)
-            } else {
-                Err(format!("Enter a year between 2002 and {current_year}"))
-            }
-        });
-        match year {
+        match nbp::year(year, cx) {
             Ok(year) => self.change(Change::Nbp(year), window, cx),
             Err(error) => {
                 self.status.error = Some(error.into());
@@ -166,18 +158,15 @@ impl RatesPage {
         let Some(year) = &self.nbp_year else {
             return dialog;
         };
-        let busy = self.status.busy;
-        dialog::form(
+        nbp::dialog(
             self,
             dialog,
-            if busy { "Importing…" } else { "Import" },
+            year,
             |this| &this.status,
             Self::import_nbp,
             Self::close_form,
             cx,
         )
-        .title("Import from NBP")
-        .child(form::input_field("Year", year, busy, cx))
     }
 
     fn open_reset(&mut self, window: &mut Window, cx: &mut Context<Self>) {

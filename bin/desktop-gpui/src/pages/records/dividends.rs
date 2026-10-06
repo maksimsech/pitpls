@@ -1,20 +1,27 @@
-use super::{RecordForm, RecordKind, Submission};
+use super::{RecordForm, RecordKind, Submission, conversion, day, percent};
 use crate::navigation::Page;
 use crate::{
     components::{
         form::{self, ChoiceState},
-        records::{DetailGroup, RowDisplay},
-        table::Column,
+        records::{CellStyle, RecordColumn, RowDisplay, Step, StepLine},
     },
-    format::{DisplayText, amount, date, pln},
+    format::{DisplayText, amount, date, money, pln},
 };
 use chrono::NaiveDate;
 use gpui_kit::{
     component::{date_picker::DatePickerState, input::InputState},
     *,
 };
-use pitpls_app::use_case::dividend::{self, CreateDividendInput, UpdateDividendInput};
-use pitpls_core::{common::Currency, dividend::CalculatedDividend};
+use pitpls_app::use_case::{
+    dividend::{self, CreateDividendInput, UpdateDividendInput},
+    year::YearInfo,
+};
+use pitpls_core::{
+    common::Currency,
+    dividend::CalculatedDividend,
+    tax::{POLAND_TAX, get_treaty_tax},
+};
+use pitpls_importers::OutputType;
 use rust_decimal::Decimal;
 use std::sync::Arc;
 
@@ -26,7 +33,7 @@ impl RecordKind for Dividends {
 
     const PAGE: Page = Page::Dividends;
     const NAME: &'static str = "Dividend";
-    const TOTALS_TITLE: &'static str = "Dividend totals";
+    const PLURAL: &'static str = "dividends";
     const TOTAL_LABELS: &'static [&'static str] =
         &["Income (I-65)", "To pay (G-47)", "Paid (G-48)"];
 
@@ -38,52 +45,109 @@ impl RecordKind for Dividends {
         record.date
     }
 
-    fn columns() -> Vec<Column> {
+    fn columns() -> Vec<RecordColumn> {
         vec![
-            Column::text("Date", 110.),
-            Column::text("Ticker", 75.),
-            Column::text("Provider", 120.),
-            Column::number("Value", 135.),
-            Column::number("Tax paid", 135.),
-            Column::text("Country", 85.),
+            RecordColumn::new("Date", CellStyle::Muted, 64., 50.),
+            RecordColumn::new("Ticker", CellStyle::Strong, 76., 60.),
+            RecordColumn::grow("Provider", CellStyle::Muted),
+            RecordColumn::new("Country", CellStyle::Muted, 64., 36.),
+            RecordColumn::new("Value", CellStyle::Number, 150., 124.),
+            RecordColumn::new("Tax paid", CellStyle::Number, 124., 104.),
         ]
     }
 
     fn display(record: &CalculatedDividend) -> RowDisplay {
         let cells = vec![
-            date(record.date),
+            day(record.date),
             DisplayText::plain(record.ticker.clone()),
             DisplayText::plain(record.provider.clone()),
+            DisplayText::plain(record.country.to_string()),
             amount(record.value),
             amount(record.tax_paid),
-            DisplayText::plain(record.country.to_string()),
         ];
-        let details = vec![
-            DetailGroup {
-                title: "Original amounts",
-                fields: vec![
-                    ("Original value", amount(record.value)),
-                    ("Original tax paid", amount(record.tax_paid)),
-                ],
-            },
-            DetailGroup {
+        let steps = vec![
+            Step {
                 title: "Conversion",
-                fields: vec![
-                    ("NBP date", date(record.nbp_date)),
-                    ("Calculated value", pln(record.calculated_value)),
-                    ("Calculated tax paid", pln(record.calculated_tax_paid)),
+                lines: vec![
+                    StepLine::Formula(conversion(record.value, record.nbp_rate).into()),
+                    StepLine::Result(pln(record.calculated_value).full),
+                    StepLine::Caption(
+                        format!("Calculated value · NBP date {}", date(record.nbp_date).main)
+                            .into(),
+                    ),
                 ],
             },
-            DetailGroup {
-                title: "Tax calculation",
-                fields: vec![
-                    ("Calculated to pay", pln(record.calculated_to_pay)),
-                    ("Max tax paid", pln(record.max_tax_paid)),
-                    ("Used tax paid", pln(record.used_tax_paid)),
+            Step {
+                title: "Polish tax",
+                lines: vec![
+                    StepLine::Formula(
+                        format!(
+                            "{} × {}",
+                            percent(POLAND_TAX),
+                            money(record.calculated_value).full
+                        )
+                        .into(),
+                    ),
+                    StepLine::Result(pln(record.calculated_to_pay).full),
+                    StepLine::Caption("Calculated to pay".into()),
+                ],
+            },
+            Step {
+                title: "Foreign tax credit",
+                lines: vec![
+                    StepLine::Formula(
+                        format!(
+                            "Tax paid {}",
+                            conversion(record.tax_paid, record.tax_paid_nbp_rate)
+                        )
+                        .into(),
+                    ),
+                    StepLine::Entry {
+                        label: "Calculated tax paid",
+                        value: pln(record.calculated_tax_paid).full,
+                        strong: false,
+                    },
+                    StepLine::Entry {
+                        label: "Max tax paid",
+                        value: pln(record.max_tax_paid).full,
+                        strong: false,
+                    },
+                    StepLine::Entry {
+                        label: "Used tax paid",
+                        value: pln(record.used_tax_paid).full,
+                        strong: true,
+                    },
+                    StepLine::Caption(
+                        format!(
+                            "Max = {} {} treaty rate; the lower one is used",
+                            percent(get_treaty_tax(&record.country)),
+                            record.country
+                        )
+                        .into(),
+                    ),
                 ],
             },
         ];
-        RowDisplay { cells, details }
+        RowDisplay {
+            cells,
+            steps,
+            search: format!("{}\n{}\n{}", record.ticker, record.provider, record.country)
+                .to_lowercase(),
+            label: format!("{} {}", record.ticker, date(record.date).main).into(),
+        }
+    }
+
+    fn subtotal(records: &[&CalculatedDividend]) -> Vec<(Option<&'static str>, Decimal)> {
+        let value = records.iter().map(|record| record.calculated_value).sum();
+        vec![(None, value)]
+    }
+
+    fn imported(output: &OutputType) -> bool {
+        matches!(output, OutputType::Dividend)
+    }
+
+    fn count(year: &YearInfo) -> u32 {
+        year.dividends
     }
 
     async fn load(
