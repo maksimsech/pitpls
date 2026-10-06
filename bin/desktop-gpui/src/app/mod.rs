@@ -2,7 +2,7 @@ mod toolbar;
 mod years;
 
 use crate::{
-    components::{self, Status, form},
+    components::{self, Status, dialog, form},
     config::{self, Config, Preferences},
     navigation::{Page, PageContext, PageEvent, PageEvents},
     pages::{self, PageHandle},

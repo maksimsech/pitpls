@@ -90,6 +90,12 @@ pub fn required(state: &Entity<InputState>, label: &str, cx: &App) -> Result<Str
     }
 }
 
+pub fn year(state: &Entity<InputState>, cx: &App) -> Result<i32, String> {
+    required(state, "Year", cx)?
+        .parse()
+        .map_err(|_| "Enter a valid whole year".into())
+}
+
 pub fn currency(
     value: Currency,
     window: &mut Window,

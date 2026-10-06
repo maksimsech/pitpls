@@ -2,7 +2,7 @@ use pitpls_core::{crypto::Crypto, dividend::Dividend, interest::Interest};
 use serde::{Deserialize, Serialize};
 use specta::Type;
 
-#[derive(Serialize, Deserialize, Type)]
+#[derive(Clone, Copy, Serialize, Deserialize, Type)]
 pub enum ImporterKind {
     T212,
     Revolut,

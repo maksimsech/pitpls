@@ -15,7 +15,7 @@ use gpui_kit::{
     *,
 };
 use pitpls_app::use_case::import;
-use pitpls_importers::{IMPORTERS, ImporterKind, InputType, OutputType};
+use pitpls_importers::{IMPORTERS, InputType, OutputType};
 use std::path::Path;
 
 pub struct ImportsPage {
@@ -57,11 +57,7 @@ impl ImportsPage {
                         this.file_name = Path::new(&file)
                             .file_name()
                             .map(|name| name.to_string_lossy().into_owned().into());
-                        let kind = match &IMPORTERS[index].kind {
-                            ImporterKind::T212 => ImporterKind::T212,
-                            ImporterKind::Revolut => ImporterKind::Revolut,
-                            ImporterKind::Coinbase => ImporterKind::Coinbase,
-                        };
+                        let kind = IMPORTERS[index].kind;
                         this.status.task = Some(this.context.services.run(
                             window,
                             cx,

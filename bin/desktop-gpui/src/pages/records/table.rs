@@ -92,7 +92,7 @@ impl<K: RecordKind> RecordsPage<K> {
         let selected = self.selected.contains(id);
         let expanded = self.expanded.contains(id);
         let disabled = self.disabled();
-        let label = format!("{} record on {}", K::NAME, date(K::date(record)).text);
+        let label = format!("{} record on {}", K::NAME, date(K::date(record)).main);
         v_flex()
             .w(self.table_state.width)
             .text_sm()
@@ -180,13 +180,9 @@ impl<K: RecordKind> RecordsPage<K> {
                                     .accessibility_label(format!("Delete {label}"))
                                     .disabled(disabled)
                                     .on_click(cx.listener(move |this, _, window, cx| {
-                                        this.open_confirmation(
-                                            Confirmation {
-                                                message:
-                                                    "Delete this record? This cannot be undone."
-                                                        .into(),
-                                                ids: vec![delete_id.clone()],
-                                            },
+                                        this.confirm_delete(
+                                            vec![delete_id.clone()],
+                                            "Delete this record? This cannot be undone.".into(),
                                             window,
                                             cx,
                                         );
@@ -230,21 +226,26 @@ impl<K: RecordKind> RecordsPage<K> {
         if self.table_state.dirty {
             let mut sizes = Vec::with_capacity(self.records.len());
             for (index, record) in self.records.iter().enumerate() {
-                let expanded = usize::from(self.expanded.contains(K::id(record)));
-                let measured = if let Some(measured) = self.table_state.measured[index][expanded] {
-                    measured
+                let expanded = self.expanded.contains(K::id(record));
+                let cached = if expanded {
+                    self.table_state.expanded[index]
                 } else {
-                    let measured = self
-                        .record_row(record, index, &columns, cx)
+                    self.table_state.collapsed
+                };
+                let measured = cached.unwrap_or_else(|| {
+                    self.record_row(record, index, &columns, cx)
                         .into_any_element()
                         .layout_as_root(
                             size(AvailableSpace::Definite(width), AvailableSpace::MinContent),
                             window,
                             cx,
-                        );
-                    self.table_state.measured[index][expanded] = Some(measured);
-                    measured
-                };
+                        )
+                });
+                if expanded {
+                    self.table_state.expanded[index] = Some(measured);
+                } else {
+                    self.table_state.collapsed = Some(measured);
+                }
                 sizes.push(measured);
             }
             self.table_state.set_sizes(sizes);

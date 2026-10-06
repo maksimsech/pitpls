@@ -1,5 +1,5 @@
 use super::table::{self, Column};
-use crate::format::DisplayText;
+use crate::{format::DisplayText, theme::tabular_digits};
 use gpui_kit::{
     assets::IconName,
     component::{
@@ -117,14 +117,15 @@ pub fn record_details(record_id: &str, groups: &[DetailGroup], disabled: bool, c
                                 .text_color(cx.theme().muted_foreground)
                                 .child(*label),
                         )
-                        .child(super::display_text(
+                        .child(super::value::reveal_full(
                             div()
                                 .id(SharedString::from(format!("detail-{record_id}-{label}")))
                                 .flex_1()
                                 .min_w_0()
                                 .text_right()
-                                .font_family(cx.theme().mono_font_family.clone())
-                                .truncate(),
+                                .font_features(tabular_digits())
+                                .truncate()
+                                .child(super::value::text(value, false, true, cx)),
                             value,
                         ))
                 }))
@@ -170,7 +171,9 @@ pub fn record_details(record_id: &str, groups: &[DetailGroup], disabled: bool, c
 pub struct RecordTableState {
     pub rows: Vec<RowDisplay>,
     pub sizes: Rc<Vec<Size<Pixels>>>,
-    pub measured: Vec<[Option<Size<Pixels>>; 2]>,
+    /// Shared by every collapsed row: their cells are single truncated lines.
+    pub collapsed: Option<Size<Pixels>>,
+    pub expanded: Vec<Option<Size<Pixels>>>,
     pub scroll: VirtualListScrollHandle,
     pub width: Pixels,
     pub viewport_width: Option<Pixels>,
@@ -184,7 +187,8 @@ impl Default for RecordTableState {
         Self {
             rows: vec![],
             sizes: Rc::new(vec![]),
-            measured: vec![],
+            collapsed: None,
+            expanded: vec![],
             scroll: VirtualListScrollHandle::new(),
             width: px(0.),
             viewport_width: None,
@@ -230,7 +234,8 @@ impl RecordTableState {
     }
 
     pub fn invalidate_measurements(&mut self) {
-        self.measured = vec![[None, None]; self.rows.len()];
+        self.collapsed = None;
+        self.expanded = vec![None; self.rows.len()];
         self.dirty = true;
     }
 

@@ -1,10 +1,10 @@
 use super::PageView;
 use crate::{
     components::{
-        self, Status, file_picker, form,
-        table::{Column, cell, value_cell},
+        self, Status, dialog, file_picker, form,
+        table::{Column, cell},
     },
-    format::{self, DisplayText},
+    format,
     navigation::PageContext,
 };
 use chrono::{Datelike, NaiveDate};
@@ -132,11 +132,7 @@ impl RatesPage {
         let year = form::input(chrono::Local::now().year().to_string(), window, cx);
         self.nbp_year = Some(year.clone());
         self.status.error = None;
-        let page = cx.entity().downgrade();
-        window.open_dialog(cx, move |dialog, _, cx| {
-            page.update(cx, |this, cx| this.nbp_dialog(dialog, cx))
-                .unwrap_or_else(|_| Dialog::new(cx))
-        });
+        dialog::open(window, cx, Self::nbp_dialog);
         window.focus(&year.focus_handle(cx), cx);
         self.notify(cx);
     }
@@ -149,19 +145,13 @@ impl RatesPage {
             return;
         };
         let current_year = chrono::Local::now().year();
-        let year = form::required(year, "Year", cx)
-            .and_then(|value| {
-                value
-                    .parse::<i32>()
-                    .map_err(|_| "Enter a valid whole year".to_string())
-            })
-            .and_then(|year| {
-                if (2002..=current_year).contains(&year) {
-                    Ok(year)
-                } else {
-                    Err(format!("Enter a year between 2002 and {current_year}"))
-                }
-            });
+        let year = form::year(year, cx).and_then(|year| {
+            if (2002..=current_year).contains(&year) {
+                Ok(year)
+            } else {
+                Err(format!("Enter a year between 2002 and {current_year}"))
+            }
+        });
         match year {
             Ok(year) => self.change(Change::Nbp(year), window, cx),
             Err(error) => {
@@ -175,88 +165,35 @@ impl RatesPage {
         let Some(year) = &self.nbp_year else {
             return dialog;
         };
-        let dismiss = cx.entity().downgrade();
-        let submit = cx.entity().downgrade();
-        dialog
-            .title("Import from NBP")
-            .overlay_closable(!self.status.busy)
-            .keyboard(!self.status.busy)
-            .close_button(!self.status.busy)
-            .on_ok(move |_, window, cx| {
-                let _ = submit.update(cx, |this, cx| this.import_nbp(window, cx));
-                false
-            })
-            .on_cancel(move |_, _, cx| {
-                dismiss
-                    .update(cx, |this, _| !this.status.busy)
-                    .unwrap_or(true)
-            })
-            .on_close(cx.listener(|this, _, _, cx| {
-                if !this.status.busy {
-                    this.close_form(cx);
-                }
-            }))
-            .when(self.status.is_visible(), |view| {
-                view.child(self.status.render())
-            })
-            .child(form::input_field("Year", year, self.status.busy, cx))
-            .footer(
-                h_flex()
-                    .justify_end()
-                    .gap_2()
-                    .child(
-                        Button::new("cancel-nbp")
-                            .label("Cancel")
-                            .outline()
-                            .disabled(self.status.busy)
-                            .on_click(cx.listener(|this, _, window, cx| {
-                                if !this.status.busy {
-                                    window.close_dialog(cx);
-                                    this.close_form(cx);
-                                }
-                            })),
-                    )
-                    .child(
-                        Button::new("import-nbp")
-                            .label(if self.status.busy {
-                                "Importing…"
-                            } else {
-                                "Import"
-                            })
-                            .primary()
-                            .disabled(self.status.busy)
-                            .on_click(
-                                cx.listener(|this, _, window, cx| this.import_nbp(window, cx)),
-                            ),
-                    ),
-            )
+        let busy = self.status.busy;
+        dialog::form(
+            self,
+            dialog,
+            if busy { "Importing…" } else { "Import" },
+            |this| &this.status,
+            Self::import_nbp,
+            Self::close_form,
+            cx,
+        )
+        .title("Import from NBP")
+        .child(form::input_field("Year", year, busy, cx))
     }
 
     fn open_reset(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.confirm_reset = true;
-        let page = cx.entity().downgrade();
-        window.open_dialog(cx, move |dialog, _, cx| {
-            page.update(cx, |_, cx| {
-                let confirm = cx.entity().downgrade();
-                dialog
-                    .title("Reset rates")
-                    .footer(components::confirmation_footer("Reset"))
-                    .child(
-                        "Remove all imported exchange rates? \
-                         Calculations will be unavailable until rates are reimported.",
-                    )
-                    .on_ok(move |_, window, cx| {
-                        confirm
-                            .update(cx, |this, cx| this.change(Change::Reset, window, cx))
-                            .is_ok()
-                    })
-                    .on_close(cx.listener(|this, _, _, cx| {
-                        this.confirm_reset = false;
-                        this.notify(cx);
-                    }))
-            })
-            .unwrap_or_else(|_| Dialog::new(cx))
-        });
+        dialog::confirm(
+            "Reset rates",
+            "Remove all imported exchange rates? \
+             Calculations will be unavailable until rates are reimported.",
+            "Reset",
+            |this, window, cx| this.change(Change::Reset, window, cx),
+            |this, cx| {
+                this.confirm_reset = false;
+                this.notify(cx);
+            },
+            window,
+            cx,
+        );
         self.notify(cx);
     }
 
@@ -333,7 +270,7 @@ impl PageView for RatesPage {
                     .into_iter()
                     .map(|row| {
                         let day = NaiveDate::parse_from_str(&row.date, "%Y-%m-%d")
-                            .map(|day| format::date(day).text)
+                            .map(|day| format::date(day).main)
                             .unwrap_or_else(|_| row.date.into());
                         let mut cells = vec![day];
                         cells.extend(data.currencies.iter().map(|currency| {
@@ -428,15 +365,7 @@ impl RatesPage {
                                 this.data.rows[index]
                                     .iter()
                                     .zip(&this.data.columns)
-                                    .enumerate()
-                                    .map(|(column_index, (value, column))| {
-                                        value_cell(
-                                            ("rate", column_index),
-                                            &DisplayText::plain(value.clone()),
-                                            column,
-                                            cx,
-                                        )
-                                    }),
+                                    .map(|(value, column)| cell(value.clone(), column, false, cx)),
                             )
                     })
                     .collect::<Vec<_>>()

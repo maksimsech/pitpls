@@ -8,7 +8,7 @@ pub use self::{crypto::Crypto, dividends::Dividends, interests::Interests};
 use super::PageView;
 use crate::{
     components::{
-        self, Status, SummaryGroup,
+        self, Status, SummaryGroup, dialog,
         records::{RecordTableState, RowDisplay},
         table::Column,
     },
@@ -71,11 +71,6 @@ pub trait RecordKind: 'static {
     ) -> impl Future<Output = Result<u64, String>> + Send;
 }
 
-struct Confirmation {
-    message: SharedString,
-    ids: Vec<String>,
-}
-
 pub struct RecordsPage<K: RecordKind> {
     context: PageContext,
     year: Option<i32>,
@@ -88,7 +83,7 @@ pub struct RecordsPage<K: RecordKind> {
     selected: HashSet<String>,
     expanded: HashSet<String>,
     editor: Option<K::Form>,
-    confirmation: Option<Confirmation>,
+    pending_delete: Option<Vec<String>>,
     focus: FocusHandle,
     _focus_subscription: Subscription,
 }
@@ -112,13 +107,13 @@ impl<K: RecordKind> RecordsPage<K> {
             selected: HashSet::new(),
             expanded: HashSet::new(),
             editor: None,
-            confirmation: None,
+            pending_delete: None,
             focus: cx.focus_handle(),
             _focus_subscription: cx.on_focus_lost(window, |this, window, cx| {
                 // When a focused virtual row scrolls out of view, keep focus
                 // on the page instead of dropping it.
                 if this.editor.is_none()
-                    && this.confirmation.is_none()
+                    && this.pending_delete.is_none()
                     && window.focus_lost_restore_target(cx).as_ref() == Some(&this.focus)
                 {
                     window.focus(&this.focus, cx);
@@ -133,12 +128,12 @@ impl<K: RecordKind> RecordsPage<K> {
         self.status.busy
             || self.status.loading
             || self.editor.is_some()
-            || self.confirmation.is_some()
+            || self.pending_delete.is_some()
     }
 
     fn notify(&self, cx: &mut Context<Self>) {
         self.context.set_locked(
-            self.status.busy || self.editor.is_some() || self.confirmation.is_some(),
+            self.status.busy || self.editor.is_some() || self.pending_delete.is_some(),
             cx,
         );
         cx.notify();
@@ -149,11 +144,7 @@ impl<K: RecordKind> RecordsPage<K> {
         self.editor = Some(form);
         self.status.error = None;
         self.status.message = None;
-        let page = cx.entity().downgrade();
-        window.open_dialog(cx, move |dialog, _, cx| {
-            page.update(cx, |this, cx| this.render_editor(dialog, cx))
-                .unwrap_or_else(|_| Dialog::new(cx))
-        });
+        dialog::open(window, cx, Self::render_editor);
         window.focus(&first_input, cx);
         self.notify(cx);
     }
@@ -205,7 +196,7 @@ impl<K: RecordKind> RecordsPage<K> {
         if self.status.busy {
             return;
         }
-        let Some(confirmation) = self.confirmation.take() else {
+        let Some(ids) = self.pending_delete.take() else {
             return;
         };
         self.status.begin_save();
@@ -213,7 +204,7 @@ impl<K: RecordKind> RecordsPage<K> {
             window,
             cx,
             move |app| async move {
-                let count = K::delete(app, confirmation.ids).await?;
+                let count = K::delete(app, ids).await?;
                 Ok(format!("Deleted {count} record(s)."))
             },
             |this, result, window, cx| {
@@ -267,55 +258,37 @@ impl<K: RecordKind> RecordsPage<K> {
                             .danger()
                             .disabled(disabled || self.selected.is_empty())
                             .on_click(cx.listener(|this, _, window, cx| {
-                                this.open_confirmation(
-                                    Confirmation {
-                                        message: format!(
-                                            "Delete {} selected record(s)? This cannot be undone.",
-                                            this.selected.len()
-                                        )
-                                        .into(),
-                                        ids: this.selected.iter().cloned().collect(),
-                                    },
-                                    window,
-                                    cx,
+                                let message = format!(
+                                    "Delete {} selected record(s)? This cannot be undone.",
+                                    this.selected.len()
                                 );
+                                let ids = this.selected.iter().cloned().collect();
+                                this.confirm_delete(ids, message, window, cx);
                             })),
                     ),
             )
     }
 
-    fn open_confirmation(
+    fn confirm_delete(
         &mut self,
-        confirmation: Confirmation,
+        ids: Vec<String>,
+        message: String,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.confirmation = Some(confirmation);
-        let page = cx.entity().downgrade();
-        window.open_dialog(cx, move |dialog, _, cx| {
-            page.update(cx, |this, cx| {
-                let confirm = cx.entity().downgrade();
-                dialog
-                    .title("Delete records")
-                    .footer(components::confirmation_footer("Delete"))
-                    .child(
-                        this.confirmation
-                            .as_ref()
-                            .map(|value| value.message.clone())
-                            .unwrap_or_default(),
-                    )
-                    .on_ok(move |_, window, cx| {
-                        confirm
-                            .update(cx, |this, cx| this.delete(window, cx))
-                            .is_ok()
-                    })
-                    .on_close(cx.listener(|this, _, _, cx| {
-                        this.confirmation = None;
-                        this.notify(cx);
-                    }))
-            })
-            .unwrap_or_else(|_| Dialog::new(cx))
-        });
+        self.pending_delete = Some(ids);
+        dialog::confirm(
+            "Delete records",
+            message,
+            "Delete",
+            Self::delete,
+            |this, cx| {
+                this.pending_delete = None;
+                this.notify(cx);
+            },
+            window,
+            cx,
+        );
         self.notify(cx);
     }
 
@@ -323,62 +296,20 @@ impl<K: RecordKind> RecordsPage<K> {
         let Some(editor) = &self.editor else {
             return dialog;
         };
-        let dismiss = cx.entity().downgrade();
-        let submit = cx.entity().downgrade();
-        dialog
-            .title(editor.title())
-            .w(px(740.))
-            .max_w(px(740.))
-            .overlay_closable(!self.status.busy)
-            .keyboard(!self.status.busy)
-            .close_button(!self.status.busy)
-            .on_ok(move |_, window, cx| {
-                let _ = submit.update(cx, |this, cx| this.save(window, cx));
-                // Close only after the asynchronous write succeeds.
-                false
-            })
-            .on_cancel(move |_, _, cx| {
-                dismiss
-                    .update(cx, |this, _| !this.status.busy)
-                    .unwrap_or(true)
-            })
-            .on_close(cx.listener(|this, _, _, cx| {
-                if !this.status.busy {
-                    this.close_editor(cx);
-                }
-            }))
-            .when(self.status.is_visible(), |view| {
-                view.child(self.status.render())
-            })
-            .child(editor.render(self.status.busy, cx))
-            .footer(
-                h_flex()
-                    .justify_end()
-                    .gap_2()
-                    .child(
-                        Button::new("cancel-editor")
-                            .label("Cancel")
-                            .outline()
-                            .disabled(self.status.busy)
-                            .on_click(cx.listener(|this, _, window, cx| {
-                                if !this.status.busy {
-                                    window.close_dialog(cx);
-                                    this.close_editor(cx);
-                                }
-                            })),
-                    )
-                    .child(
-                        Button::new("save-editor")
-                            .label(if self.status.busy {
-                                "Saving…"
-                            } else {
-                                "Save"
-                            })
-                            .primary()
-                            .disabled(self.status.busy)
-                            .on_click(cx.listener(|this, _, window, cx| this.save(window, cx))),
-                    ),
-            )
+        let busy = self.status.busy;
+        dialog::form(
+            self,
+            dialog,
+            if busy { "Saving…" } else { "Save" },
+            |this| &this.status,
+            Self::save,
+            Self::close_editor,
+            cx,
+        )
+        .title(editor.title())
+        .w(px(740.))
+        .max_w(px(740.))
+        .child(editor.render(busy, cx))
     }
 }
 
@@ -436,7 +367,7 @@ impl<K: RecordKind> Render for RecordsPage<K> {
                 view.child(self.status.render())
             });
         if self.status.error.is_some() || (!self.status.ready && !self.status.loading) {
-            let disabled = self.status.busy || self.confirmation.is_some();
+            let disabled = self.status.busy || self.pending_delete.is_some();
             content = content.child(
                 h_flex()
                     .gap_2()

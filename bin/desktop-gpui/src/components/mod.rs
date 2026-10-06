@@ -1,17 +1,17 @@
+pub mod copy;
+pub mod dialog;
 pub mod file_picker;
 pub mod form;
 pub mod records;
 pub mod table;
+pub mod value;
 
 use crate::format::DisplayText;
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::{
-    base::SelectableText,
     component::{
         alert::Alert,
         group_box::{GroupBox, GroupBoxVariants},
-        menu::{ContextMenuExt, PopupMenuItem},
-        tooltip::Tooltip,
         *,
     },
     *,
@@ -164,25 +164,6 @@ pub struct SummaryGroup {
     pub values: Vec<(&'static str, DisplayText)>,
 }
 
-pub fn display_text(element: Stateful<Div>, value: &DisplayText) -> AnyElement {
-    let element = element.child(SelectableText::new("text", value.text.clone()));
-    let Some(full) = value.full.clone() else {
-        return element.into_any_element();
-    };
-    let copied = full.clone();
-    element
-        .tooltip(move |window, cx| Tooltip::new(full.clone()).build(window, cx))
-        .context_menu(move |menu, _, _| {
-            let copied = copied.clone();
-            menu.item(
-                PopupMenuItem::new("Copy full value").on_click(move |_, _, cx| {
-                    cx.write_to_clipboard(ClipboardItem::new_string(copied.to_string()))
-                }),
-            )
-        })
-        .into_any_element()
-}
-
 pub fn section_heading(title: &'static str) -> Div {
     div().text_xl().font_semibold().child(title)
 }
@@ -194,26 +175,13 @@ fn summary_section(title: &'static str, cards: impl IntoIterator<Item = GroupBox
         .child(h_flex().flex_wrap().gap_3().children(cards))
 }
 
-fn summary_card(
-    id: impl Into<ElementId>,
-    label: &'static str,
-    value: impl IntoElement,
-    cx: &App,
-) -> GroupBox {
+fn summary_card(id: impl Into<ElementId>, content: impl IntoElement) -> GroupBox {
     GroupBox::new()
         .id(id)
         .outline()
         .min_w(rems(15.7))
         .flex_1()
-        .content_style(StyleRefinement::default().gap_2())
-        .child(
-            div()
-                .text_base()
-                .font_medium()
-                .text_color(cx.theme().muted_foreground)
-                .child(label),
-        )
-        .child(value)
+        .child(content)
 }
 
 /// Placeholders reserve their space at once but stay hidden until `visible`.
@@ -228,16 +196,22 @@ pub fn summary_skeleton(
         labels.iter().map(|label| {
             summary_card(
                 SharedString::from(format!("pending-{title}-{label}")),
-                label,
-                div().text_lg().child(
-                    div()
-                        .h(rems(1.75))
-                        .w(rems(9.))
-                        .rounded(px(4.))
-                        .bg(cx.theme().skeleton)
-                        .opacity(if visible { 1. } else { 0. }),
-                ),
-                cx,
+                v_flex()
+                    .gap(px(2.))
+                    .child(
+                        div()
+                            .text_size(px(12.))
+                            .text_color(cx.theme().muted_foreground)
+                            .child(*label),
+                    )
+                    .child(
+                        div()
+                            .h(px(24.))
+                            .w(rems(9.))
+                            .rounded(px(4.))
+                            .bg(cx.theme().skeleton)
+                            .opacity(if visible { 1. } else { 0. }),
+                    ),
             )
         }),
     )
@@ -252,45 +226,9 @@ pub fn summaries(groups: &[SummaryGroup], cx: &App) -> Div {
             summary_section(
                 group.title,
                 group.values.iter().map(|(label, value)| {
-                    summary_card(
-                        SharedString::from(format!("summary-{}-{label}", group.title)),
-                        label,
-                        display_text(
-                            div()
-                                .id("value")
-                                .text_lg()
-                                .font_family(cx.theme().mono_font_family.clone()),
-                            value,
-                        ),
-                        cx,
-                    )
+                    let id = SharedString::from(format!("summary-{}-{label}", group.title));
+                    summary_card(id.clone(), value::stat(id, *label, value, cx))
                 }),
             )
         }))
-}
-
-/// The buttons dispatch the dialog's own Cancel and Confirm actions, so its
-/// `on_ok` and `on_close` callbacks and focus cleanup run as usual.
-pub fn confirmation_footer(label: &'static str) -> Div {
-    use gpui_kit::component::{
-        button::*,
-        dialog::{Cancel, Confirm},
-    };
-    h_flex()
-        .justify_end()
-        .gap_2()
-        .child(
-            Button::new("cancel-confirmation")
-                .label("Cancel")
-                .outline()
-                .on_click(|_, window, cx| window.dispatch_action(Box::new(Cancel), cx)),
-        )
-        .child(
-            Button::new("confirm-action")
-                .label(label)
-                .danger()
-                .on_click(|_, window, cx| {
-                    window.dispatch_action(Box::new(Confirm { secondary: false }), cx)
-                }),
-        )
 }
