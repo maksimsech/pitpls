@@ -1,7 +1,4 @@
-use super::{
-    copy::CopyButton,
-    table::{self, Column},
-};
+use super::copy::CopyButton;
 use crate::{format::DisplayText, theme::palette, theme::tabular_digits};
 use gpui_kit::{
     component::{ActiveTheme, StyledExt, VirtualListScrollHandle, h_flex, tag::Tag, v_flex},
@@ -431,55 +428,6 @@ pub fn record_skeleton(
                         .iter()
                         .map(|width| div().w(*width).flex_shrink_0().child(bar(*width))),
                 )
-        }))
-}
-
-/// Placeholders reserve their space at once but stay hidden until `visible`.
-pub fn skeleton(columns: &[Column], visible: bool, cx: &App) -> Div {
-    v_flex()
-        .w_full()
-        .min_w_0()
-        .overflow_hidden()
-        .border_1()
-        .border_color(cx.theme().border)
-        .rounded(cx.theme().radius)
-        .flex_1()
-        .min_h(rems(17.))
-        .child(
-            h_flex()
-                .h(px(42.))
-                .flex_shrink_0()
-                .rounded_t(cx.theme().radius)
-                .bg(cx.theme().table_head)
-                .border_b_1()
-                .border_color(cx.theme().border)
-                .children(
-                    columns
-                        .iter()
-                        .map(|column| table::cell(column.label.clone(), column, true, cx)),
-                ),
-        )
-        .children((0..5).map(|_| {
-            h_flex()
-                .h(px(40.))
-                .flex_shrink_0()
-                .border_b_1()
-                .border_color(cx.theme().border)
-                .children(columns.iter().map(|column| {
-                    div()
-                        .w(rems(column.width / 14.))
-                        .flex_shrink_0()
-                        .px_3()
-                        .py_3()
-                        .child(
-                            div()
-                                .h(px(12.))
-                                .w(rems(column.width * 0.6 / 14.))
-                                .rounded(px(4.))
-                                .bg(cx.theme().skeleton)
-                                .opacity(if visible { 1. } else { 0. }),
-                        )
-                }))
         }))
 }
 

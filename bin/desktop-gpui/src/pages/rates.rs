@@ -1,11 +1,9 @@
 use super::PageView;
 use crate::{
-    components::{
-        self, Status, dialog, file_picker, header, nbp,
-        table::{Column, cell},
-    },
+    components::{Status, dialog, file_picker, header, nbp, notice},
     format,
     navigation::{Page, PageContext},
+    theme::{palette, tabular_digits},
 };
 use chrono::{Datelike, NaiveDate};
 use gpui_kit::component::{dialog::Dialog, input::InputState};
@@ -15,13 +13,92 @@ use gpui_kit::{
     component::{button::*, scroll::ScrollableElement, *},
     *,
 };
-use pitpls_app::use_case::rate;
+use pitpls_app::use_case::rate::{self, RateCoverage};
 use std::ops::Range;
+
+/// The pinned Date column, including the panel's 20px inset.
+const DATE_WIDTH: Pixels = px(120.);
+/// The least width of a currency column.
+const RATE_WIDTH: Pixels = px(104.);
+/// The least space before a rate, in columns its digits widen.
+const RATE_GAP: Pixels = px(24.);
+/// Space after the last column.
+const END_PADDING: Pixels = px(20.);
+const HEADING_HEIGHT: Pixels = px(32.);
+const ROW_HEIGHT: Pixels = px(34.);
+const TEXT_SIZE: Pixels = px(13.);
+
+#[derive(PartialEq)]
+struct RateRow {
+    date: SharedString,
+    /// One per currency, "—" where the day has no rate for it.
+    rates: Vec<SharedString>,
+}
 
 #[derive(Default, PartialEq)]
 struct RateData {
-    columns: Vec<Column>,
-    rows: Vec<Vec<SharedString>>,
+    coverage: Option<RateCoverage>,
+    currencies: Vec<SharedString>,
+    /// Newest day first.
+    rows: Vec<RateRow>,
+}
+
+/// Where each currency column starts and ends, from the table's left edge.
+#[derive(Default)]
+struct Columns {
+    starts: Vec<Pixels>,
+    ends: Vec<Pixels>,
+    /// Date, every currency and the end padding.
+    width: Pixels,
+}
+
+impl Columns {
+    /// Rates are shown as stored, never cut, so a column grows past
+    /// [`RATE_WIDTH`] when its longest rate needs it. With tabular digits the
+    /// longest string is the widest.
+    fn new(data: &RateData, window: &Window, cx: &App) -> Self {
+        let font = Font {
+            features: tabular_digits(),
+            ..font(cx.theme().font_family.clone())
+        };
+        let mut columns = Self::default();
+        let mut x = DATE_WIDTH;
+        for (index, currency) in data.currencies.iter().enumerate() {
+            let longest = data
+                .rows
+                .iter()
+                .map(|row| &row.rates[index])
+                .max_by_key(|rate| rate.len())
+                .unwrap_or(currency);
+            let run = TextRun {
+                len: longest.len(),
+                font: font.clone(),
+                color: Hsla::default(),
+                background_color: None,
+                underline: None,
+                strikethrough: None,
+            };
+            let text = window
+                .text_system()
+                .shape_line(longest.clone(), TEXT_SIZE, &[run], None)
+                .width;
+            columns.starts.push(x);
+            x += RATE_WIDTH.max(text + RATE_GAP);
+            columns.ends.push(x);
+        }
+        columns.width = x + END_PADDING;
+        columns
+    }
+
+    /// The columns in view right of the pinned Date column, for a table
+    /// scrolled `scroll` to the left in a `viewport` this wide.
+    fn visible(&self, scroll: Pixels, viewport: Pixels) -> Range<usize> {
+        let first = self.ends.partition_point(|end| *end <= scroll + DATE_WIDTH);
+        let end = self
+            .starts
+            .partition_point(|start| *start < scroll + viewport);
+        first..end.max(first)
+    }
 }
 
 enum Change {
@@ -34,6 +111,7 @@ pub struct RatesPage {
     context: PageContext,
     status: Status,
     data: RateData,
+    columns: Columns,
     nbp_year: Option<Entity<InputState>>,
     confirm_reset: bool,
     rate_scroll: UniformListScrollHandle,
@@ -46,6 +124,7 @@ impl RatesPage {
             context,
             status: Status::default(),
             data: RateData::default(),
+            columns: Columns::default(),
             nbp_year: None,
             confirm_reset: false,
             rate_scroll: UniformListScrollHandle::new(),
@@ -193,10 +272,14 @@ impl RatesPage {
 
     fn header(&self, window: &mut Window, cx: &mut Context<Self>) -> Stateful<Div> {
         let disabled = self.disabled();
-        // Rows run from the oldest day to the newest.
-        let range = match (self.data.rows.first(), self.data.rows.last()) {
-            (Some(first), Some(last)) => format!("NBP table A · {} – {}", first[0], last[0]),
-            _ => "NBP table A".into(),
+        let reset_disabled = disabled || !self.status.ready || self.data.rows.is_empty();
+        let range = match self.data.coverage {
+            Some(RateCoverage { first, last }) => format!(
+                "NBP table A · {} – {}",
+                format::date(first).main,
+                format::date(last).main
+            ),
+            None => "NBP table A".into(),
         };
         header::page(Page::Rates.title(), Some(range.into()), window, cx).child(
             header::actions()
@@ -213,10 +296,25 @@ impl RatesPage {
                         .on_click(cx.listener(|this, _, window, cx| this.open_nbp(window, cx))),
                 )
                 .child(
-                    header::button("rates-reset", None, "Reset")
+                    // `header::button`'s frame with the colour on the label,
+                    // since the kit's hover colour replaces the button's own.
+                    // Disabled, it keeps the kit's disabled look.
+                    Button::new("rates-reset")
                         .ghost()
-                        .text_color(cx.theme().danger)
-                        .disabled(disabled || !self.status.ready || self.data.rows.is_empty())
+                        .h(px(28.))
+                        .px(px(11.))
+                        .rounded(px(8.))
+                        .accessibility_label("Reset")
+                        .disabled(reset_disabled)
+                        .child(
+                            div()
+                                .text_size(px(13.))
+                                .font_medium()
+                                .when(!reset_disabled, |label| {
+                                    label.text_color(palette(cx).danger)
+                                })
+                                .child("Reset"),
+                        )
                         .on_click(cx.listener(|this, _, window, cx| this.open_reset(window, cx))),
                 ),
         )
@@ -225,22 +323,26 @@ impl RatesPage {
     /// Operation results and, after a failed load, Retry.
     fn notices(&self, cx: &mut Context<Self>) -> Div {
         let disabled = self.disabled();
-        let mut content = v_flex()
-            .gap_4()
+        let retry = self.status.error.is_some() || (!self.status.ready && !self.status.loading);
+        v_flex()
             .flex_shrink_0()
+            .gap_3()
+            .px(px(20.))
+            .when(self.status.is_visible() || retry, |view| view.pb_3())
             .when(self.status.is_visible(), |view| {
                 view.child(self.status.render())
-            });
-        if self.status.error.is_some() || (!self.status.ready && !self.status.loading) {
-            content = content.child(
-                Button::new("retry-rates")
-                    .label("Retry")
-                    .outline()
-                    .disabled(disabled)
-                    .on_click(cx.listener(|this, _, window, cx| this.refresh(window, cx))),
-            );
-        }
-        content
+            })
+            .when(retry, |view| {
+                view.child(
+                    h_flex().child(
+                        Button::new("retry-rates")
+                            .label("Retry")
+                            .outline()
+                            .disabled(disabled)
+                            .on_click(cx.listener(|this, _, window, cx| this.refresh(window, cx))),
+                    ),
+                )
+            })
     }
 }
 
@@ -254,37 +356,45 @@ impl PageView for RatesPage {
             window,
             cx,
             |app| async move {
+                let coverage = rate::rate_coverage(&app).await?;
                 let data = rate::list_rates(&app).await?;
-                let mut columns = vec![Column::text("Date", 130.)];
-                columns.extend(
-                    data.currencies
-                        .iter()
-                        .map(|currency| Column::number(currency.to_string(), 125.)),
-                );
+                let currencies = data
+                    .currencies
+                    .iter()
+                    .map(|currency| currency.to_string().into())
+                    .collect();
                 let rows = data
                     .rows
                     .into_iter()
-                    .map(|row| {
-                        let day = NaiveDate::parse_from_str(&row.date, "%Y-%m-%d")
+                    .rev()
+                    .map(|row| RateRow {
+                        date: NaiveDate::parse_from_str(&row.date, "%Y-%m-%d")
                             .map(|day| format::date(day).main)
-                            .unwrap_or_else(|_| row.date.into());
-                        let mut cells = vec![day];
-                        cells.extend(data.currencies.iter().map(|currency| {
-                            row.rates
-                                .iter()
-                                .find(|rate| rate.currency == *currency)
-                                .map(|rate| rate.rate.clone().into())
-                                .unwrap_or_else(|| "—".into())
-                        }));
-                        cells
+                            .unwrap_or_else(|_| row.date.into()),
+                        rates: data
+                            .currencies
+                            .iter()
+                            .map(|currency| {
+                                row.rates
+                                    .iter()
+                                    .find(|rate| rate.currency == *currency)
+                                    .map(|rate| rate.rate.clone().into())
+                                    .unwrap_or_else(|| "—".into())
+                            })
+                            .collect(),
                     })
                     .collect();
-                Ok(RateData { columns, rows })
+                Ok(RateData {
+                    coverage,
+                    currencies,
+                    rows,
+                })
             },
-            |this, result, _, cx| {
+            |this, result, window, cx| {
                 if let Some(data) = this.status.loaded(result)
                     && data != this.data
                 {
+                    this.columns = Columns::new(&data, window, cx);
                     this.data = data;
                     this.rate_scroll = UniformListScrollHandle::new();
                 }
@@ -297,74 +407,47 @@ impl PageView for RatesPage {
 
 impl Render for RatesPage {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let header = self.header(window, cx);
-        let page = v_flex().size_full().min_h_0().child(header);
-        if !self.status.ready {
-            return page.child(components::scroll(
-                components::page_content()
-                    .gap_4()
-                    .child(self.notices(cx))
-                    .when(self.status.loading, |view| {
-                        view.child(components::records::skeleton(
-                            &[Column::text("Date", 130.), Column::number("Rate", 125.)],
-                            self.status.loading_visible,
-                            cx,
-                        ))
-                    }),
-            ));
-        }
-        page.child(
-            components::page_content()
-                .relative()
-                .min_w_0()
-                .overflow_hidden()
-                .flex_1()
-                .min_h_0()
-                .gap_4()
-                .child(self.notices(cx))
-                .child(
-                    div()
-                        .flex()
-                        .flex_1()
-                        .min_h_0()
-                        .min_w_0()
-                        .overflow_hidden()
-                        .child(self.rates(cx)),
-                ),
-        )
+        let body = if self.status.ready && self.data.rows.is_empty() {
+            notice::notice(
+                Page::Rates.icon(),
+                false,
+                "No exchange rates yet".into(),
+                "Import a year from NBP, or upload a CSV.",
+                cx,
+            )
+            .into_any_element()
+        } else if self.status.ready {
+            self.table(cx)
+        } else if self.status.loading {
+            self.skeleton(cx).into_any_element()
+        } else {
+            div().into_any_element()
+        };
+        v_flex()
+            .size_full()
+            .min_h_0()
+            .child(self.header(window, cx))
+            .child(self.notices(cx))
+            .child(body)
     }
 }
 
 impl RatesPage {
-    fn rates(&self, cx: &mut Context<Self>) -> AnyElement {
-        if self.data.rows.is_empty() {
-            return components::empty("No rates yet. Upload a CSV or import from NBP.", cx)
-                .into_any_element();
-        }
-        let width = self
-            .data
-            .columns
-            .iter()
-            .map(|column| column.width)
-            .sum::<f32>();
+    /// Every day and currency. Rows draw only the columns in view, and the
+    /// Date column stays at the left edge.
+    fn table(&self, cx: &mut Context<Self>) -> AnyElement {
+        let p = *palette(cx);
         let mut list = uniform_list(
             "rate-days",
             self.data.rows.len(),
             cx.processor(|this, range: Range<usize>, _, cx| {
+                // The list lays out its rows inside the sideways scroll, which
+                // has already taken this frame's offset and size.
+                let scroll = -this.horizontal_scroll.offset().x;
+                let viewport = this.horizontal_scroll.bounds().size.width;
+                let columns = this.columns.visible(scroll, viewport);
                 range
-                    .map(|index| {
-                        h_flex()
-                            .id(("rate-day", index))
-                            .h(px(40.))
-                            .border_b_1()
-                            .border_color(cx.theme().border)
-                            .children(
-                                this.data.rows[index]
-                                    .iter()
-                                    .zip(&this.data.columns)
-                                    .map(|(value, column)| cell(value.clone(), column, false, cx)),
-                            )
-                    })
+                    .map(|index| this.row(index, columns.clone(), scroll, cx))
                     .collect::<Vec<_>>()
             }),
         )
@@ -374,21 +457,32 @@ impl RatesPage {
         // Keep horizontal wheel events available to the enclosing viewport.
         list.style().restrict_scroll_to_axis = Some(true);
         let table = v_flex()
-            .w(rems(width / 14.))
-            .flex_shrink_0()
+            .w(self.columns.width)
+            .min_w_full()
             .h_full()
-            .min_h_0()
+            .flex_shrink_0()
             .child(
                 h_flex()
                     .flex_shrink_0()
-                    .h(px(42.))
-                    .rounded_t(cx.theme().radius)
-                    .bg(cx.theme().muted)
+                    .h(HEADING_HEIGHT)
+                    .pl(DATE_WIDTH)
+                    .border_t_1()
+                    .border_b_1()
+                    .border_color(p.line)
+                    .text_size(px(12.))
+                    .text_color(p.faint)
                     .children(
                         self.data
-                            .columns
+                            .currencies
                             .iter()
-                            .map(|column| cell(column.label.clone(), column, true, cx)),
+                            .zip(self.columns.starts.iter().zip(&self.columns.ends))
+                            .map(|(currency, (start, end))| {
+                                div()
+                                    .w(*end - *start)
+                                    .flex_shrink_0()
+                                    .text_right()
+                                    .child(currency.clone())
+                            }),
                     ),
             )
             .child(list);
@@ -397,9 +491,6 @@ impl RatesPage {
             .flex_1()
             .min_w_0()
             .min_h_0()
-            .border_1()
-            .border_color(cx.theme().border)
-            .rounded(cx.theme().radius)
             .overflow_hidden()
             .child(
                 div()
@@ -410,6 +501,28 @@ impl RatesPage {
                     .track_scroll(&self.horizontal_scroll)
                     .child(table),
             )
+            // The Date heading sits outside the sideways scroll.
+            .child(
+                pinned(p.surface)
+                    .top_0()
+                    .left_0()
+                    .h(HEADING_HEIGHT)
+                    .border_t_1()
+                    .border_b_1()
+                    .border_color(p.line)
+                    .text_size(px(12.))
+                    .text_color(p.faint)
+                    .child("Date"),
+            )
+            .child(
+                div()
+                    .absolute()
+                    .top(HEADING_HEIGHT)
+                    .left_0()
+                    .right_0()
+                    .bottom_0()
+                    .vertical_scrollbar(&self.rate_scroll),
+            )
             .child(
                 div().absolute().inset_0().child(
                     scroll::Scrollbar::horizontal(&self.horizontal_scroll)
@@ -417,7 +530,105 @@ impl RatesPage {
                         .viewport_from_layout(),
                 ),
             )
-            .vertical_scrollbar(&self.rate_scroll)
             .into_any_element()
     }
+
+    /// A day as plain text: the visible `columns`, then the date, moved right
+    /// by `scroll` so it stays at the left edge over the rates passing under.
+    fn row(&self, index: usize, columns: Range<usize>, scroll: Pixels, cx: &App) -> Div {
+        let p = *palette(cx);
+        let row = &self.data.rows[index];
+        h_flex()
+            .group("rate-day")
+            .relative()
+            .w_full()
+            .h(ROW_HEIGHT)
+            .border_b_1()
+            .border_color(p.line)
+            .text_size(TEXT_SIZE)
+            .font_features(tabular_digits())
+            .hover(|style| style.bg(p.raised))
+            .when_some(self.columns.starts.get(columns.start), |view, start| {
+                view.pl(*start)
+            })
+            .children(columns.map(|column| {
+                div()
+                    .w(self.columns.ends[column] - self.columns.starts[column])
+                    .flex_shrink_0()
+                    .text_right()
+                    .whitespace_nowrap()
+                    .child(row.rates[column].clone())
+            }))
+            .child(
+                pinned(p.surface)
+                    .top_0()
+                    .bottom_0()
+                    .left(scroll)
+                    .group_hover("rate-day", |style| style.bg(p.raised))
+                    .child(row.date.clone()),
+            )
+    }
+
+    /// Placeholders reserve their space at once but stay hidden until
+    /// `loading_visible`.
+    fn skeleton(&self, cx: &App) -> Div {
+        let p = *palette(cx);
+        let visible = self.status.loading_visible;
+        let bar = |width: f32| {
+            div()
+                .h(px(12.))
+                .w(px(width))
+                .rounded(px(4.))
+                .bg(cx.theme().skeleton)
+                .opacity(if visible { 1. } else { 0. })
+        };
+        v_flex()
+            .flex_1()
+            .min_h_0()
+            .overflow_hidden()
+            .child(
+                h_flex()
+                    .h(HEADING_HEIGHT)
+                    .pl(px(20.))
+                    .border_t_1()
+                    .border_b_1()
+                    .border_color(p.line)
+                    .text_size(px(12.))
+                    .text_color(p.faint)
+                    .child("Date"),
+            )
+            .children((0..5).map(|_| {
+                h_flex()
+                    .h(ROW_HEIGHT)
+                    .pl(px(20.))
+                    .border_b_1()
+                    .border_color(p.line)
+                    .child(
+                        div()
+                            .w(DATE_WIDTH - px(20.))
+                            .flex_shrink_0()
+                            .child(bar(70.)),
+                    )
+                    .children((0..8).map(|_| {
+                        div()
+                            .w(RATE_WIDTH)
+                            .flex_shrink_0()
+                            .flex()
+                            .justify_end()
+                            .child(bar(48.))
+                    }))
+            }))
+    }
+}
+
+/// A Date cell on the surface colour, so the rates scrolling under it stay
+/// hidden. The caller places it.
+fn pinned(surface: Hsla) -> Div {
+    div()
+        .absolute()
+        .w(DATE_WIDTH)
+        .pl(px(20.))
+        .flex()
+        .items_center()
+        .bg(surface)
 }

@@ -7,7 +7,6 @@ pub mod header;
 pub mod nbp;
 pub mod notice;
 pub mod records;
-pub mod table;
 pub mod value;
 
 use gpui_kit::prelude::FluentBuilder;
@@ -120,18 +119,6 @@ impl Status {
                 view.child("Refreshing…")
             })
     }
-}
-
-pub fn empty(message: &'static str, cx: &App) -> Div {
-    v_flex()
-        .gap_3()
-        .items_center()
-        .justify_center()
-        .p_8()
-        .border_1()
-        .border_color(cx.theme().border)
-        .rounded(cx.theme().radius)
-        .child(div().text_color(cx.theme().muted_foreground).child(message))
 }
 
 pub fn scroll(content: impl IntoElement) -> AnyElement {
