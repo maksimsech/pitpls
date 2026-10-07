@@ -214,7 +214,18 @@ pub fn configure_theme(cx: &mut App) {
     cx.set_global(p);
 }
 
+/// The theme the user chose, as `Preferences.dark`. Set by [`apply_theme`].
+struct ThemeChoice(Option<bool>);
+
+impl Global for ThemeChoice {}
+
+/// `Some(dark)` for a chosen theme, or `None` to follow the system.
+pub fn theme_choice(cx: &App) -> Option<bool> {
+    cx.try_global::<ThemeChoice>().and_then(|choice| choice.0)
+}
+
 pub fn apply_theme(dark: Option<bool>, window: &mut Window, cx: &mut App) {
+    cx.set_global(ThemeChoice(dark));
     cx.set_window_appearance(dark.map(|dark| {
         if dark {
             WindowAppearance::Dark

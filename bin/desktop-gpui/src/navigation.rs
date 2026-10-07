@@ -44,6 +44,9 @@ pub enum PageEvent {
     YearsChanged,
     /// Selects the tax year, `None` meaning every year.
     SelectYear(Option<i32>),
+    /// Applies and saves the theme: `Some(dark)`, or `None` to follow the
+    /// system.
+    SetTheme(Option<bool>),
 }
 
 pub struct PageEvents;
@@ -78,5 +81,10 @@ impl PageContext {
     pub fn select_year(&self, year: Option<i32>, cx: &mut App) {
         self.events
             .update(cx, |_, cx| cx.emit(PageEvent::SelectYear(year)));
+    }
+
+    pub fn set_theme(&self, dark: Option<bool>, cx: &mut App) {
+        self.events
+            .update(cx, |_, cx| cx.emit(PageEvent::SetTheme(dark)));
     }
 }

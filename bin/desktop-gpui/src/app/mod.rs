@@ -66,6 +66,7 @@ impl Desktop {
                 PageEvent::Navigate(page) => this.navigate(*page, window, cx),
                 PageEvent::YearsChanged => this.load_years(window, cx),
                 PageEvent::SelectYear(year) => this.select_year(*year, window, cx),
+                PageEvent::SetTheme(dark) => this.set_theme(*dark, window, cx),
             }
             cx.notify();
         });
@@ -185,6 +186,15 @@ impl Desktop {
             self.page = page;
             self.mount_page(window, cx);
         }
+        cx.notify();
+    }
+
+    /// Applies the theme at once and saves it: `Some(dark)`, or `None` to
+    /// follow the system.
+    fn set_theme(&mut self, dark: Option<bool>, window: &mut Window, cx: &mut Context<Self>) {
+        self.preferences.dark = dark;
+        apply_theme(dark, window, cx);
+        self.save_preferences(window, cx);
         cx.notify();
     }
 

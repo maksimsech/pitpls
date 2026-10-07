@@ -1,17 +1,15 @@
 use super::PageView;
 use crate::{
-    components::{
-        self, Status,
-        form::{self, Choice, ChoiceState},
-        header,
-    },
+    components::{self, Status, data, header},
     navigation::{Page, PageContext},
+    theme::{palette, theme_choice},
 };
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::{
     component::{
+        alert::Alert,
         button::*,
-        group_box::{GroupBox, GroupBoxVariants},
+        radio::{Radio, RadioGroup},
         *,
     },
     *,
@@ -19,12 +17,45 @@ use gpui_kit::{
 use pitpls_app::use_case::settings;
 use pitpls_core::settings::{DividendRounding, Settings};
 
+/// The rounding options, with one line on what each does.
+const ROUNDINGS: [(DividendRounding, &str, &str); 4] = [
+    (
+        DividendRounding::SumToGroszy,
+        "Sum to groszy",
+        "Every record keeps full precision; totals are rounded to grosze.",
+    ),
+    (
+        DividendRounding::SumToPayToZlote,
+        "Sum to pay to złote",
+        "The tax-to-pay total is rounded to whole złote; paid tax stays in grosze.",
+    ),
+    (
+        DividendRounding::SumBothToZlote,
+        "Sum both to złote",
+        "Both totals are rounded to whole złote.",
+    ),
+    (
+        DividendRounding::AllToZlote,
+        "All to złote",
+        "Every record is rounded to whole złote before adding up.",
+    ),
+];
+
+/// The theme choices, as `Preferences.dark`.
+const THEMES: [(Option<bool>, &str); 3] = [
+    (None, "System"),
+    (Some(false), "Light"),
+    (Some(true), "Dark"),
+];
+
 pub struct SettingsPage {
     context: PageContext,
     status: Status,
-    saved_rounding: Option<DividendRounding>,
-    selection_subscription: Option<Subscription>,
-    dividend_rounding: Option<Entity<ChoiceState<DividendRounding>>>,
+    /// The rounding in the database, once loaded.
+    saved: Option<DividendRounding>,
+    /// The rounding chosen on the page. It differs from `saved` until it is
+    /// saved or discarded.
+    picked: Option<DividendRounding>,
 }
 
 impl SettingsPage {
@@ -32,35 +63,41 @@ impl SettingsPage {
         let mut page = Self {
             context,
             status: Status::default(),
-            dividend_rounding: None,
-            saved_rounding: None,
-            selection_subscription: None,
+            saved: None,
+            picked: None,
         };
         page.refresh(window, cx);
         page
     }
 
-    fn has_changes(&self, cx: &App) -> bool {
-        self.dividend_rounding
-            .as_ref()
-            .and_then(|state| state.read(cx).selected_value().copied())
-            .is_some_and(|value| Some(value) != self.saved_rounding)
+    fn has_changes(&self) -> bool {
+        self.picked.is_some() && self.picked != self.saved
+    }
+
+    fn pick(&mut self, rounding: DividendRounding, cx: &mut Context<Self>) {
+        if self.status.busy || self.status.loading {
+            return;
+        }
+        self.picked = Some(rounding);
+        self.status.error = None;
+        cx.notify();
+    }
+
+    fn discard(&mut self, cx: &mut Context<Self>) {
+        if self.status.busy {
+            return;
+        }
+        self.picked = self.saved;
+        self.status.error = None;
+        cx.notify();
     }
 
     fn save(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if self.status.busy || self.status.loading || !self.has_changes(cx) {
+        if self.status.busy || self.status.loading || !self.has_changes() {
             return;
         }
-        let Some(dividend_rounding) = &self.dividend_rounding else {
+        let Some(dividend_rounding) = self.picked else {
             return;
-        };
-        let dividend_rounding = match form::selected(dividend_rounding, "Dividend rounding", cx) {
-            Ok(value) => value,
-            Err(error) => {
-                self.status.error = Some(error.into());
-                cx.notify();
-                return;
-            }
         };
         let settings = Settings { dividend_rounding };
         self.status.begin_save();
@@ -68,19 +105,34 @@ impl SettingsPage {
         self.status.task = Some(self.context.services.run(
             window,
             cx,
-            move |app| async move {
-                settings::update_settings(&app, settings).await?;
-                Ok("Settings saved.".into())
-            },
+            move |app| async move { settings::update_settings(&app, settings).await },
             move |this, result, _, cx| {
-                if this.status.saved(result) {
-                    this.saved_rounding = Some(dividend_rounding);
+                this.status.busy = false;
+                match result {
+                    Ok(()) => this.saved = Some(dividend_rounding),
+                    Err(error) => this.status.error = Some(error.into()),
                 }
                 this.context.set_locked(false, cx);
                 cx.notify();
             },
         ));
         cx.notify();
+    }
+
+    /// Applies the theme the clicked segment stands for. The group reports
+    /// every segment's next state, with the clicked one flipped.
+    fn pick_theme(&mut self, checks: &[bool], cx: &mut Context<Self>) {
+        let current = theme_choice(cx);
+        let clicked = THEMES
+            .iter()
+            .zip(checks)
+            .position(|((dark, _), checked)| *checked != (*dark == current));
+        if let Some(index) = clicked {
+            let dark = THEMES[index].0;
+            if dark != current {
+                self.context.set_theme(dark, cx);
+            }
+        }
     }
 }
 
@@ -94,32 +146,10 @@ impl PageView for SettingsPage {
             window,
             cx,
             |app| async move { settings::load_settings(&app).await },
-            |this, result, window, cx| {
+            |this, result, _, cx| {
                 if let Some(settings) = this.status.loaded(result) {
-                    this.saved_rounding = Some(settings.dividend_rounding);
-                    this.dividend_rounding = Some(form::select(
-                        vec![
-                            Choice::new(DividendRounding::SumToGroszy, "Sum to groszy"),
-                            Choice::new(DividendRounding::SumToPayToZlote, "Sum to pay to złote"),
-                            Choice::new(DividendRounding::SumBothToZlote, "Sum both to złote"),
-                            Choice::new(DividendRounding::AllToZlote, "All to złote"),
-                        ],
-                        settings.dividend_rounding,
-                        window,
-                        cx,
-                    ));
-                    this.selection_subscription = this.dividend_rounding.as_ref().map(|state| {
-                        cx.subscribe(
-                            state,
-                            |this,
-                             _,
-                             _: &select::SelectEvent<Vec<form::Choice<DividendRounding>>>,
-                             cx| {
-                                this.status.message = None;
-                                cx.notify();
-                            },
-                        )
-                    });
+                    this.saved = Some(settings.dividend_rounding);
+                    this.picked = Some(settings.dividend_rounding);
                 }
                 cx.notify();
             },
@@ -130,97 +160,229 @@ impl PageView for SettingsPage {
 
 impl Render for SettingsPage {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let mut content = components::page_content()
-            .gap_4()
-            .when(self.status.is_visible(), |view| {
-                view.child(self.status.render())
-            });
-        if let Some(dividend_rounding) = &self.dividend_rounding {
-            content = content.child(
-                GroupBox::new()
-                    .id("dividend-rounding-settings")
-                    .fill()
-                    .content_style(StyleRefinement::default().p_5().gap_4())
-                    .child(components::section_heading("Calculation settings"))
-                    .child(
-                        h_flex()
-                            .w_full()
-                            .items_end()
-                            .gap_3()
-                            .flex_wrap()
-                            .child(
-                                form::select_field(
-                                    "Dividend rounding",
-                                    dividend_rounding,
-                                    self.status.busy || self.status.loading,
-                                    cx,
-                                )
-                                .flex_1()
-                                .min_w(px(240.)),
-                            )
-                            .child(
-                                Button::new("save-settings")
-                                    .flex_shrink_0()
-                                    .label(if self.status.busy {
-                                        "Saving…"
-                                    } else {
-                                        "Save changes"
-                                    })
-                                    .primary()
-                                    .disabled(
-                                        self.status.busy
-                                            || self.status.loading
-                                            || !self.has_changes(cx),
-                                    )
-                                    .on_click(
-                                        cx.listener(|this, _, window, cx| this.save(window, cx)),
-                                    ),
-                            ),
-                    )
-                    .when(self.has_changes(cx) && !self.status.busy, |view| {
-                        view.child(
-                            div()
-                                .text_base()
-                                .text_color(cx.theme().muted_foreground)
-                                .child("Unsaved changes"),
-                        )
-                    }),
-            );
-        } else if self.status.loading {
-            content = content.child(
-                GroupBox::new()
-                    .id("dividend-rounding-loading")
-                    .fill()
-                    .content_style(StyleRefinement::default().p_5().gap_4())
-                    .child(components::section_heading("Calculation settings"))
-                    .child(div().text_base().font_medium().child("Dividend rounding"))
-                    .child(
-                        div()
-                            .h_8()
-                            .w_full()
-                            .rounded(cx.theme().radius)
-                            .bg(cx.theme().skeleton)
-                            .opacity(if self.status.loading_visible { 1. } else { 0. }),
-                    ),
-            );
-        }
-        if self.status.error.is_some() && !self.status.loading {
-            content = content.child(
-                h_flex().child(
-                    Button::new("retry")
-                        .label("Retry")
-                        .outline()
-                        .on_click(cx.listener(|this, _, window, cx| this.refresh(window, cx))),
-                ),
-            );
-        }
         v_flex()
             .size_full()
             .min_h_0()
-            .child(
-                header::page(Page::Settings.title(), None, window, cx)
-                    .child(header::actions().child(self.status.refreshing(cx))),
-            )
-            .child(components::scroll(content))
+            .text_size(px(13.))
+            .child(header::page(Page::Settings.title(), None, window, cx))
+            .child(components::scroll(
+                div().w_full().px(px(20.)).child(
+                    v_flex()
+                        .w_full()
+                        .max_w(px(640.))
+                        .mx_auto()
+                        .pt(px(6.))
+                        .pb(px(32.))
+                        .gap(px(16.))
+                        .child(self.rounding_card(cx))
+                        .child(self.theme_card(cx)),
+                ),
+            ))
     }
+}
+
+impl SettingsPage {
+    /// The rounding options, and the save bar while the choice differs from
+    /// the saved one. Before the first load: placeholders, or why it failed.
+    fn rounding_card(&self, cx: &mut Context<Self>) -> Div {
+        let p = *palette(cx);
+        let card = data::card(cx).child(
+            v_flex()
+                .gap(px(2.))
+                .pt(px(14.))
+                .pb(px(10.))
+                .px(px(16.))
+                .child(div().font_semibold().child("Dividend rounding"))
+                .child(div().text_color(p.muted).child(
+                    "How dividend amounts and totals are rounded before they reach the form.",
+                )),
+        );
+        if self.saved.is_none() {
+            return match self.status.error.clone() {
+                Some(error) if !self.status.loading => card.child(
+                    v_flex()
+                        .gap_3()
+                        .px(px(16.))
+                        .pb(px(16.))
+                        .child(
+                            Alert::error("settings-load-error", error)
+                                .title("Couldn't load the settings"),
+                        )
+                        .child(h_flex().child(
+                            Button::new("retry").label("Retry").outline().on_click(
+                                cx.listener(|this, _, window, cx| this.refresh(window, cx)),
+                            ),
+                        )),
+                ),
+                _ if self.status.loading_visible => {
+                    card.children(ROUNDINGS.map(|(_, title, _)| option_skeleton(title, cx)))
+                }
+                _ => card,
+            };
+        }
+        let disabled = self.status.busy || self.status.loading;
+        let options = RadioGroup::new("dividend-rounding")
+            .w_full()
+            .disabled(disabled)
+            .selected_index(
+                ROUNDINGS
+                    .iter()
+                    .position(|(rounding, ..)| Some(*rounding) == self.picked),
+            )
+            .on_change(cx.listener(|this, index: &usize, _, cx| this.pick(ROUNDINGS[*index].0, cx)))
+            .children(
+                ROUNDINGS
+                    .iter()
+                    .enumerate()
+                    .map(|(index, (rounding, title, detail))| {
+                        let checked = Some(*rounding) == self.picked;
+                        Radio::new(index)
+                            .accessibility_label(*title)
+                            .w_full()
+                            .gap_x(px(12.))
+                            .px(px(16.))
+                            .py(px(10.))
+                            .rounded_none()
+                            .border_t_1()
+                            .border_color(p.line)
+                            .text_size(px(13.))
+                            // The group puts a fixed `gap_3` between radios;
+                            // the rows touch, as in the mockup.
+                            .when(index > 0, |row| row.mt(rems(-0.75)))
+                            .when(checked, |row| row.bg(p.selected))
+                            .when(!checked && !disabled, |row| {
+                                row.hover(|style| style.bg(p.hover))
+                            })
+                            .child(
+                                h_flex()
+                                    .gap(px(8.))
+                                    .child(div().flex_1().font_medium().child(*title))
+                                    .when(Some(*rounding) == self.saved, |row| {
+                                        row.child(
+                                            div()
+                                                .text_size(px(12.))
+                                                .text_color(p.faint)
+                                                .child("current"),
+                                        )
+                                    }),
+                            )
+                            .child(div().text_size(px(12.)).text_color(p.muted).child(*detail))
+                    }),
+            );
+        card.child(options)
+            .when(self.has_changes(), |card| card.child(self.save_bar(cx)))
+    }
+
+    /// "Unsaved change" with Discard and Save changes, or why saving failed.
+    fn save_bar(&self, cx: &mut Context<Self>) -> Div {
+        let p = *palette(cx);
+        let busy = self.status.busy;
+        let note = match self.status.error.clone() {
+            Some(error) => v_flex()
+                .gap(px(2.))
+                .text_color(p.danger)
+                .child(div().font_medium().child("Couldn't save the change"))
+                .child(div().text_size(px(12.)).child(error)),
+            None => div()
+                .text_color(p.muted)
+                .child("Unsaved change — totals will be recalculated"),
+        };
+        h_flex()
+            .gap(px(8.))
+            .py(px(10.))
+            .pl(px(16.))
+            .pr(px(12.))
+            .border_t_1()
+            .border_color(p.line)
+            .bg(p.surface)
+            .child(note.flex_1().min_w_0())
+            .child(
+                header::button("discard-rounding", None, "Discard")
+                    .ghost()
+                    .text_color(p.muted)
+                    .disabled(busy)
+                    .on_click(cx.listener(|this, _, _, cx| this.discard(cx))),
+            )
+            .child(
+                header::button(
+                    "save-rounding",
+                    None,
+                    if busy { "Saving…" } else { "Save changes" },
+                )
+                .primary()
+                .disabled(busy)
+                .on_click(cx.listener(|this, _, window, cx| this.save(window, cx))),
+            )
+    }
+
+    /// "Theme" with System / Light / Dark, applied at once.
+    fn theme_card(&self, cx: &mut Context<Self>) -> Div {
+        let p = *palette(cx);
+        let current = theme_choice(cx);
+        data::card(cx).child(
+            h_flex()
+                .min_h(px(52.))
+                .gap(px(12.))
+                .pl(px(16.))
+                .pr(px(12.))
+                .child(div().flex_1().font_medium().child("Theme"))
+                .child(
+                    ToggleGroup::new("theme")
+                        .segmented()
+                        .gap(px(2.))
+                        .p(px(3.))
+                        .rounded(px(9.))
+                        .bg(cx.theme().button)
+                        .border_1()
+                        .border_color(p.line)
+                        .children(THEMES.map(|(dark, label)| {
+                            let checked = dark == current;
+                            Toggle::new(label)
+                                .label(label)
+                                .checked(checked)
+                                .h(px(24.))
+                                .px(px(12.))
+                                .rounded(px(6.))
+                                .text_size(px(12.5))
+                                .font_medium()
+                                .text_color(if checked { p.text } else { p.muted })
+                        }))
+                        .on_click(cx.listener(|this, checks: &Vec<bool>, _, cx| {
+                            this.pick_theme(checks, cx)
+                        })),
+                ),
+        )
+    }
+}
+
+/// An option's placeholder: an empty radio, its title and a bar where the
+/// explanation will be.
+fn option_skeleton(title: &'static str, cx: &App) -> Div {
+    h_flex()
+        .items_start()
+        .gap(px(12.))
+        .px(px(16.))
+        .py(px(10.))
+        .border_t_1()
+        .border_color(palette(cx).line)
+        .child(
+            div()
+                .mt(px(2.))
+                .size(px(14.))
+                .flex_shrink_0()
+                .rounded_full()
+                .bg(cx.theme().skeleton),
+        )
+        .child(
+            v_flex()
+                .gap(px(4.))
+                .child(div().font_medium().child(title))
+                .child(
+                    div()
+                        .h(px(12.))
+                        .w(px(260.))
+                        .rounded(px(4.))
+                        .bg(cx.theme().skeleton),
+                ),
+        )
 }

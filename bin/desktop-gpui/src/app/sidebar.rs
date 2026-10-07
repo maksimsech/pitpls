@@ -404,10 +404,7 @@ impl Desktop {
                         .tooltip_placement(Placement::Right)
                         .disabled(self.context.is_none())
                         .on_click(cx.listener(|this, _, window, cx| {
-                            this.preferences.dark = Some(!cx.theme().is_dark());
-                            apply_theme(this.preferences.dark, window, cx);
-                            this.save_preferences(window, cx);
-                            cx.notify();
+                            this.set_theme(Some(!cx.theme().is_dark()), window, cx)
                         })),
                     ),
             )

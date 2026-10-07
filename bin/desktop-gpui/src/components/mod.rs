@@ -132,17 +132,3 @@ pub fn scroll(content: impl IntoElement) -> AnyElement {
         .child(content)
         .into_any_element()
 }
-
-pub fn page_content() -> Div {
-    v_flex()
-        .w_full()
-        .max_w(px(1232.))
-        .min_w_0()
-        .mx_auto()
-        .px(px(16.))
-        .py(px(24.))
-}
-
-pub fn section_heading(title: &'static str) -> Div {
-    div().text_xl().font_semibold().child(title)
-}
