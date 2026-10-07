@@ -86,8 +86,16 @@ pub fn reveal_full(element: Stateful<Div>, value: &DisplayText) -> AnyElement {
         .into_any_element()
 }
 
-/// A form value: the number in `size`, then its unit in a smaller muted type.
-fn form_value(id: ElementId, value: &DisplayText, size: Pixels, unit: Pixels, cx: &App) -> Div {
+/// A form value: the number in `size`, medium weight unless `regular`, then
+/// its unit in a smaller muted type.
+fn form_value(
+    id: ElementId,
+    value: &DisplayText,
+    size: Pixels,
+    unit: Pixels,
+    regular: bool,
+    cx: &App,
+) -> Div {
     h_flex()
         .flex_shrink_0()
         .items_baseline()
@@ -96,7 +104,7 @@ fn form_value(id: ElementId, value: &DisplayText, size: Pixels, unit: Pixels, cx
             div()
                 .id(id)
                 .text_size(size)
-                .font_medium()
+                .when(!regular, |value| value.font_medium())
                 .font_features(tabular_digits())
                 .child(text(value, false, false, cx)),
             value,
@@ -137,30 +145,27 @@ pub fn stat(
         .child(
             h_flex()
                 .gap_1()
-                .child(form_value(id.clone(), value, px(18.), px(12.), cx))
+                .child(form_value(id.clone(), value, px(18.), px(12.), false, cx))
                 .child(copy_button(&id, value)),
         )
 }
 
 /// A form row in a card: label, value and copy button. The copy button has a
-/// fixed column, so "Copied" does not move the value.
-#[allow(dead_code)] // The Summary cards use it from Phase 4.
+/// fixed column, so "Copied" does not move the value. A `muted` row is for a
+/// value derived from the others, such as a difference.
 pub fn card_row(
     id: impl Into<ElementId>,
     label: impl Into<SharedString>,
     value: &DisplayText,
+    muted: bool,
     cx: &App,
 ) -> Div {
     let id = id.into();
-    h_flex()
-        .h(px(46.))
-        .pl_4()
-        .pr_2()
-        .gap_2()
-        .border_t_1()
-        .border_color(palette(cx).line)
+    let p = palette(cx);
+    card_row_frame(cx)
+        .when(muted, |row| row.text_color(p.muted))
         .child(div().flex_1().min_w_0().truncate().child(label.into()))
-        .child(form_value(id.clone(), value, px(16.), px(13.), cx))
+        .child(form_value(id.clone(), value, px(16.), px(13.), muted, cx))
         .child(
             h_flex()
                 .w(px(86.))
@@ -168,6 +173,32 @@ pub fn card_row(
                 .justify_end()
                 .child(copy_button(&id, value)),
         )
+}
+
+/// A card row's placeholder: its label, and a bar where the value will be.
+/// The bar reserves its space at once but stays hidden until `visible`.
+pub fn card_row_skeleton(label: &'static str, visible: bool, cx: &App) -> Div {
+    card_row_frame(cx)
+        .child(div().flex_1().min_w_0().truncate().child(label))
+        .child(
+            div()
+                .h(px(20.))
+                .w(px(110.))
+                .rounded(px(4.))
+                .bg(gpui_kit::component::ActiveTheme::theme(cx).skeleton)
+                .opacity(if visible { 1. } else { 0. }),
+        )
+        .child(div().w(px(86.)).flex_shrink_0())
+}
+
+fn card_row_frame(cx: &App) -> Div {
+    h_flex()
+        .h(px(46.))
+        .pl_4()
+        .pr_2()
+        .gap_2()
+        .border_t_1()
+        .border_color(palette(cx).line)
 }
 
 /// A total's placeholder: its label, and a bar where the value will be.

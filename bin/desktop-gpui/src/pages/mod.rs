@@ -13,6 +13,17 @@ pub trait PageView: Render {
     fn refresh(&mut self, window: &mut Window, cx: &mut Context<Self>);
 }
 
+/// The conversion error when a missing NBP rate failed a calculation, which
+/// blocks the page. The use cases return text, so this matches it; see
+/// docs/typed-load-errors.md. The summary's "Failed to calculate … tax
+/// summary: " prefix is dropped.
+fn missing_rate(error: &str) -> Option<&str> {
+    let error = error
+        .split_once(" tax summary: ")
+        .map_or(error, |(_, inner)| inner);
+    error.starts_with("Failed to convert").then_some(error)
+}
+
 pub struct PageHandle {
     pub view: AnyView,
 }

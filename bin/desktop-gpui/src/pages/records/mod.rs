@@ -5,10 +5,10 @@ mod table;
 
 pub use self::{crypto::Crypto, dividends::Dividends, interests::Interests};
 
-use super::PageView;
+use super::{PageView, missing_rate};
 use crate::{
     components::{
-        Status, dialog, header, nbp,
+        Status, dialog, header, nbp, notice,
         records::{RecordColumn, RecordTableState, RowDisplay, TableLayout, record_skeleton},
         value,
     },
@@ -23,7 +23,7 @@ use gpui_kit::{
     component::{
         button::*,
         dialog::Dialog,
-        empty::{Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle},
+        empty::{Empty, EmptyContent},
         input::{Input, InputEvent, InputState},
         scroll::ScrollableElement,
         *,
@@ -114,10 +114,6 @@ fn day(date: NaiveDate) -> DisplayText {
 /// Every conversion failure in crates/core (`CalculateDividendTaxError`,
 /// `CalculateInterestTaxError`, `CalculateSellBuyValuesError`) starts like
 /// this. One missing NBP rate fails the whole calculation and blocks the page.
-fn is_missing_rate(error: &str) -> bool {
-    error.starts_with("Failed to convert")
-}
-
 /// Below this table width, Import in the header shows only its icon.
 const NARROW: f32 = 600.;
 
@@ -700,46 +696,6 @@ impl<K: RecordKind> RecordsPage<K> {
             .child(record_skeleton(&self.columns, &layout, visible, cx))
     }
 
-    /// A centred notice in the page body, built from the kit's `Empty`.
-    fn notice(
-        icon: IconName,
-        warning: bool,
-        title: String,
-        description: impl Into<SharedString>,
-        cx: &App,
-    ) -> Empty {
-        let p = *palette(cx);
-        let media = EmptyMedia::new()
-            .size(px(44.))
-            .rounded(px(12.))
-            .when(warning, |media| {
-                media
-                    .bg(p.warning.opacity(0.08))
-                    .border_1()
-                    .border_color(p.warning.opacity(0.3))
-                    .text_color(p.warning)
-            })
-            .when(!warning, |media| media.bg(p.selected).text_color(p.muted))
-            .child(Icon::new(icon).size(px(20.)));
-        Empty::new().pb(px(60.)).header(
-            EmptyHeader::new()
-                .max_w(px(420.))
-                .media(media)
-                .title(
-                    EmptyTitle::new()
-                        .text_size(px(15.))
-                        .font_semibold()
-                        .child(title),
-                )
-                .description(
-                    EmptyDescription::new()
-                        .text_size(px(13.))
-                        .text_color(p.muted)
-                        .child(description.into()),
-                ),
-        )
-    }
-
     /// No records for the year: Import, Add new, and a link to the nearest
     /// year that has this page's records.
     fn empty_state(&self, cx: &mut Context<Self>) -> Empty {
@@ -771,7 +727,7 @@ impl<K: RecordKind> RecordsPage<K> {
                     cx.listener(move |this, _, _, cx| this.context.select_year(Some(year), cx)),
                 )
         });
-        Self::notice(K::PAGE.icon(), false, title, description, cx).content(
+        notice::notice(K::PAGE.icon(), false, title, description, cx).content(
             EmptyContent::new()
                 .child(
                     h_flex()
@@ -791,46 +747,14 @@ impl<K: RecordKind> RecordsPage<K> {
         )
     }
 
-    /// One missing NBP rate fails the calculation for the whole page, as it
-    /// always has. The error says which rate; importing the year fixes it.
     fn missing_rate_state(&self, error: &SharedString, cx: &mut Context<Self>) -> Empty {
-        let disabled = self.disabled();
-        let (title, import) = match self.year {
-            Some(year) => (
-                format!("Can't calculate {year} yet"),
-                SharedString::from(format!("Import {year} from NBP")),
-            ),
-            None => (
-                "Can't calculate all years yet".into(),
-                "Import from NBP".into(),
-            ),
-        };
-        Self::notice(IconName::TriangleAlert, true, title, error.clone(), cx).content(
-            EmptyContent::new().child(
-                h_flex()
-                    .gap(px(8.))
-                    .mt(px(6.))
-                    .child(
-                        Button::new("missing-import")
-                            .h(px(28.))
-                            .px(px(11.))
-                            .rounded(px(8.))
-                            .primary()
-                            .accessibility_label(import.clone())
-                            .disabled(disabled)
-                            .child(div().text_size(px(13.)).font_medium().child(import))
-                            .on_click(cx.listener(|this, _, window, cx| this.open_nbp(window, cx))),
-                    )
-                    .child(
-                        header::button("missing-rates", None, "Open rates")
-                            .disabled(disabled)
-                            .on_click(
-                                cx.listener(|this, _, _, cx| {
-                                    this.context.navigate(Page::Rates, cx)
-                                }),
-                            ),
-                    ),
-            ),
+        notice::missing_rate(
+            self.year,
+            error.clone(),
+            self.disabled(),
+            cx.listener(|this, _, window, cx| this.open_nbp(window, cx)),
+            cx.listener(|this, _, _, cx| this.context.navigate(Page::Rates, cx)),
+            cx,
         )
     }
 
@@ -946,7 +870,10 @@ impl<K: RecordKind> PageView for RecordsPage<K> {
             },
             |this, result, _, cx| {
                 let loaded = this.status.loaded(result);
-                this.missing_rate = this.status.error.take_if(|error| is_missing_rate(error));
+                this.missing_rate = this
+                    .status
+                    .error
+                    .take_if(|error| missing_rate(error).is_some());
                 if let Some((totals, records, other_year)) = loaded {
                     this.apply(totals, records, other_year);
                 }

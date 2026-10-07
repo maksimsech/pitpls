@@ -4,18 +4,14 @@ pub mod file_picker;
 pub mod form;
 pub mod header;
 pub mod nbp;
+pub mod notice;
 pub mod records;
 pub mod table;
 pub mod value;
 
-use crate::format::DisplayText;
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::{
-    component::{
-        alert::Alert,
-        group_box::{GroupBox, GroupBoxVariants},
-        *,
-    },
+    component::{alert::Alert, *},
     *,
 };
 
@@ -159,76 +155,6 @@ pub fn page_content() -> Div {
         .py(px(24.))
 }
 
-pub struct SummaryGroup {
-    pub title: &'static str,
-    pub values: Vec<(&'static str, DisplayText)>,
-}
-
 pub fn section_heading(title: &'static str) -> Div {
     div().text_xl().font_semibold().child(title)
-}
-
-fn summary_section(title: &'static str, cards: impl IntoIterator<Item = GroupBox>) -> Div {
-    v_flex()
-        .gap_3()
-        .child(section_heading(title))
-        .child(h_flex().flex_wrap().gap_3().children(cards))
-}
-
-fn summary_card(id: impl Into<ElementId>, content: impl IntoElement) -> GroupBox {
-    GroupBox::new()
-        .id(id)
-        .outline()
-        .min_w(rems(15.7))
-        .flex_1()
-        .child(content)
-}
-
-/// Placeholders reserve their space at once but stay hidden until `visible`.
-pub fn summary_skeleton(
-    title: &'static str,
-    labels: &[&'static str],
-    visible: bool,
-    cx: &App,
-) -> Div {
-    summary_section(
-        title,
-        labels.iter().map(|label| {
-            summary_card(
-                SharedString::from(format!("pending-{title}-{label}")),
-                v_flex()
-                    .gap(px(2.))
-                    .child(
-                        div()
-                            .text_size(px(12.))
-                            .text_color(cx.theme().muted_foreground)
-                            .child(*label),
-                    )
-                    .child(
-                        div()
-                            .h(px(24.))
-                            .w(rems(9.))
-                            .rounded(px(4.))
-                            .bg(cx.theme().skeleton)
-                            .opacity(if visible { 1. } else { 0. }),
-                    ),
-            )
-        }),
-    )
-    .flex_shrink_0()
-}
-
-pub fn summaries(groups: &[SummaryGroup], cx: &App) -> Div {
-    v_flex()
-        .flex_shrink_0()
-        .gap_5()
-        .children(groups.iter().map(|group| {
-            summary_section(
-                group.title,
-                group.values.iter().map(|(label, value)| {
-                    let id = SharedString::from(format!("summary-{}-{label}", group.title));
-                    summary_card(id.clone(), value::stat(id, *label, value, cx))
-                }),
-            )
-        }))
 }

@@ -286,8 +286,7 @@ impl Desktop {
                 sum.2 + info.cryptos,
             )
         });
-        // Counts appear once the years have loaded.
-        let count = |count: u32| (!self.years.is_empty()).then(|| count.to_string());
+        let count = |count: u32| Some(count.to_string());
         let p = *palette(cx);
         let planned = Tag::custom(transparent_black(), p.faint, p.strong_line)
             .rounded_full()

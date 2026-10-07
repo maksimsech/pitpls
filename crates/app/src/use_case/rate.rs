@@ -1,5 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 
+use chrono::NaiveDate;
 use pitpls_core::{common::Currency, rate::Rate};
 use pitpls_nbr::{load_api_rates, load_csv_rates};
 use serde::Serialize;
@@ -24,6 +25,13 @@ pub struct RateDay {
 pub struct RateValue {
     pub currency: Currency,
     pub rate: String,
+}
+
+/// The dates of the stored NBP rates.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct RateCoverage {
+    pub first: NaiveDate,
+    pub last: NaiveDate,
 }
 
 pub async fn import_csv(app: &App, file: String) -> Result<u64, String> {
@@ -51,6 +59,12 @@ pub async fn import_api(app: &App, year: i32) -> Result<u64, String> {
 
 pub async fn reset_rates(app: &App) -> Result<u64, String> {
     app.db.rate_repo().reset().await.map_err(error_message)
+}
+
+/// The earliest and latest rate dates, or nothing when no rates are stored.
+pub async fn rate_coverage(app: &App) -> Result<Option<RateCoverage>, String> {
+    let coverage = app.db.rate_repo().coverage().await.map_err(error_message)?;
+    Ok(coverage.map(|(first, last)| RateCoverage { first, last }))
 }
 
 pub async fn list_rates(app: &App) -> Result<RatesViewModel, String> {
