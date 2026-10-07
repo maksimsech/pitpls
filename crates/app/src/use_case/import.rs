@@ -3,14 +3,13 @@ use std::{collections::BTreeSet, path::Path};
 use chrono::{Datelike, NaiveDate, Utc};
 use pitpls_importers::{IMPORTERS, import, model::ImporterKind};
 use serde::Serialize;
-use specta::Type;
 
 use super::{error_message, validate_year};
 use crate::App;
 
 pub use pitpls_db::repository::last_import::LastImport;
 
-#[derive(Serialize, Type)]
+#[derive(Serialize)]
 pub struct ImportResult {
     pub dividends: u64,
     pub cryptos: u64,

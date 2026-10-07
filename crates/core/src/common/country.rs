@@ -66,15 +66,6 @@ impl<'de> Deserialize<'de> for Country {
     }
 }
 
-impl specta::Type for Country {
-    fn inline(
-        type_map: &mut specta::TypeCollection,
-        generics: specta::Generics,
-    ) -> specta::datatype::DataType {
-        <String as specta::Type>::inline(type_map, generics)
-    }
-}
-
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct IsinCountryCode([u8; 2]);
 

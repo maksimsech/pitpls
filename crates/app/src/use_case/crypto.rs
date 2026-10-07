@@ -8,12 +8,11 @@ use pitpls_core::{
 };
 use rust_decimal::Decimal;
 use serde::Deserialize;
-use specta::Type;
 
 use super::{duplicate_id_error, error_message, validate_optional_year};
 use crate::App;
 
-#[derive(Deserialize, Type)]
+#[derive(Deserialize)]
 pub struct CreateCryptoInput {
     pub id: Option<String>,
     pub date: String,
@@ -25,7 +24,7 @@ pub struct CreateCryptoInput {
     pub provider: String,
 }
 
-#[derive(Deserialize, Type)]
+#[derive(Deserialize)]
 pub struct UpdateCryptoInput {
     pub id: String,
     pub date: String,

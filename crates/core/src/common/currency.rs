@@ -1,11 +1,10 @@
 use std::{fmt::Display, str::FromStr};
 
 use serde::{Deserialize, Serialize};
-use specta::Type;
 
 macro_rules! currencies {
     ($($currency:ident),+ $(,)?) => {
-        #[derive(Clone, Copy, Ord, PartialEq, PartialOrd, Eq, Serialize, Deserialize, Type)]
+        #[derive(Clone, Copy, Ord, PartialEq, PartialOrd, Eq, Serialize, Deserialize)]
         pub enum Currency {
             $($currency),+
         }

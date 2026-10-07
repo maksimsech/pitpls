@@ -4,24 +4,23 @@ use chrono::NaiveDate;
 use pitpls_core::{common::Currency, rate::Rate};
 use pitpls_nbr::{load_api_rates, load_csv_rates};
 use serde::Serialize;
-use specta::Type;
 
 use super::{error_message, validate_year};
 use crate::App;
 
-#[derive(Serialize, Type)]
+#[derive(Serialize)]
 pub struct RatesViewModel {
     pub currencies: Vec<Currency>,
     pub rows: Vec<RateDay>,
 }
 
-#[derive(Serialize, Type)]
+#[derive(Serialize)]
 pub struct RateDay {
     pub date: String,
     pub rates: Vec<RateValue>,
 }
 
-#[derive(Serialize, Type)]
+#[derive(Serialize)]
 pub struct RateValue {
     pub currency: Currency,
     pub rate: String,

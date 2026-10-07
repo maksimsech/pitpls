@@ -12,36 +12,8 @@ Always verify any data and calculations on your own before using them for real f
 
 ## How to Use
 
-The project must be installed before use.
-
-1. Install JavaScript dependencies:
-
-```sh
-npm --prefix bin/desktop install
-```
-
-2. Make sure Rust and the Tauri development prerequisites are available on your machine.
-
-3. Run the project locally in development mode:
-
-```sh
-cd bin/desktop
-npm run tauri dev
-```
-
-You can also use the shortcut from the `justfile`:
-
-```sh
-just d
-```
-
-No builds are provided. At the moment, the project is intended to be run in development mode only.
-
-### Native GPUI app
-
-`desktop-gpui` provides the existing Home, Imports, Dividends, Interests, Crypto,
-Rates, and Settings workflows in a native Rust window. It uses the same shared
-application services and database as the Tauri app.
+Make sure Rust is available on your machine, then run the app in development
+mode:
 
 ```sh
 just dg
@@ -50,20 +22,16 @@ just dg
 For a separate database during local testing:
 
 ```sh
-just dg --database /tmp/pitpls-gpui/pitpls.db
+just dg --database /tmp/pitpls/pitpls.db
 ```
 
-See [the native app README](bin/desktop-gpui/README.md) for build requirements,
-database behavior, and local review steps.
+No builds are provided. At the moment, the project is intended to be run in development mode only.
 
 ## Project Structure
 
 The repository is split into a small set of focused parts:
 
-- `bin/desktop/` - complete desktop application package, including the React frontend.
-- `bin/desktop-gpui/` - native GPUI frontend using the shared Rust services.
-- `bin/desktop/src-tauri/` - Tauri binary and thin command adapters exposed to the frontend.
-- `bin/desktop/src/` - React pages, components, hooks, and generated bindings.
+- `bin/desktop-gpui/` - native GPUI desktop application using the shared Rust services.
 - `crates/app/` - application use cases, input validation, and orchestration.
 - `crates/core/` - shared financial domain types used across the app.
 - `crates/db/` - SQLite schema and repositories.

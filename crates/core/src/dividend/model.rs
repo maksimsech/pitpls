@@ -1,7 +1,6 @@
 use chrono::NaiveDate;
 use rust_decimal::Decimal;
 use serde::Serialize;
-use specta::Type;
 
 use crate::common::{Amount, Country};
 
@@ -15,7 +14,7 @@ pub struct Dividend {
     pub provider: String,
 }
 
-#[derive(Serialize, Type)]
+#[derive(Serialize)]
 pub struct CalculatedDividend {
     pub id: String,
     pub date: NaiveDate,
@@ -69,7 +68,7 @@ impl CalculatedDividend {
     }
 }
 
-#[derive(Serialize, Type)]
+#[derive(Serialize)]
 pub struct DividendTaxData {
     pub to_pay: Decimal,
     pub paid: Decimal,

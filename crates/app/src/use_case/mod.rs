@@ -9,7 +9,6 @@ pub mod interest;
 pub mod rate;
 pub mod settings;
 pub mod tax;
-pub mod warnings;
 pub mod year;
 
 fn error_message(error: impl Display) -> String {

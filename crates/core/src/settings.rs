@@ -1,7 +1,6 @@
 use serde::{Deserialize, Serialize};
-use specta::Type;
 
-#[derive(Clone, Copy, Deserialize, Eq, PartialEq, Serialize, Type, Default)]
+#[derive(Clone, Copy, Deserialize, Eq, PartialEq, Serialize, Default)]
 pub enum DividendRounding {
     #[default]
     SumToGroszy,
@@ -10,7 +9,7 @@ pub enum DividendRounding {
     AllToZlote,
 }
 
-#[derive(Clone, Copy, Deserialize, Serialize, Type, Default)]
+#[derive(Clone, Copy, Deserialize, Serialize, Default)]
 pub struct Settings {
     pub dividend_rounding: DividendRounding,
 }

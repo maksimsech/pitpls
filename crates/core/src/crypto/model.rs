@@ -1,11 +1,10 @@
 use chrono::NaiveDate;
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
-use specta::Type;
 
 use crate::common::Amount;
 
-#[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Action {
     FiatBuy,
     FiatSell,
@@ -21,7 +20,7 @@ pub struct Crypto {
     pub provider: String,
 }
 
-#[derive(Serialize, Type)]
+#[derive(Serialize)]
 pub struct CalculatedCrypto {
     pub id: String,
     pub value: Amount,
@@ -63,7 +62,7 @@ impl CalculatedCrypto {
     }
 }
 
-#[derive(Serialize, Type)]
+#[derive(Serialize)]
 pub struct CryptoTaxData {
     pub income: Decimal,
     pub costs: Decimal,

@@ -21,15 +21,6 @@ impl YearRepository {
         Self { db }
     }
 
-    pub async fn list(&self) -> Result<Vec<i32>> {
-        let rows = sqlx::query("SELECT year FROM years ORDER BY year DESC")
-            .fetch_all(&self.db)
-            .await?;
-        rows.into_iter()
-            .map(|row| Ok(row.try_get::<i32, _>("year")?))
-            .collect()
-    }
-
     /// Years from the record dates merged with the `years` table, newest
     /// first, with the number of records in each.
     pub async fn list_with_records(&self) -> Result<Vec<YearRecords>> {

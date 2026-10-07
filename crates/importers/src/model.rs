@@ -1,28 +1,27 @@
 use pitpls_core::{crypto::Crypto, dividend::Dividend, interest::Interest};
 use serde::{Deserialize, Serialize};
-use specta::Type;
 
-#[derive(Clone, Copy, Serialize, Deserialize, Type)]
+#[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ImporterKind {
     T212,
     Revolut,
     Coinbase,
 }
 
-#[derive(Serialize, Type)]
+#[derive(Serialize)]
 pub enum InputType {
     Csv,
     Pdf,
 }
 
-#[derive(Serialize, Type)]
+#[derive(Serialize)]
 pub enum OutputType {
     Dividend,
     Crypto,
     Interest,
 }
 
-#[derive(Serialize, Type)]
+#[derive(Serialize)]
 pub struct Importer {
     pub kind: ImporterKind,
     pub name: &'static str,

@@ -39,6 +39,19 @@ impl RateRepository {
         Ok(rows)
     }
 
+    /// The earliest and latest rate dates, or nothing when there are no
+    /// rates. Separate subqueries let SQLite read each end of the index.
+    pub async fn coverage(&self) -> Result<Option<(NaiveDate, NaiveDate)>> {
+        let row = sqlx::query(
+            "SELECT (SELECT MIN(date) FROM rates) AS first, (SELECT MAX(date) FROM rates) AS last",
+        )
+        .fetch_one(&self.db)
+        .await?;
+        let first: Option<NaiveDate> = row.try_get("first")?;
+        let last: Option<NaiveDate> = row.try_get("last")?;
+        Ok(first.zip(last))
+    }
+
     pub async fn load_all(&self) -> Result<Vec<Rate>> {
         let rows = sqlx::query("SELECT date, currency, rate FROM rates")
             .fetch_all(&self.db)

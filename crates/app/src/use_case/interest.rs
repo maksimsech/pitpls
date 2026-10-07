@@ -8,12 +8,11 @@ use pitpls_core::{
 };
 use rust_decimal::Decimal;
 use serde::Deserialize;
-use specta::Type;
 
 use super::{duplicate_id_error, error_message, validate_optional_year};
 use crate::App;
 
-#[derive(Deserialize, Type)]
+#[derive(Deserialize)]
 pub struct CreateInterestInput {
     pub id: Option<String>,
     pub date: String,
@@ -22,7 +21,7 @@ pub struct CreateInterestInput {
     pub provider: String,
 }
 
-#[derive(Deserialize, Type)]
+#[derive(Deserialize)]
 pub struct UpdateInterestInput {
     pub id: String,
     pub date: String,

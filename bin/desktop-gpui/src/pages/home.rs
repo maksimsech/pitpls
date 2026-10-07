@@ -21,7 +21,7 @@ use pitpls_app::use_case::{
 use pitpls_core::summary::TaxSummary;
 use pitpls_importers::{IMPORTERS, InputType};
 
-/// The form values with their Tauri labels, exactly as the calculation
+/// The form values with their labels, exactly as the calculation
 /// returned them.
 struct Forms {
     foreign: [(&'static str, DisplayText); 3],

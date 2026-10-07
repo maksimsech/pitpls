@@ -18,10 +18,6 @@ impl YearInfo {
     }
 }
 
-pub async fn list_years(app: &App) -> Result<Vec<i32>, String> {
-    app.db.year_repo().list().await.map_err(error_message)
-}
-
 /// Years with records merged with the custom years, newest first.
 pub async fn list_year_info(app: &App) -> Result<Vec<YearInfo>, String> {
     let years = app
