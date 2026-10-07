@@ -1,11 +1,11 @@
 use super::{PageView, missing_rate};
 use crate::{
-    components::{self, Status, dialog, header, nbp, notice, value},
-    format::{DATE_FORMAT, DisplayText, pln},
+    components::{self, Status, data, dialog, header, nbp, notice, value},
+    format::{DisplayText, pln},
     navigation::{Page, PageContext},
     theme::{palette, tabular_digits},
 };
-use chrono::{Datelike, Days, Local, NaiveDate, Weekday};
+use chrono::{Datelike, Local};
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::{
     assets::IconName,
@@ -164,10 +164,6 @@ impl HomePage {
     fn notify(&self, cx: &mut Context<Self>) {
         self.context.set_locked(self.locked(), cx);
         cx.notify();
-    }
-
-    fn current_year(&self) -> bool {
-        self.year == Some(Local::now().year())
     }
 
     /// The Data card's Update: imports the current year from NBP.
@@ -454,26 +450,8 @@ impl HomePage {
 
     fn data_card(&self, overview: &Overview, cx: &mut Context<Self>) -> Div {
         let p = *palette(cx);
-        let current_year = self.current_year();
-        // The age only matters while the year is still running.
-        let (dot, detail, stale) = match overview.coverage {
-            Some(coverage) => {
-                let latest = format!("Latest NBP rate {}", coverage.last.format(DATE_FORMAT));
-                if current_year {
-                    let (age, stale) = rate_age(coverage.last, Local::now().date_naive());
-                    let colour = if stale { p.warning } else { p.text };
-                    let text = format!("{latest} · {age}");
-                    let start = latest.len() + " · ".len();
-                    let detail = StyledText::new(text.clone())
-                        .with_highlights([(start..text.len(), HighlightStyle::color(colour))]);
-                    (if stale { p.warning } else { p.ok }, detail, stale)
-                } else {
-                    (p.ok, StyledText::new(latest), false)
-                }
-            }
-            None => (p.warning, StyledText::new("No NBP rates yet"), true),
-        };
-        let update = current_year.then(|| {
+        let rates = data::rate_status("Latest NBP rate", overview.coverage, self.year, cx);
+        let update = data::is_current_year(self.year).then(|| {
             header::button(
                 "update-rates",
                 None,
@@ -483,43 +461,25 @@ impl HomePage {
                     "Update"
                 },
             )
-            .when(stale, |button| button.primary())
+            .when(rates.stale, |button| button.primary())
             .disabled(self.disabled())
             .on_click(cx.listener(|this, _, window, cx| this.update_rates(window, cx)))
         });
-        let rates = data_row(dot, "Exchange rates", detail, update, cx);
+        let rates = data_row(rates.dot, "Exchange rates", rates.detail, update, cx);
 
-        let last_import = match &overview.last_import {
-            Some(last) => data_row(
-                p.ok,
-                "Last import",
-                StyledText::new(format!(
-                    "{} · {} · {}",
-                    last.provider,
-                    last.file_name,
-                    import_counts(last)
-                )),
-                Some(
-                    div()
-                        .text_color(p.faint)
-                        .font_features(tabular_digits())
-                        .child(
-                            last.imported_at
-                                .with_timezone(&Local)
-                                .format(DATE_FORMAT)
-                                .to_string(),
-                        ),
-                ),
-                cx,
-            ),
-            None => data_row(
-                p.faint,
-                "Last import",
-                StyledText::new("No statement imported yet"),
-                None::<Div>,
-                cx,
-            ),
-        };
+        let import = data::import_status(overview.last_import.as_ref(), cx);
+        let last_import = data_row(
+            import.dot,
+            "Last import",
+            StyledText::new(import.detail),
+            import.date.map(|date| {
+                div()
+                    .text_color(p.faint)
+                    .font_features(tabular_digits())
+                    .child(date)
+            }),
+            cx,
+        );
 
         card(
             "Data",
@@ -657,22 +617,15 @@ fn form_id(label: &'static str) -> SharedString {
 
 /// A raised card with a 44px header: the title, then an optional link.
 fn card(title: &'static str, link: Option<Button>, cx: &App) -> Div {
-    let p = palette(cx);
-    v_flex()
-        .border_1()
-        .border_color(p.line)
-        .rounded(px(12.))
-        .bg(p.raised)
-        .overflow_hidden()
-        .child(
-            h_flex()
-                .h(px(44.))
-                .pl(px(16.))
-                .pr(px(10.))
-                .justify_between()
-                .child(div().font_semibold().child(title))
-                .children(link),
-        )
+    data::card(cx).child(
+        h_flex()
+            .h(px(44.))
+            .pl(px(16.))
+            .pr(px(10.))
+            .justify_between()
+            .child(div().font_semibold().child(title))
+            .children(link),
+    )
 }
 
 /// A card header's link to a page: the label and a chevron, muted until
@@ -707,12 +660,7 @@ fn data_row(
         .gap(px(10.))
         .border_t_1()
         .border_color(p.line)
-        .child(
-            div()
-                .w(px(16.))
-                .flex_shrink_0()
-                .child(div().size(px(7.)).rounded_full().bg(dot)),
-        )
+        .child(div().w(px(16.)).flex_shrink_0().child(data::dot(dot)))
         .child(div().w(px(120.)).flex_shrink_0().font_medium().child(label))
         .child(
             div()
@@ -772,40 +720,4 @@ fn step(
                 .child(div().text_color(p.muted).child(description.into())),
         )
         .children(button.map(|button| div().flex_shrink_0().child(button)))
-}
-
-/// The imported records, without the kinds the file had none of.
-fn import_counts(last: &LastImport) -> String {
-    let counts = [
-        (last.dividends, "dividend", "dividends"),
-        (last.interests, "interest", "interest"),
-        (last.cryptos, "crypto record", "crypto records"),
-    ]
-    .into_iter()
-    .filter(|(count, _, _)| *count > 0)
-    .map(|(count, one, many)| format!("{count} {}", if count == 1 { one } else { many }))
-    .collect::<Vec<_>>();
-    if counts.is_empty() {
-        "no records".to_owned()
-    } else {
-        counts.join(", ")
-    }
-}
-
-/// How old the latest rate is, and whether it is stale: older than the
-/// last working day before `today`, whose rate a record dated today needs.
-/// Weekends are skipped; public holidays aren't known, so the day after one
-/// shows as stale until NBP publishes again.
-fn rate_age(latest: NaiveDate, today: NaiveDate) -> (String, bool) {
-    let days = (today - latest).num_days().max(0);
-    let age = match days {
-        0 => "today".to_owned(),
-        1 => "1 day old".to_owned(),
-        days => format!("{days} days old"),
-    };
-    let mut expected = today - Days::new(1);
-    while matches!(expected.weekday(), Weekday::Sat | Weekday::Sun) {
-        expected = expected - Days::new(1);
-    }
-    (age, latest < expected)
 }

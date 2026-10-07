@@ -46,7 +46,7 @@ pub fn open(
     match page {
         Page::Home => PageHandle::new(cx.new(|cx| home::HomePage::new(context, year, window, cx))),
         Page::Imports => {
-            PageHandle::new(cx.new(|cx| imports::ImportsPage::new(context, window, cx)))
+            PageHandle::new(cx.new(|cx| imports::ImportsPage::new(context, year, window, cx)))
         }
         Page::Dividends => {
             PageHandle::new(cx.new(|cx| RecordsPage::<Dividends>::new(context, year, window, cx)))

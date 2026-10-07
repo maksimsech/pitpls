@@ -105,13 +105,14 @@ pub fn actions() -> Div {
 pub fn button(
     id: impl Into<ElementId>,
     icon: impl Into<Option<IconName>>,
-    label: &'static str,
+    label: impl Into<SharedString>,
 ) -> Button {
+    let label = label.into();
     Button::new(id)
         .h(px(28.))
         .px(px(11.))
         .rounded(px(8.))
-        .accessibility_label(label)
+        .accessibility_label(label.clone())
         .when_some(icon.into(), |button, icon| {
             button.child(Icon::new(icon).size(px(14.)))
         })
