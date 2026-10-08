@@ -3,13 +3,13 @@ use std::str::FromStr;
 use chrono::NaiveDate;
 use pitpls_core::{
     common::{Amount, Country, Currency},
-    dividend::{Dividend, DividendTaxData, calculate},
+    dividend::{CalculatedDividend, Dividend, DividendTaxData, calculate},
     rate::NbpRateProvider,
 };
 use rust_decimal::Decimal;
 use serde::Deserialize;
 
-use super::{duplicate_id_error, error_message, validate_optional_year};
+use super::{duplicate_id_error, error_message, rates_for, validate_optional_year};
 use crate::App;
 
 #[derive(Deserialize)]
@@ -158,4 +158,21 @@ pub async fn load_dividends(app: &App, year: Option<i32>) -> Result<DividendTaxD
         .map_err(error_message)?;
 
     calculate(dividends, &rate_provider, dividend_rounding).map_err(error_message)
+}
+
+/// Calculates one dividend without saving it, as `load_dividends` does.
+pub async fn preview_dividend(app: &App, dividend: Dividend) -> Result<CalculatedDividend, String> {
+    let rate_provider = rates_for(app, dividend.date).await?;
+    let dividend_rounding = app
+        .db
+        .settings_repo()
+        .load_dividend_rounding()
+        .await
+        .map_err(error_message)?;
+
+    calculate(vec![dividend], &rate_provider, dividend_rounding)
+        .map_err(error_message)?
+        .calculated
+        .pop()
+        .ok_or_else(|| "Nothing to preview".into())
 }

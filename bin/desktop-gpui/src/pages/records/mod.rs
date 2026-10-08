@@ -8,8 +8,11 @@ pub use self::{crypto::Crypto, dividends::Dividends, interests::Interests};
 use super::{PageView, missing_rate};
 use crate::{
     components::{
-        Status, dialog, header, nbp, notice,
-        records::{RecordColumn, RecordTableState, RowDisplay, TableLayout, record_skeleton},
+        Status, dialog, form, header, nbp, notice,
+        records::{
+            Preview, RecordColumn, RecordTableState, RowDisplay, TableLayout, preview_band,
+            record_skeleton,
+        },
         value,
     },
     format::{DisplayText, pln},
@@ -22,6 +25,7 @@ use gpui_kit::{
     assets::IconName,
     component::{
         button::*,
+        collapsible::Collapsible,
         dialog::Dialog,
         empty::{Empty, EmptyContent},
         input::{Input, InputEvent, InputState},
@@ -47,15 +51,33 @@ pub enum Submission<C, U> {
 pub trait RecordForm: 'static {
     type Record;
     type Submission: Send + 'static;
+    /// The values the calculation reads, for the preview.
+    type Draft: Clone + PartialEq + Send + 'static;
 
     fn new(record: Option<&Self::Record>, window: &mut Window, cx: &mut App) -> Self;
     fn title(&self) -> &'static str;
+    /// The record being edited, or `None` when adding one.
+    fn existing_id(&self) -> Option<&str>;
+    /// The optional ID, folded away below the other fields.
+    fn id_input(&self) -> &Entity<InputState>;
     /// The input focused when the editor opens. Enter opens a focused date
     /// picker, so this is a text input, where Enter saves.
     fn first_input(&self) -> &Entity<InputState>;
     fn submission(&self, cx: &App) -> Result<Self::Submission, String>;
+    /// The values the calculation reads, once every one of them is valid.
+    fn draft(&self, cx: &App) -> Option<Self::Draft>;
+    /// Calls `changed` on the view whenever a field changes.
+    fn watch<V: 'static>(
+        &self,
+        window: &mut Window,
+        cx: &mut Context<V>,
+        changed: fn(&mut V, &mut Window, &mut Context<V>),
+    ) -> Vec<Subscription>;
+    /// Every field but the ID, in two columns.
     fn render(&self, busy: bool, cx: &App) -> Div;
 }
+
+type Draft<K> = <<K as RecordKind>::Form as RecordForm>::Draft;
 
 pub trait RecordKind: 'static {
     type Record: Send + 'static;
@@ -94,6 +116,13 @@ pub trait RecordKind: 'static {
         app: Arc<pitpls_app::App>,
         ids: Vec<String>,
     ) -> impl Future<Output = Result<u64, String>> + Send;
+    /// Calculates a draft as the page would once it is saved, without saving.
+    fn preview(
+        app: Arc<pitpls_app::App>,
+        draft: Draft<Self>,
+    ) -> impl Future<Output = Result<Self::Record, String>> + Send;
+    /// The editor's preview band for a calculated draft.
+    fn preview_display(record: &Self::Record) -> Preview;
 }
 
 /// `value × rate`, every digit, for an opened row's conversion step.
@@ -125,6 +154,20 @@ struct MonthGroup {
     summary: Vec<(Option<&'static str>, DisplayText)>,
 }
 
+/// An open add or edit dialog.
+struct Editor<K: RecordKind> {
+    form: K::Form,
+    /// Whether the optional ID is unfolded.
+    id_open: bool,
+    /// The values the shown or pending preview is for.
+    draft: Option<Draft<K>>,
+    /// Kept while a newer preview calculates, so the band doesn't flicker.
+    preview: Option<Result<Preview, SharedString>>,
+    /// Replacing this drops an older preview's result.
+    preview_task: Option<Task<()>>,
+    _subscriptions: Vec<Subscription>,
+}
+
 pub struct RecordsPage<K: RecordKind> {
     context: PageContext,
     year: Option<i32>,
@@ -142,7 +185,7 @@ pub struct RecordsPage<K: RecordKind> {
     table_state: RecordTableState,
     selected: HashSet<String>,
     expanded: HashSet<String>,
-    editor: Option<K::Form>,
+    editor: Option<Editor<K>>,
     pending_delete: Option<Vec<String>>,
     nbp_year: Option<Entity<InputState>>,
     /// The last load's conversion error, while a missing rate blocks the page.
@@ -303,12 +346,71 @@ impl<K: RecordKind> RecordsPage<K> {
 
     fn open_editor(&mut self, form: K::Form, window: &mut Window, cx: &mut Context<Self>) {
         let first_input = form.first_input().focus_handle(cx);
-        self.editor = Some(form);
+        let subscriptions = form.watch(window, cx, Self::update_preview);
+        self.editor = Some(Editor {
+            form,
+            id_open: false,
+            draft: None,
+            preview: None,
+            preview_task: None,
+            _subscriptions: subscriptions,
+        });
         self.status.error = None;
         self.status.message = None;
         dialog::open(window, cx, Self::render_editor);
         window.focus(&first_input, cx);
+        self.update_preview(window, cx);
         self.notify(cx);
+    }
+
+    /// Recalculates the preview when a value it reads changes; an invalid
+    /// value hides it. Only the latest calculation's result is shown.
+    fn update_preview(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(editor) = &self.editor else {
+            return;
+        };
+        let draft = editor.form.draft(cx);
+        if draft == editor.draft {
+            return;
+        }
+        let task = draft.clone().map(|draft| {
+            self.context.services.run(
+                window,
+                cx,
+                move |app| K::preview(app, draft),
+                |this, result, _, cx| {
+                    if let Some(editor) = &mut this.editor {
+                        editor.preview = Some(
+                            result
+                                .map(|record| K::preview_display(&record))
+                                .map_err(SharedString::from),
+                        );
+                        cx.notify();
+                    }
+                },
+            )
+        });
+        if let Some(editor) = &mut self.editor {
+            if draft.is_none() {
+                editor.preview = None;
+            }
+            editor.draft = draft;
+            editor.preview_task = task;
+        }
+        cx.notify();
+    }
+
+    /// Unfolds or folds the optional ID. Unfolding it while adding focuses it.
+    fn toggle_id(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(editor) = &mut self.editor else {
+            return;
+        };
+        editor.id_open = !editor.id_open;
+        if editor.id_open && editor.form.existing_id().is_none() {
+            let id = editor.form.id_input().focus_handle(cx);
+            window.focus(&id, cx);
+        }
+        cx.notify();
     }
 
     fn edit(&mut self, id: &str, window: &mut Window, cx: &mut Context<Self>) {
@@ -334,7 +436,7 @@ impl<K: RecordKind> RecordsPage<K> {
         let Some(editor) = &self.editor else {
             return;
         };
-        let submission = match editor.submission(cx) {
+        let submission = match editor.form.submission(cx) {
             Ok(submission) => submission,
             Err(error) => {
                 self.status.error = Some(error.into());
@@ -455,19 +557,99 @@ impl<K: RecordKind> RecordsPage<K> {
             return dialog;
         };
         let busy = self.status.busy;
-        dialog::form(
+        let p = *palette(cx);
+        let body = v_flex()
+            .pt(px(8.))
+            .child(editor.form.render(busy, cx))
+            .child(self.id_field(editor, busy, cx).mt(px(14.)))
+            .when_some(self.status.error.clone(), |body, error| {
+                body.child(
+                    h_flex()
+                        .mt(px(12.))
+                        .items_start()
+                        .gap(px(6.))
+                        .text_size(px(12.))
+                        .text_color(p.danger)
+                        .child(
+                            Icon::new(IconName::CircleX)
+                                .size(px(14.))
+                                .flex_shrink_0()
+                                .mt(px(1.)),
+                        )
+                        .child(div().min_w_0().child(error)),
+                )
+            })
+            .when_some(editor.preview.as_ref(), |body, preview| {
+                body.child(preview_band(preview, cx).mt(px(16.)))
+            });
+        dialog::editor(
             self,
             dialog,
+            body,
             if busy { "Saving…" } else { "Save" },
             |this| &this.status,
             Self::save,
             Self::close_editor,
             cx,
         )
-        .title(editor.title())
-        .w(px(740.))
-        .max_w(px(740.))
-        .child(editor.render(busy, cx))
+        .title(div().text_size(px(15.)).child(editor.form.title()))
+        .w(px(540.))
+        .bg(p.popover)
+        .border_color(p.strong_line)
+        .px(px(20.))
+        .pb(px(14.))
+    }
+
+    /// The optional ID, folded under "ID · optional, generated if left
+    /// blank". When editing, the line shows the record's ID instead, and the
+    /// field can't be changed.
+    fn id_field(&self, editor: &Editor<K>, busy: bool, cx: &mut Context<Self>) -> Collapsible {
+        let p = *palette(cx);
+        let existing = editor.form.existing_id();
+        let note = match existing {
+            Some(id) => format!("· {id}"),
+            None => "· optional, generated if left blank".into(),
+        };
+        Collapsible::new()
+            .open(editor.id_open)
+            .gap(px(10.))
+            .child(
+                h_flex().child(
+                    Button::new("editor-id")
+                        .ghost()
+                        .h(px(22.))
+                        .px(px(4.))
+                        .ml(px(-4.))
+                        .gap(px(6.))
+                        .rounded(px(6.))
+                        .text_color(p.muted)
+                        .accessibility_label("ID")
+                        .child(
+                            Icon::new(if editor.id_open {
+                                IconName::ChevronDown
+                            } else {
+                                IconName::ChevronRight
+                            })
+                            .size(px(12.)),
+                        )
+                        // The button sizes its own text, so the line sets 12px
+                        // on a child.
+                        .child(
+                            h_flex()
+                                .gap(px(4.))
+                                .text_size(px(12.))
+                                .child("ID")
+                                .child(div().text_color(p.faint).child(note)),
+                        )
+                        .on_click(cx.listener(|this, _, window, cx| this.toggle_id(window, cx))),
+                ),
+            )
+            .content(form::input_field(
+                "ID",
+                editor.form.id_input(),
+                busy || existing.is_some(),
+                cx,
+            ))
     }
 
     /// The Rates page's "Import from NBP" dialog, prefilled with the year.
@@ -897,7 +1079,8 @@ impl<K: RecordKind> Render for RecordsPage<K> {
             .overflow_y_scroll()
             .lock_scroll_axis()
             .track_scroll(&self.page_scroll)
-            .when(self.status.is_visible(), |view| {
+            // The editor shows its own errors.
+            .when(self.status.is_visible() && self.editor.is_none(), |view| {
                 view.child(
                     div()
                         .flex_shrink_0()

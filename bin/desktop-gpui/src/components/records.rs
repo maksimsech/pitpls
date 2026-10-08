@@ -1,5 +1,10 @@
-use super::copy::CopyButton;
-use crate::{format::DisplayText, theme::palette, theme::tabular_digits};
+use super::{copy::CopyButton, value};
+use crate::{
+    format::{DisplayText, date},
+    theme::palette,
+    theme::tabular_digits,
+};
+use chrono::NaiveDate;
 use gpui_kit::{
     component::{ActiveTheme, StyledExt, VirtualListScrollHandle, h_flex, tag::Tag, v_flex},
     prelude::FluentBuilder,
@@ -308,6 +313,89 @@ fn step(index: usize, step: &Step, cx: &App) -> Div {
                     ),
             }
         }))
+}
+
+/// A record editor's preview of the record as typed: its conversion and the
+/// kind's key results, from the same calculation as the page.
+pub struct Preview {
+    pub nbp_date: NaiveDate,
+    /// `value × rate`, as in the opened row's first step.
+    pub formula: SharedString,
+    /// The calculated value in PLN.
+    pub value: DisplayText,
+    pub results: Vec<(&'static str, DisplayText)>,
+}
+
+/// The preview band: "Preview" and the NBP date, `value × rate = PLN`, then
+/// the key results. Values follow the gray-digit rule, with every digit in
+/// the tooltip. A failed calculation, such as a missing rate, shows its error.
+pub fn preview_band(preview: &Result<Preview, SharedString>, cx: &App) -> Div {
+    let p = *palette(cx);
+    let header = h_flex()
+        .justify_between()
+        .gap_2()
+        .text_size(px(12.))
+        .text_color(p.faint)
+        .child("Preview");
+    let band = v_flex()
+        .gap(px(6.))
+        .px(px(14.))
+        .py(px(12.))
+        .rounded(px(10.))
+        .bg(p.hover)
+        .border_1()
+        .border_color(p.line)
+        .font_features(tabular_digits());
+    match preview {
+        Ok(preview) => band
+            .child(header.child(format!("NBP date {}", date(preview.nbp_date).main)))
+            .child(
+                h_flex()
+                    .flex_wrap()
+                    .gap_x(px(4.))
+                    .text_color(p.muted)
+                    .child(format!("{} =", preview.formula))
+                    .child(preview_value(
+                        "preview-value",
+                        &preview.value,
+                        div().font_semibold().text_color(p.text),
+                        cx,
+                    )),
+            )
+            .when(!preview.results.is_empty(), |band| {
+                band.child(
+                    h_flex()
+                        .flex_wrap()
+                        .gap_x(px(20.))
+                        .gap_y(px(4.))
+                        .text_size(px(12.))
+                        .text_color(p.muted)
+                        .children(preview.results.iter().map(|(label, result)| {
+                            h_flex().gap(px(4.)).child(*label).child(preview_value(
+                                *label,
+                                result,
+                                div().text_color(p.text),
+                                cx,
+                            ))
+                        })),
+                )
+            }),
+        Err(error) => band
+            .child(header)
+            .child(div().text_color(p.warning).child(error.clone())),
+    }
+}
+
+fn preview_value(
+    id: impl Into<ElementId>,
+    display: &DisplayText,
+    style: Div,
+    cx: &App,
+) -> AnyElement {
+    value::reveal_full(
+        style.id(id).child(value::text(display, false, true, cx)),
+        display,
+    )
 }
 
 /// An opened row: the calculation steps on a raised band, then the record ID

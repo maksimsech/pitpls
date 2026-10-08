@@ -57,6 +57,7 @@ fn run() -> Result<(), String> {
             gpui_kit::init(cx);
             gpui_kit::component::Theme::sync_system_appearance(None, cx);
             theme::configure_theme(cx);
+            components::dialog::bind_keys(cx);
             cx.bind_keys([
                 #[cfg(target_os = "macos")]
                 KeyBinding::new("cmd-q", Quit, None),

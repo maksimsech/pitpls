@@ -42,6 +42,15 @@ impl NbpRateProvider {
         Self { rates_by_date }
     }
 
+    /// The first and last dates `convert` may read a rate from for an amount
+    /// dated `at`: the [`MAX_LOOKUP_STEPS`] days before it.
+    pub fn lookup_window(at: NaiveDate) -> (NaiveDate, NaiveDate) {
+        (
+            at - chrono::Days::new(MAX_LOOKUP_STEPS.into()),
+            at - chrono::Days::new(1),
+        )
+    }
+
     pub fn export(&self) -> impl Iterator<Item = Rate> {
         self.rates_by_date.iter().flat_map(|(date, rates)| {
             rates.iter().map(|(currency, rate)| Rate {

@@ -56,7 +56,28 @@ impl RateRepository {
         let rows = sqlx::query("SELECT date, currency, rate FROM rates")
             .fetch_all(&self.db)
             .await?;
+        Self::rates(rows)
+    }
 
+    /// The rates from `first` to `last`, plus those of the earliest day, so
+    /// the result is empty only when the table is. A converter built from it
+    /// then fails the same way as one built from every rate when the range
+    /// has none ("n steps" rather than "no rates").
+    pub async fn load_range(&self, first: NaiveDate, last: NaiveDate) -> Result<Vec<Rate>> {
+        // Two indexed lookups; UNION drops the earliest day if it is in range.
+        let rows = sqlx::query(
+            "SELECT date, currency, rate FROM rates WHERE date BETWEEN ? AND ? \
+             UNION \
+             SELECT date, currency, rate FROM rates WHERE date = (SELECT MIN(date) FROM rates)",
+        )
+        .bind(first)
+        .bind(last)
+        .fetch_all(&self.db)
+        .await?;
+        Self::rates(rows)
+    }
+
+    fn rates(rows: Vec<sqlx::sqlite::SqliteRow>) -> Result<Vec<Rate>> {
         rows.into_iter()
             .map(|row| {
                 let date: NaiveDate = row.try_get("date")?;

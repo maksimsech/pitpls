@@ -1,6 +1,10 @@
 use std::fmt::Display;
 
+use chrono::NaiveDate;
+use pitpls_core::rate::NbpRateProvider;
 use pitpls_db::RepositoryError;
+
+use crate::App;
 
 pub mod crypto;
 pub mod dividend;
@@ -33,4 +37,18 @@ fn validate_year(year: i32) -> Result<(), String> {
 
 fn validate_optional_year(year: Option<i32>) -> Result<(), String> {
     year.map_or(Ok(()), validate_year)
+}
+
+/// A converter for one record dated `date`, for previews: it holds only the
+/// rates a conversion on that date can read, and converts exactly as one
+/// built from every rate would.
+async fn rates_for(app: &App, date: NaiveDate) -> Result<NbpRateProvider, String> {
+    let (first, last) = NbpRateProvider::lookup_window(date);
+    let rates = app
+        .db
+        .rate_repo()
+        .load_range(first, last)
+        .await
+        .map_err(error_message)?;
+    Ok(NbpRateProvider::new(rates))
 }

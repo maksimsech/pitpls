@@ -1,3 +1,4 @@
+use crate::theme::palette;
 use chrono::{NaiveDate, Weekday};
 use gpui_kit::{
     component::{
@@ -9,6 +10,8 @@ use gpui_kit::{
     *,
 };
 use pitpls_core::common::Currency;
+use rust_decimal::Decimal;
+use std::str::FromStr;
 
 /// The format the use cases parse.
 const INPUT_DATE_FORMAT: &str = "%Y-%m-%d";
@@ -117,16 +120,21 @@ pub fn currency(
     )
 }
 
+/// A record editor's two equal columns of fields.
+pub fn grid() -> Div {
+    div().grid().grid_cols(2).gap_x(px(12.)).gap_y(px(14.))
+}
+
+/// A control with its label above it (12px, muted).
 pub fn field(label: &'static str, control: impl IntoElement, cx: &App) -> Div {
     v_flex()
-        .w(px(300.))
-        .flex_grow(1.)
-        .gap_2()
+        .min_w_0()
+        .gap(px(6.))
         .child(
             div()
-                .text_base()
+                .text_size(px(12.))
                 .font_medium()
-                .text_color(cx.theme().foreground)
+                .text_color(palette(cx).muted)
                 .child(label),
         )
         .child(control)
@@ -162,6 +170,8 @@ pub fn select_field<T: Clone + PartialEq + 'static>(
     )
 }
 
+/// An amount and its currency in one field: the currency is a select at the
+/// end of the input, labelled `currency_label` for accessibility.
 pub fn amount_field(
     label: &'static str,
     currency_label: &'static str,
@@ -170,34 +180,57 @@ pub fn amount_field(
     disabled: bool,
     cx: &App,
 ) -> Div {
-    h_flex()
-        .w_full()
-        .items_end()
-        .gap_2()
-        .child(
-            field(
-                label,
-                Input::new(amount).aria_label(label).disabled(disabled),
-                cx,
+    let theme = cx.theme();
+    field(
+        label,
+        InputGroup::new(label)
+            .input(Input::new(amount).aria_label(label))
+            .addon(
+                InputGroupAddon::new(currency_label)
+                    .align(InputGroupAddonAlignment::InlineEnd)
+                    .h_full()
+                    .p_0()
+                    .border_l_1()
+                    .border_color(theme.input)
+                    .bg(theme.button)
+                    .rounded_r(theme.radius - px(1.))
+                    .child(
+                        div().w(px(86.)).h_full().child(
+                            Select::new(currency)
+                                .appearance(false)
+                                .accessibility_label(currency_label)
+                                .disabled(disabled),
+                        ),
+                    ),
             )
-            .w_auto()
-            .flex_1()
-            .min_w_0(),
-        )
-        .child(
-            field(
-                "Currency",
-                div().w_full().h_8().child(
-                    Select::new(currency)
-                        .accessibility_label(currency_label)
-                        .disabled(disabled),
-                ),
-                cx,
-            )
-            .w(px(120.))
-            .flex_grow(0.)
-            .flex_shrink_0(),
-        )
+            .disabled(disabled),
+        cx,
+    )
+}
+
+/// The amount and its currency, if the amount parses as the use cases parse
+/// it and a currency is chosen.
+pub fn parsed_amount(
+    amount: &Entity<InputState>,
+    currency: &Entity<ChoiceState<Currency>>,
+    cx: &App,
+) -> Option<(Decimal, Currency)> {
+    let value = Decimal::from_str(&text(amount, cx)).ok()?;
+    let currency = currency.read(cx).selected_value().copied()?;
+    Some((value, currency))
+}
+
+/// Calls `changed` whenever `entity` notifies, which a field does on every
+/// edit (and on focus and cursor changes, so compare before acting).
+pub fn watch<V: 'static, T: 'static>(
+    entity: &Entity<T>,
+    window: &mut Window,
+    cx: &mut Context<V>,
+    changed: fn(&mut V, &mut Window, &mut Context<V>),
+) -> Subscription {
+    cx.observe_in(entity, window, move |view, _, window, cx| {
+        changed(view, window, cx)
+    })
 }
 
 pub fn optional_id(
@@ -222,15 +255,16 @@ pub fn date_picker(value: NaiveDate, window: &mut Window, cx: &mut App) -> Entit
     })
 }
 
+pub fn picked_date(state: &Entity<DatePickerState>, cx: &App) -> Option<NaiveDate> {
+    state.read(cx).date().start()
+}
+
 pub fn selected_date(
     state: &Entity<DatePickerState>,
     label: &str,
     cx: &App,
 ) -> Result<String, String> {
-    state
-        .read(cx)
-        .date()
-        .start()
+    picked_date(state, cx)
         .map(|date| date.format(INPUT_DATE_FORMAT).to_string())
         .ok_or_else(|| format!("{label} is required"))
 }

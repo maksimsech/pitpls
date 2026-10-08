@@ -3,7 +3,7 @@ use crate::navigation::Page;
 use crate::{
     components::{
         form::{self, Choice, ChoiceState},
-        records::{CellStyle, RecordColumn, RowDisplay, Step, StepLine},
+        records::{CellStyle, Preview, RecordColumn, RowDisplay, Step, StepLine},
     },
     format::{DisplayText, amount, date, pln},
 };
@@ -17,8 +17,8 @@ use pitpls_app::use_case::{
     year::YearInfo,
 };
 use pitpls_core::{
-    common::Currency,
-    crypto::{Action, CalculatedCrypto},
+    common::{Amount, Currency},
+    crypto::{self as core_crypto, Action, CalculatedCrypto},
 };
 use pitpls_importers::OutputType;
 use rust_decimal::Decimal;
@@ -180,6 +180,69 @@ impl RecordKind for Crypto {
     async fn delete(app: Arc<pitpls_app::App>, ids: Vec<String>) -> Result<u64, String> {
         crypto::delete_cryptos(&app, ids).await
     }
+
+    async fn preview(
+        app: Arc<pitpls_app::App>,
+        draft: CryptoDraft,
+    ) -> Result<CalculatedCrypto, String> {
+        let (value, value_currency) = draft.value;
+        let (fee, fee_currency) = draft.fee;
+        let record = core_crypto::Crypto {
+            id: String::new(),
+            value: Amount {
+                value,
+                currency: value_currency,
+            },
+            fee: Amount {
+                value: fee,
+                currency: fee_currency,
+            },
+            action: draft.action,
+            date: draft.date,
+            provider: String::new(),
+        };
+        crypto::preview_crypto(&app, record).await
+    }
+
+    /// The value, then the fee and what the record adds to, as in the opened
+    /// row's "Adds to" step.
+    fn preview_display(record: &CalculatedCrypto) -> Preview {
+        let mut results = vec![("Calculated fee", pln(record.calculated_fee))];
+        match record.action {
+            Action::FiatBuy => results.push((
+                "Costs (E-37)",
+                added(record.calculated_value + record.calculated_fee),
+            )),
+            Action::FiatSell => {
+                results.push(("Income (E-36)", added(record.calculated_value)));
+                results.push(("Costs (E-37)", added(record.calculated_fee)));
+            }
+        }
+        Preview {
+            nbp_date: record.nbp_date,
+            formula: conversion(record.value, record.nbp_rate).into(),
+            value: pln(record.calculated_value),
+            results,
+        }
+    }
+}
+
+/// `+value PLN`: what a record adds to a form total.
+fn added(value: Decimal) -> DisplayText {
+    let value = pln(value);
+    DisplayText {
+        main: format!("+{}", value.main).into(),
+        ..value
+    }
+}
+
+/// What the crypto calculation reads; the provider doesn't count.
+#[derive(Clone, PartialEq)]
+pub struct CryptoDraft {
+    date: NaiveDate,
+    action: Action,
+    value: (Decimal, Currency),
+    fee: (Decimal, Currency),
 }
 
 fn action_title(action: Action) -> &'static str {
@@ -206,6 +269,7 @@ pub struct CryptoForm {
 impl RecordForm for CryptoForm {
     type Record = CalculatedCrypto;
     type Submission = CryptoSubmission;
+    type Draft = CryptoDraft;
 
     fn new(record: Option<&CalculatedCrypto>, window: &mut Window, cx: &mut App) -> Self {
         let text = |value: fn(&CalculatedCrypto) -> String| record.map(value).unwrap_or_default();
@@ -254,12 +318,16 @@ impl RecordForm for CryptoForm {
         }
     }
 
+    fn existing_id(&self) -> Option<&str> {
+        self.existing_id.as_deref()
+    }
+
+    fn id_input(&self) -> &Entity<InputState> {
+        &self.id
+    }
+
     fn first_input(&self) -> &Entity<InputState> {
-        if self.existing_id.is_some() {
-            &self.value
-        } else {
-            &self.id
-        }
+        &self.value
     }
 
     fn submission(&self, cx: &App) -> Result<CryptoSubmission, String> {
@@ -294,14 +362,33 @@ impl RecordForm for CryptoForm {
         })
     }
 
+    fn draft(&self, cx: &App) -> Option<CryptoDraft> {
+        Some(CryptoDraft {
+            date: form::picked_date(&self.date, cx)?,
+            action: self.action.read(cx).selected_value().copied()?,
+            value: form::parsed_amount(&self.value, &self.value_currency, cx)?,
+            fee: form::parsed_amount(&self.fee, &self.fee_currency, cx)?,
+        })
+    }
+
+    fn watch<V: 'static>(
+        &self,
+        window: &mut Window,
+        cx: &mut Context<V>,
+        changed: fn(&mut V, &mut Window, &mut Context<V>),
+    ) -> Vec<Subscription> {
+        vec![
+            form::watch(&self.date, window, cx, changed),
+            form::watch(&self.action, window, cx, changed),
+            form::watch(&self.value, window, cx, changed),
+            form::watch(&self.value_currency, window, cx, changed),
+            form::watch(&self.fee, window, cx, changed),
+            form::watch(&self.fee_currency, window, cx, changed),
+        ]
+    }
+
     fn render(&self, busy: bool, cx: &App) -> Div {
-        let editing = self.existing_id.is_some();
-        div()
-            .flex()
-            .flex_wrap()
-            .gap_4()
-            .max_w(px(700.))
-            .child(form::input_field("ID", &self.id, busy || editing, cx))
+        form::grid()
             .child(form::date_field("Date", &self.date, busy, cx))
             .child(form::select_field("Action", &self.action, busy, cx))
             .child(form::amount_field(

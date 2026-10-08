@@ -3,13 +3,13 @@ use std::str::FromStr;
 use chrono::NaiveDate;
 use pitpls_core::{
     common::{Amount, Currency},
-    crypto::{Action, Crypto, CryptoTaxData, calculate_sell_buy_values},
+    crypto::{Action, CalculatedCrypto, Crypto, CryptoTaxData, calculate_sell_buy_values},
     rate::NbpRateProvider,
 };
 use rust_decimal::Decimal;
 use serde::Deserialize;
 
-use super::{duplicate_id_error, error_message, validate_optional_year};
+use super::{duplicate_id_error, error_message, rates_for, validate_optional_year};
 use crate::App;
 
 #[derive(Deserialize)]
@@ -145,4 +145,15 @@ pub async fn load_cryptos(app: &App, year: Option<i32>) -> Result<CryptoTaxData,
     let rate_provider = NbpRateProvider::new(rates);
 
     calculate_sell_buy_values(cryptos, &rate_provider).map_err(error_message)
+}
+
+/// Calculates one crypto record without saving it, as `load_cryptos` does.
+pub async fn preview_crypto(app: &App, crypto: Crypto) -> Result<CalculatedCrypto, String> {
+    let rate_provider = rates_for(app, crypto.date).await?;
+
+    calculate_sell_buy_values(vec![crypto], &rate_provider)
+        .map_err(error_message)?
+        .calculated
+        .pop()
+        .ok_or_else(|| "Nothing to preview".into())
 }

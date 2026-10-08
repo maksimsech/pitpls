@@ -1,13 +1,27 @@
 use super::Status;
+use crate::theme::palette;
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::{
     component::{
         button::{Button, ButtonVariants},
         dialog::{Dialog, DialogAction, DialogClose, DialogFooter},
+        kbd::Kbd,
         *,
     },
     *,
 };
+
+actions!(record_editor, [SaveRecord]);
+
+/// The key context of a record editor's body and footer, where
+/// [`SAVE_KEYS`] saves from any field. Enter saves from a text field, as in
+/// every dialog, but opens a focused select or date picker.
+const EDITOR_CONTEXT: &str = "RecordEditor";
+const SAVE_KEYS: &str = "secondary-enter";
+
+pub fn bind_keys(cx: &mut App) {
+    cx.bind_keys([KeyBinding::new(SAVE_KEYS, SaveRecord, Some(EDITOR_CONTEXT))]);
+}
 
 /// Opens a dialog that `render` rebuilds from the view on every frame.
 pub fn open<V: 'static>(
@@ -34,6 +48,96 @@ pub fn form<V: 'static>(
     cx: &mut Context<V>,
 ) -> Dialog {
     let busy = status(this).busy;
+    behaviour(this, dialog, status, submit, close, cx)
+        .when(status(this).is_visible(), |dialog| {
+            dialog.child(status(this).render())
+        })
+        .footer(footer(
+            None,
+            Button::new("dialog-submit").label(submit_label).primary(),
+            busy,
+        ))
+}
+
+/// A record editor: a [`form`] whose `body` shows its own errors, with the
+/// keyboard hints in the footer before Cancel and the submit button.
+/// [`SAVE_KEYS`] runs `submit` from anywhere in the body or footer.
+#[allow(clippy::too_many_arguments)]
+pub fn editor<V: 'static>(
+    this: &V,
+    dialog: Dialog,
+    body: impl IntoElement,
+    submit_label: &'static str,
+    status: fn(&V) -> &Status,
+    submit: fn(&mut V, &mut Window, &mut Context<V>),
+    close: fn(&mut V, &mut Context<V>),
+    cx: &mut Context<V>,
+) -> Dialog {
+    let busy = status(this).busy;
+    let p = *palette(cx);
+    let hints = h_flex()
+        .flex_1()
+        .min_w_0()
+        .gap(px(6.))
+        .text_size(px(12.))
+        .text_color(p.faint)
+        .child(key_hint("escape", cx))
+        .child("cancel")
+        .child(key_hint(SAVE_KEYS, cx).ml(px(8.)))
+        .child("save");
+    behaviour(this, dialog, status, submit, close, cx)
+        .child(
+            div()
+                .key_context(EDITOR_CONTEXT)
+                .on_action(save(submit, cx))
+                .child(body),
+        )
+        .footer(
+            div()
+                .key_context(EDITOR_CONTEXT)
+                .on_action(save(submit, cx))
+                .child(footer(
+                    Some(hints),
+                    Button::new("dialog-submit").label(submit_label).primary(),
+                    busy,
+                )),
+        )
+}
+
+fn save<V: 'static>(
+    submit: fn(&mut V, &mut Window, &mut Context<V>),
+    cx: &mut Context<V>,
+) -> impl Fn(&SaveRecord, &mut Window, &mut App) + 'static {
+    cx.listener(move |this, _: &SaveRecord, window, cx| submit(this, window, cx))
+}
+
+/// A keystroke in the kit's `Kbd`, drawn as an outlined 18px key.
+fn key_hint(keys: &str, cx: &App) -> Kbd {
+    let p = palette(cx);
+    Kbd::new(Keystroke::parse(keys).expect("a valid keystroke"))
+        .outline()
+        .h(px(18.))
+        .px(px(5.))
+        .flex()
+        .items_center()
+        .rounded(px(4.))
+        .bg(gpui_kit::transparent_black())
+        .border_color(p.strong_line)
+        .text_color(p.faint)
+        .text_size(px(11.))
+}
+
+/// What every form dialog shares: no dismissing while busy, Enter submits
+/// without closing, and `close` runs when it closes.
+fn behaviour<V: 'static>(
+    this: &V,
+    dialog: Dialog,
+    status: fn(&V) -> &Status,
+    submit: fn(&mut V, &mut Window, &mut Context<V>),
+    close: fn(&mut V, &mut Context<V>),
+    cx: &mut Context<V>,
+) -> Dialog {
+    let busy = status(this).busy;
     let view = cx.entity().downgrade();
     let submit_view = view.clone();
     dialog
@@ -53,13 +157,6 @@ pub fn form<V: 'static>(
                 close(this, cx);
             }
         }))
-        .when(status(this).is_visible(), |dialog| {
-            dialog.child(status(this).render())
-        })
-        .footer(footer(
-            Button::new("dialog-submit").label(submit_label).primary(),
-            busy,
-        ))
 }
 
 /// Opens a confirmation for a destructive action. Closing it any way runs
@@ -82,6 +179,7 @@ pub fn confirm<V: 'static>(
             .title(title)
             .child(message.clone())
             .footer(footer(
+                None,
                 Button::new("dialog-confirm").label(label).danger(),
                 false,
             ))
@@ -97,9 +195,10 @@ pub fn confirm<V: 'static>(
 }
 
 /// Kit buttons that send Cancel and Confirm to the dialog they're in, sized to
-/// their labels rather than to the footer.
-fn footer(confirm: Button, disabled: bool) -> DialogFooter {
+/// their labels rather than to the footer, after the optional `hints`.
+fn footer(hints: Option<Div>, confirm: Button, disabled: bool) -> DialogFooter {
     DialogFooter::new()
+        .children(hints)
         .child(div().child(DialogClose::new().trigger(|button| {
             button
                 .label("Cancel")

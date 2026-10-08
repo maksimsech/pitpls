@@ -3,13 +3,13 @@ use std::str::FromStr;
 use chrono::NaiveDate;
 use pitpls_core::{
     common::{Amount, Currency},
-    interest::{Interest, InterestTaxData, calculate},
+    interest::{CalculatedInterest, Interest, InterestTaxData, calculate},
     rate::NbpRateProvider,
 };
 use rust_decimal::Decimal;
 use serde::Deserialize;
 
-use super::{duplicate_id_error, error_message, validate_optional_year};
+use super::{duplicate_id_error, error_message, rates_for, validate_optional_year};
 use crate::App;
 
 #[derive(Deserialize)]
@@ -124,4 +124,15 @@ pub async fn load_interests(app: &App, year: Option<i32>) -> Result<InterestTaxD
     let rate_provider = NbpRateProvider::new(rates);
 
     calculate(interests, &rate_provider).map_err(error_message)
+}
+
+/// Calculates one interest record without saving it, as `load_interests` does.
+pub async fn preview_interest(app: &App, interest: Interest) -> Result<CalculatedInterest, String> {
+    let rate_provider = rates_for(app, interest.date).await?;
+
+    calculate(vec![interest], &rate_provider)
+        .map_err(error_message)?
+        .calculated
+        .pop()
+        .ok_or_else(|| "Nothing to preview".into())
 }

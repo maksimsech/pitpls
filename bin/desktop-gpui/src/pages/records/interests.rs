@@ -3,7 +3,7 @@ use crate::navigation::Page;
 use crate::{
     components::{
         form::{self, ChoiceState},
-        records::{CellStyle, RecordColumn, RowDisplay, Step, StepLine},
+        records::{CellStyle, Preview, RecordColumn, RowDisplay, Step, StepLine},
     },
     format::{DisplayText, amount, date, money, pln},
 };
@@ -16,7 +16,11 @@ use pitpls_app::use_case::{
     interest::{self, CreateInterestInput, UpdateInterestInput},
     year::YearInfo,
 };
-use pitpls_core::{common::Currency, interest::CalculatedInterest, tax::POLAND_TAX};
+use pitpls_core::{
+    common::{Amount, Currency},
+    interest::{CalculatedInterest, Interest},
+    tax::POLAND_TAX,
+};
 use pitpls_importers::OutputType;
 use rust_decimal::Decimal;
 use std::sync::Arc;
@@ -126,6 +130,36 @@ impl RecordKind for Interests {
     async fn delete(app: Arc<pitpls_app::App>, ids: Vec<String>) -> Result<u64, String> {
         interest::delete_interests(&app, ids).await
     }
+
+    async fn preview(
+        app: Arc<pitpls_app::App>,
+        draft: InterestDraft,
+    ) -> Result<CalculatedInterest, String> {
+        let (value, currency) = draft.value;
+        let interest = Interest {
+            id: String::new(),
+            date: draft.date,
+            value: Amount { value, currency },
+            provider: String::new(),
+        };
+        interest::preview_interest(&app, interest).await
+    }
+
+    fn preview_display(record: &CalculatedInterest) -> Preview {
+        Preview {
+            nbp_date: record.nbp_date,
+            formula: conversion(record.value, record.nbp_rate).into(),
+            value: pln(record.calculated_value),
+            results: vec![("To pay", pln(record.to_pay))],
+        }
+    }
+}
+
+/// What the interest calculation reads; the provider doesn't count.
+#[derive(Clone, PartialEq)]
+pub struct InterestDraft {
+    date: NaiveDate,
+    value: (Decimal, Currency),
 }
 
 type InterestSubmission = Submission<CreateInterestInput, UpdateInterestInput>;
@@ -142,6 +176,7 @@ pub struct InterestForm {
 impl RecordForm for InterestForm {
     type Record = CalculatedInterest;
     type Submission = InterestSubmission;
+    type Draft = InterestDraft;
 
     fn new(record: Option<&CalculatedInterest>, window: &mut Window, cx: &mut App) -> Self {
         let text = |value: fn(&CalculatedInterest) -> String| record.map(value).unwrap_or_default();
@@ -171,12 +206,16 @@ impl RecordForm for InterestForm {
         }
     }
 
+    fn existing_id(&self) -> Option<&str> {
+        self.existing_id.as_deref()
+    }
+
+    fn id_input(&self) -> &Entity<InputState> {
+        &self.id
+    }
+
     fn first_input(&self) -> &Entity<InputState> {
-        if self.existing_id.is_some() {
-            &self.value
-        } else {
-            &self.id
-        }
+        &self.value
     }
 
     fn submission(&self, cx: &App) -> Result<InterestSubmission, String> {
@@ -202,14 +241,28 @@ impl RecordForm for InterestForm {
         })
     }
 
+    fn draft(&self, cx: &App) -> Option<InterestDraft> {
+        Some(InterestDraft {
+            date: form::picked_date(&self.date, cx)?,
+            value: form::parsed_amount(&self.value, &self.value_currency, cx)?,
+        })
+    }
+
+    fn watch<V: 'static>(
+        &self,
+        window: &mut Window,
+        cx: &mut Context<V>,
+        changed: fn(&mut V, &mut Window, &mut Context<V>),
+    ) -> Vec<Subscription> {
+        vec![
+            form::watch(&self.date, window, cx, changed),
+            form::watch(&self.value, window, cx, changed),
+            form::watch(&self.value_currency, window, cx, changed),
+        ]
+    }
+
     fn render(&self, busy: bool, cx: &App) -> Div {
-        let editing = self.existing_id.is_some();
-        div()
-            .flex()
-            .flex_wrap()
-            .gap_4()
-            .max_w(px(700.))
-            .child(form::input_field("ID", &self.id, busy || editing, cx))
+        form::grid()
             .child(form::date_field("Date", &self.date, busy, cx))
             .child(form::amount_field(
                 "Value",

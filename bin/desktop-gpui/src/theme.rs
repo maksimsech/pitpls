@@ -210,6 +210,10 @@ pub fn configure_theme(cx: &mut App) {
         c.chart_4 = rgb(0x404040).into();
         c.chart_5 = rgb(0x262626).into();
         c.chart_grid = p.line;
+        // Behind dialogs, the page fades back into the panel colour instead of
+        // darkening. GPUI can't blur elements, so this veil stands in for a
+        // frosted backdrop. The kit's default (black 20% / 5%) didn't show.
+        c.overlay = p.surface.opacity(if dark { 0.75 } else { 0.7 });
     });
     cx.set_global(p);
 }

@@ -3,7 +3,7 @@ use crate::navigation::Page;
 use crate::{
     components::{
         form::{self, ChoiceState},
-        records::{CellStyle, RecordColumn, RowDisplay, Step, StepLine},
+        records::{CellStyle, Preview, RecordColumn, RowDisplay, Step, StepLine},
     },
     format::{DisplayText, amount, date, money, pln},
 };
@@ -17,8 +17,8 @@ use pitpls_app::use_case::{
     year::YearInfo,
 };
 use pitpls_core::{
-    common::Currency,
-    dividend::CalculatedDividend,
+    common::{Amount, Country, Currency},
+    dividend::{CalculatedDividend, Dividend},
     tax::{POLAND_TAX, get_treaty_tax},
 };
 use pitpls_importers::OutputType;
@@ -168,6 +168,51 @@ impl RecordKind for Dividends {
     async fn delete(app: Arc<pitpls_app::App>, ids: Vec<String>) -> Result<u64, String> {
         dividend::delete_dividends(&app, ids).await
     }
+
+    async fn preview(
+        app: Arc<pitpls_app::App>,
+        draft: DividendDraft,
+    ) -> Result<CalculatedDividend, String> {
+        let (value, value_currency) = draft.value;
+        let (tax_paid, tax_paid_currency) = draft.tax_paid;
+        let dividend = Dividend {
+            id: String::new(),
+            date: draft.date,
+            ticker: String::new(),
+            value: Amount {
+                value,
+                currency: value_currency,
+            },
+            tax_paid: Amount {
+                value: tax_paid,
+                currency: tax_paid_currency,
+            },
+            country: draft.country,
+            provider: String::new(),
+        };
+        dividend::preview_dividend(&app, dividend).await
+    }
+
+    fn preview_display(record: &CalculatedDividend) -> Preview {
+        Preview {
+            nbp_date: record.nbp_date,
+            formula: conversion(record.value, record.nbp_rate).into(),
+            value: pln(record.calculated_value),
+            results: vec![
+                ("Calculated to pay", pln(record.calculated_to_pay)),
+                ("Used tax paid", pln(record.used_tax_paid)),
+            ],
+        }
+    }
+}
+
+/// What the dividend calculation reads; ticker and provider don't count.
+#[derive(Clone, PartialEq)]
+pub struct DividendDraft {
+    date: NaiveDate,
+    value: (Decimal, Currency),
+    tax_paid: (Decimal, Currency),
+    country: Country,
 }
 
 type DividendSubmission = Submission<CreateDividendInput, UpdateDividendInput>;
@@ -188,6 +233,7 @@ pub struct DividendForm {
 impl RecordForm for DividendForm {
     type Record = CalculatedDividend;
     type Submission = DividendSubmission;
+    type Draft = DividendDraft;
 
     fn new(record: Option<&CalculatedDividend>, window: &mut Window, cx: &mut App) -> Self {
         let text = |value: fn(&CalculatedDividend) -> String| record.map(value).unwrap_or_default();
@@ -233,12 +279,16 @@ impl RecordForm for DividendForm {
         }
     }
 
+    fn existing_id(&self) -> Option<&str> {
+        self.existing_id.as_deref()
+    }
+
+    fn id_input(&self) -> &Entity<InputState> {
+        &self.id
+    }
+
     fn first_input(&self) -> &Entity<InputState> {
-        if self.existing_id.is_some() {
-            &self.ticker
-        } else {
-            &self.id
-        }
+        &self.ticker
     }
 
     fn submission(&self, cx: &App) -> Result<DividendSubmission, String> {
@@ -276,14 +326,33 @@ impl RecordForm for DividendForm {
         })
     }
 
+    fn draft(&self, cx: &App) -> Option<DividendDraft> {
+        Some(DividendDraft {
+            date: form::picked_date(&self.date, cx)?,
+            value: form::parsed_amount(&self.value, &self.value_currency, cx)?,
+            tax_paid: form::parsed_amount(&self.tax_paid, &self.tax_paid_currency, cx)?,
+            country: form::text(&self.country, cx).parse().ok()?,
+        })
+    }
+
+    fn watch<V: 'static>(
+        &self,
+        window: &mut Window,
+        cx: &mut Context<V>,
+        changed: fn(&mut V, &mut Window, &mut Context<V>),
+    ) -> Vec<Subscription> {
+        vec![
+            form::watch(&self.date, window, cx, changed),
+            form::watch(&self.value, window, cx, changed),
+            form::watch(&self.value_currency, window, cx, changed),
+            form::watch(&self.tax_paid, window, cx, changed),
+            form::watch(&self.tax_paid_currency, window, cx, changed),
+            form::watch(&self.country, window, cx, changed),
+        ]
+    }
+
     fn render(&self, busy: bool, cx: &App) -> Div {
-        let editing = self.existing_id.is_some();
-        div()
-            .flex()
-            .flex_wrap()
-            .gap_4()
-            .max_w(px(700.))
-            .child(form::input_field("ID", &self.id, busy || editing, cx))
+        form::grid()
             .child(form::date_field("Date", &self.date, busy, cx))
             .child(form::input_field("Ticker", &self.ticker, busy, cx))
             .child(form::amount_field(
