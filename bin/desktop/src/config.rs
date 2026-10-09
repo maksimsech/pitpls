@@ -1,3 +1,4 @@
+use crate::services::Error as ServiceError;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
@@ -50,19 +51,18 @@ pub struct Preferences {
     pub sidebar_collapsed: bool,
 }
 
-pub async fn read_preferences(path: &std::path::Path) -> Result<Preferences, String> {
+pub async fn read_preferences(path: &std::path::Path) -> Result<Preferences, ServiceError> {
     match tokio::fs::read(path).await {
-        Ok(bytes) => {
-            serde_json::from_slice(&bytes).map_err(|e| format!("Could not read preferences: {e}"))
-        }
+        Ok(bytes) => serde_json::from_slice(&bytes).map_err(ServiceError::ParsePreferences),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Preferences::default()),
-        Err(e) => Err(format!("Could not read preferences: {e}")),
+        Err(e) => Err(ServiceError::ReadPreferences(e)),
     }
 }
 
-pub async fn save_preferences(path: PathBuf, preferences: Preferences) -> Result<(), String> {
-    let bytes = serde_json::to_vec_pretty(&preferences).map_err(|e| e.to_string())?;
+pub async fn save_preferences(path: PathBuf, preferences: Preferences) -> Result<(), ServiceError> {
+    let bytes =
+        serde_json::to_vec_pretty(&preferences).map_err(ServiceError::SerializePreferences)?;
     tokio::fs::write(path, bytes)
         .await
-        .map_err(|e| format!("Could not save preferences: {e}"))
+        .map_err(ServiceError::WritePreferences)
 }

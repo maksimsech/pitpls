@@ -24,6 +24,7 @@ pitpls-core.workspace = true
 pitpls-app.workspace = true
 pitpls-db.workspace = true
 pitpls-importers.workspace = true
+pitpls-nbr.workspace = true
 chrono.workspace = true
 rust_decimal.workspace = true
 tokio = { workspace = true, features = ["rt-multi-thread", "sync"] }

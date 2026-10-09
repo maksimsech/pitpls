@@ -1,100 +1,132 @@
+use chrono::NaiveDate;
+use pitpls_core::common::{Country, CountryParseError, Currency, CurrencyParseError};
+use rust_decimal::Decimal;
 use thiserror::Error;
+
+use crate::ImporterKind;
 
 pub type Result<T> = std::result::Result<T, ImportError>;
 
-#[derive(Debug, Error)]
-pub enum ImportError {
-    #[error("Failed to read import file: {0}")]
-    Read(#[from] std::io::Error),
-    #[error("Failed to extract PDF text: {0}")]
-    PdfExtract(#[from] pdf_extract::OutputError),
-    #[error("Unexpected import format: {0}")]
-    UnexpectedFormat(String),
-    #[error("Missing header row")]
-    MissingHeader,
-    #[error("Unexpected header: {0}")]
-    UnexpectedHeader(String),
-    #[error("Missing column: {0}")]
-    MissingColumn(String),
-    #[error("Missing section: {0}")]
-    MissingSection(String),
-    #[error("Missing field `{name}` in {context}")]
-    MissingField { name: String, context: String },
-    #[error("Invalid field `{name}` in {context}: {value}")]
-    InvalidField {
-        name: String,
-        value: String,
-        context: String,
+#[derive(Clone, Copy, Debug)]
+pub enum ImportField {
+    Line,
+    TotalRow,
+    Ticker,
+    Isin,
+    TrailingTokens,
+    GrossAmount,
+    WithholdingTax,
+    NetAmount,
+    LocalCurrencyRate,
+    SourceCurrency,
+    TotalCurrency,
+}
+
+#[derive(Clone, Debug)]
+pub enum ImportContext {
+    RevolutOtherIncome,
+    RevolutRow {
+        ticker: Option<String>,
+        date: NaiveDate,
     },
-    #[error("Data mismatch in {context}: expected {expected}, got {actual}")]
-    DataMismatch {
-        context: String,
-        expected: String,
+    RevolutTotal,
+    T212Dividend {
+        ticker: String,
+        date: NaiveDate,
+    },
+}
+
+#[derive(Debug)]
+pub struct ImportAmounts {
+    pub gross: Decimal,
+    pub tax: Decimal,
+    pub net: Decimal,
+}
+
+#[derive(Debug, Error)]
+#[error("{self:?}")]
+pub enum ImportError {
+    Read(#[from] std::io::Error),
+    PdfExtract(#[from] pdf_extract::OutputError),
+    UnexpectedFormat {
+        expected: ImporterKind,
+    },
+    MissingHeader,
+    UnexpectedHeader(String),
+    /// The literal column name required by the source file format.
+    MissingColumn(String),
+    MissingSection(ImportContext),
+    MissingField {
+        field: ImportField,
+        context: ImportContext,
+    },
+    InvalidField {
+        field: ImportField,
+        value: String,
+        context: ImportContext,
+    },
+    CurrencyMismatch {
+        field: ImportField,
+        context: ImportContext,
+        expected: Currency,
+        actual: Currency,
+    },
+    CountryMismatch {
+        context: ImportContext,
+        isin: String,
+        expected: Country,
         actual: String,
     },
-    #[error("Malformed row: expected at least {expected} fields, got {actual}: {row}")]
+    AmountMismatch {
+        context: ImportContext,
+        amounts: ImportAmounts,
+    },
+    TotalsMismatch {
+        currency: Currency,
+        expected: ImportAmounts,
+        actual: ImportAmounts,
+    },
     MalformedRow {
         expected: usize,
         actual: usize,
         row: String,
     },
-    #[error("Invalid timestamp `{value}`: {source}")]
     InvalidTimestamp {
         value: String,
         #[source]
         source: chrono::ParseError,
     },
-    #[error("Invalid decimal `{value}`: {source}")]
     InvalidDecimal {
         value: String,
         #[source]
         source: rust_decimal::Error,
     },
-    #[error("Invalid currency `{value}`: {message}")]
-    InvalidCurrency { value: String, message: String },
-    #[error("Invalid ISIN `{isin}`: {message}")]
-    InvalidIsin { isin: String, message: String },
-    #[error("{0}")]
-    Other(String),
+    InvalidCurrency {
+        value: String,
+        #[source]
+        source: CurrencyParseError,
+    },
+    InvalidIsin {
+        isin: String,
+        #[source]
+        source: CountryParseError,
+    },
 }
 
 impl ImportError {
-    pub fn unexpected_format(message: impl Into<String>) -> Self {
-        Self::UnexpectedFormat(message.into())
-    }
-
-    pub fn missing_section(name: impl Into<String>) -> Self {
-        Self::MissingSection(name.into())
-    }
-
-    pub fn missing_field(name: impl Into<String>, context: impl Into<String>) -> Self {
-        Self::MissingField {
-            name: name.into(),
-            context: context.into(),
-        }
+    pub fn missing_field(field: ImportField, context: ImportContext) -> Self {
+        Self::MissingField { field, context }
     }
 
     pub fn invalid_field(
-        name: impl Into<String>,
+        field: ImportField,
         value: impl Into<String>,
-        context: impl Into<String>,
+        context: ImportContext,
     ) -> Self {
         Self::InvalidField {
-            name: name.into(),
+            field,
             value: value.into(),
-            context: context.into(),
-        }
-    }
-
-    pub fn data_mismatch(
-        context: impl Into<String>,
-        expected: impl Into<String>,
-        actual: impl Into<String>,
-    ) -> Self {
-        Self::DataMismatch {
-            context: context.into(),
-            expected: expected.into(),
-            actual: actual.into(),
+            context,
         }
     }
 
@@ -120,21 +152,17 @@ impl ImportError {
         }
     }
 
-    pub fn invalid_currency(value: impl Into<String>, source: impl Into<String>) -> Self {
+    pub fn invalid_currency(value: impl Into<String>, source: CurrencyParseError) -> Self {
         Self::InvalidCurrency {
             value: value.into(),
-            message: source.into(),
+            source,
         }
     }
 
-    pub fn invalid_isin(isin: impl Into<String>, source: impl Into<String>) -> Self {
+    pub fn invalid_isin(isin: impl Into<String>, source: CountryParseError) -> Self {
         Self::InvalidIsin {
             isin: isin.into(),
-            message: source.into(),
+            source,
         }
-    }
-
-    pub fn other(message: impl Into<String>) -> Self {
-        Self::Other(message.into())
     }
 }

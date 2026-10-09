@@ -13,13 +13,12 @@ pub use model::{Conversion, Rate};
 const MAX_LOOKUP_STEPS: u8 = 10;
 
 #[derive(Debug, Error, PartialEq, Eq)]
+#[error("{self:?}")]
 pub enum RateConverterError {
-    #[error("There is no rates available.")]
     NoRatesAvailable,
-    #[error("It took {steps} steps to get n-1 rate for {currency} on {date}.")]
     StepLimitReached {
         steps: u8,
-        currency: String,
+        currency: Currency,
         date: NaiveDate,
     },
 }
@@ -42,8 +41,6 @@ impl NbpRateProvider {
         Self { rates_by_date }
     }
 
-    /// The first and last dates `convert` may read a rate from for an amount
-    /// dated `at`: the [`MAX_LOOKUP_STEPS`] days before it.
     pub fn lookup_window(at: NaiveDate) -> (NaiveDate, NaiveDate) {
         (
             at - chrono::Days::new(MAX_LOOKUP_STEPS.into()),
@@ -108,7 +105,7 @@ impl NbpRateProvider {
 
         Err(RateConverterError::StepLimitReached {
             steps: MAX_LOOKUP_STEPS,
-            currency: currency.to_string(),
+            currency: *currency,
             date: *date,
         })
     }

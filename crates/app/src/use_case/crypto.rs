@@ -1,16 +1,31 @@
-use std::str::FromStr;
-
-use chrono::NaiveDate;
 use pitpls_core::{
     common::{Amount, Currency},
-    crypto::{Action, CalculatedCrypto, Crypto, CryptoTaxData, calculate_sell_buy_values},
+    crypto::{
+        Action, CalculateSellBuyValuesError, CalculatedCrypto, Crypto, CryptoTaxData,
+        calculate_sell_buy_values,
+    },
     rate::NbpRateProvider,
 };
-use rust_decimal::Decimal;
 use serde::Deserialize;
 
-use super::{duplicate_id_error, error_message, rates_for, validate_optional_year};
+use super::rates_for;
+use super::validation::{
+    AmountField, Error as ValidationError, parse_amount, parse_date, validate_optional_year,
+};
 use crate::App;
+use pitpls_db::RepositoryError;
+use thiserror::Error;
+
+#[derive(Debug, Error)]
+#[error("{self:?}")]
+pub enum Error {
+    Validation(#[from] ValidationError),
+    Repository(#[from] RepositoryError),
+    DuplicateId(String),
+    NotFound(String),
+    Calculation(#[from] CalculateSellBuyValuesError),
+    NothingToPreview,
+}
 
 #[derive(Deserialize)]
 pub struct CreateCryptoInput {
@@ -45,11 +60,10 @@ fn build_crypto(
     fee: &str,
     fee_currency: Currency,
     provider: String,
-) -> Result<Crypto, String> {
-    let date = NaiveDate::parse_from_str(date, "%Y-%m-%d")
-        .map_err(|_| "Invalid date (expected YYYY-MM-DD)".to_string())?;
-    let value_dec = Decimal::from_str(value).map_err(|_| format!("Invalid value: {value}"))?;
-    let fee_dec = Decimal::from_str(fee).map_err(|_| format!("Invalid fee: {fee}"))?;
+) -> Result<Crypto, ValidationError> {
+    let date = parse_date(date)?;
+    let value_dec = parse_amount(value, AmountField::Value)?;
+    let fee_dec = parse_amount(fee, AmountField::Fee)?;
 
     Ok(Crypto {
         id,
@@ -67,7 +81,7 @@ fn build_crypto(
     })
 }
 
-pub async fn create_crypto(app: &App, input: CreateCryptoInput) -> Result<String, String> {
+pub async fn create_crypto(app: &App, input: CreateCryptoInput) -> Result<String, Error> {
     let id = input
         .id
         .filter(|s| !s.trim().is_empty())
@@ -88,14 +102,20 @@ pub async fn create_crypto(app: &App, input: CreateCryptoInput) -> Result<String
         .crypto_repo()
         .insert(&crypto)
         .await
-        .map_err(|error| duplicate_id_error(error, "Crypto", &id))?;
+        .map_err(|error| {
+            if error.is_unique_violation() {
+                Error::DuplicateId(id.clone())
+            } else {
+                Error::Repository(error)
+            }
+        })?;
 
     Ok(id)
 }
 
-pub async fn update_crypto(app: &App, input: UpdateCryptoInput) -> Result<(), String> {
+pub async fn update_crypto(app: &App, input: UpdateCryptoInput) -> Result<(), Error> {
     if input.id.trim().is_empty() {
-        return Err("ID is required".into());
+        return Err(ValidationError::MissingId.into());
     }
 
     let id = input.id.clone();
@@ -110,50 +130,34 @@ pub async fn update_crypto(app: &App, input: UpdateCryptoInput) -> Result<(), St
         input.provider,
     )?;
 
-    let rows = app
-        .db
-        .crypto_repo()
-        .update(&crypto)
-        .await
-        .map_err(error_message)?;
+    let rows = app.db.crypto_repo().update(&crypto).await?;
     if rows == 0 {
-        return Err(format!("Crypto with ID '{id}' not found"));
+        return Err(Error::NotFound(id));
     }
     Ok(())
 }
 
-pub async fn delete_cryptos(app: &App, ids: Vec<String>) -> Result<u64, String> {
-    app.db
-        .crypto_repo()
-        .delete_by_ids(&ids)
-        .await
-        .map_err(error_message)
+pub async fn delete_cryptos(app: &App, ids: Vec<String>) -> Result<u64, RepositoryError> {
+    app.db.crypto_repo().delete_by_ids(&ids).await
 }
 
-pub async fn load_cryptos(app: &App, year: Option<i32>) -> Result<CryptoTaxData, String> {
+pub async fn load_cryptos(app: &App, year: Option<i32>) -> Result<CryptoTaxData, Error> {
     validate_optional_year(year)?;
-    let mut cryptos = app
-        .db
-        .crypto_repo()
-        .get_by_year(year)
-        .await
-        .map_err(error_message)?;
+    let mut cryptos = app.db.crypto_repo().get_by_year(year).await?;
 
-    cryptos.sort_unstable_by(|a, b| a.date.cmp(&b.date));
+    cryptos.sort_unstable_by_key(|a| a.date);
 
-    let rates = app.db.rate_repo().load_all().await.map_err(error_message)?;
+    let rates = app.db.rate_repo().load_all().await?;
     let rate_provider = NbpRateProvider::new(rates);
 
-    calculate_sell_buy_values(cryptos, &rate_provider).map_err(error_message)
+    calculate_sell_buy_values(cryptos, &rate_provider).map_err(Error::from)
 }
 
-/// Calculates one crypto record without saving it, as `load_cryptos` does.
-pub async fn preview_crypto(app: &App, crypto: Crypto) -> Result<CalculatedCrypto, String> {
+pub async fn preview_crypto(app: &App, crypto: Crypto) -> Result<CalculatedCrypto, Error> {
     let rate_provider = rates_for(app, crypto.date).await?;
 
-    calculate_sell_buy_values(vec![crypto], &rate_provider)
-        .map_err(error_message)?
+    calculate_sell_buy_values(vec![crypto], &rate_provider)?
         .calculated
         .pop()
-        .ok_or_else(|| "Nothing to preview".into())
+        .ok_or(Error::NothingToPreview)
 }

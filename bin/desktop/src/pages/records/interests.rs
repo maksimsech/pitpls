@@ -6,6 +6,7 @@ use crate::{
     },
     format::{DisplayText, amount, date, money, pln},
     navigation::Page,
+    services::Error as ServiceError,
 };
 use chrono::NaiveDate;
 use gpui_kit::{
@@ -111,26 +112,32 @@ impl RecordKind for Interests {
     async fn load(
         app: Arc<pitpls_app::App>,
         year: Option<i32>,
-    ) -> Result<(Vec<Decimal>, Vec<CalculatedInterest>), String> {
+    ) -> Result<(Vec<Decimal>, Vec<CalculatedInterest>), ServiceError> {
         let data = interest::load_interests(&app, year).await?;
         Ok((vec![data.income, data.to_pay], data.calculated))
     }
 
-    async fn save(app: Arc<pitpls_app::App>, submission: InterestSubmission) -> Result<(), String> {
+    async fn save(
+        app: Arc<pitpls_app::App>,
+        submission: InterestSubmission,
+    ) -> Result<(), ServiceError> {
         match submission {
             Submission::Create(input) => interest::create_interest(&app, input).await.map(drop),
             Submission::Update(input) => interest::update_interest(&app, input).await,
         }
+        .map_err(ServiceError::from)
     }
 
-    async fn delete(app: Arc<pitpls_app::App>, ids: Vec<String>) -> Result<u64, String> {
-        interest::delete_interests(&app, ids).await
+    async fn delete(app: Arc<pitpls_app::App>, ids: Vec<String>) -> Result<u64, ServiceError> {
+        interest::delete_interests(&app, ids)
+            .await
+            .map_err(ServiceError::from)
     }
 
     async fn preview(
         app: Arc<pitpls_app::App>,
         draft: InterestDraft,
-    ) -> Result<CalculatedInterest, String> {
+    ) -> Result<CalculatedInterest, ServiceError> {
         let (value, currency) = draft.value;
         let interest = Interest {
             id: String::new(),
@@ -138,7 +145,9 @@ impl RecordKind for Interests {
             value: Amount { value, currency },
             provider: String::new(),
         };
-        interest::preview_interest(&app, interest).await
+        interest::preview_interest(&app, interest)
+            .await
+            .map_err(ServiceError::from)
     }
 
     fn preview_display(record: &CalculatedInterest) -> Preview {

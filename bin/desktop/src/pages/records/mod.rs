@@ -5,7 +5,6 @@ mod table;
 
 pub use self::{crypto::Crypto, dividends::Dividends, interests::Interests};
 
-use super::missing_rate;
 use crate::{
     components::{
         ButtonText, Status, dialog, form, header, nbp, notice,
@@ -17,6 +16,7 @@ use crate::{
     },
     format::{DisplayText, amount, pln},
     navigation::{Page, PageContext},
+    services::Error as ServiceError,
     theme::{palette, tabular_digits},
 };
 use chrono::{Datelike, NaiveDate};
@@ -99,19 +99,19 @@ pub trait RecordKind: 'static {
     fn load(
         app: Arc<pitpls_app::App>,
         year: Option<i32>,
-    ) -> impl Future<Output = Result<(Vec<Decimal>, Vec<Self::Record>), String>> + Send;
+    ) -> impl Future<Output = Result<(Vec<Decimal>, Vec<Self::Record>), ServiceError>> + Send;
     fn save(
         app: Arc<pitpls_app::App>,
         submission: <Self::Form as RecordForm>::Submission,
-    ) -> impl Future<Output = Result<(), String>> + Send;
+    ) -> impl Future<Output = Result<(), ServiceError>> + Send;
     fn delete(
         app: Arc<pitpls_app::App>,
         ids: Vec<String>,
-    ) -> impl Future<Output = Result<u64, String>> + Send;
+    ) -> impl Future<Output = Result<u64, ServiceError>> + Send;
     fn preview(
         app: Arc<pitpls_app::App>,
         draft: Draft<Self>,
-    ) -> impl Future<Output = Result<Self::Record, String>> + Send;
+    ) -> impl Future<Output = Result<Self::Record, ServiceError>> + Send;
     fn preview_display(record: &Self::Record) -> Preview;
 }
 
@@ -862,7 +862,7 @@ impl<K: RecordKind> RecordsPage<K> {
         let providers = IMPORTERS
             .iter()
             .filter(|importer| importer.output.iter().any(K::imported))
-            .map(|importer| importer.name)
+            .map(|importer| crate::messages::importer_name(importer.kind))
             .collect::<Vec<_>>()
             .join(" or ");
         let description = format!("Import a {providers} statement, or add a record by hand.");
@@ -1032,11 +1032,16 @@ impl<K: RecordKind> RecordsPage<K> {
                 Ok((totals, records, other_year))
             },
             |this, result, _, cx| {
+                let missing_rate = result
+                    .as_ref()
+                    .err()
+                    .is_some_and(|error| error.missing_rate());
                 let loaded = this.status.loaded(result);
-                this.missing_rate = this
-                    .status
-                    .error
-                    .take_if(|error| missing_rate(error).is_some());
+                this.missing_rate = if missing_rate {
+                    this.status.error.take()
+                } else {
+                    None
+                };
                 if let Some((totals, records, other_year)) = loaded {
                     this.apply(totals, records, other_year);
                 }

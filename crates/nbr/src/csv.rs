@@ -7,37 +7,30 @@ use thiserror::Error;
 use tokio::fs::read;
 
 #[derive(Debug, Error)]
+#[error("{self:?}")]
 pub enum CsvImportError {
-    #[error("Invalid extension")]
     InvalidExtension,
-    #[error("Empty rates CSV")]
     Empty,
-    #[error("Invalid format")]
     InvalidFormat,
-    #[error("Failed to read rates CSV: {0}")]
     Read(#[from] std::io::Error),
-    #[error("Invalid date at line {line}: {source}")]
     InvalidDate {
         line: usize,
         #[source]
         source: chrono::ParseError,
     },
-    #[error("Invalid rate unit in header `{header}`: {source}")]
     InvalidUnit {
         header: String,
         #[source]
         source: rust_decimal::Error,
     },
-    #[error("Invalid rate in column `{column}` at line {line}: {source}")]
     InvalidRate {
         line: usize,
         column: String,
         #[source]
         source: rust_decimal::Error,
     },
-    #[error("Duplicate rate for {currency} on {date} at line {line}")]
     DuplicateRate {
-        currency: String,
+        currency: Currency,
         date: NaiveDate,
         line: usize,
     },
@@ -145,7 +138,7 @@ fn parse_row(
             .any(|r| r.date == date && r.currency == currency)
         {
             return Err(CsvImportError::DuplicateRate {
-                currency: currency.to_string(),
+                currency,
                 date,
                 line: line_number,
             });

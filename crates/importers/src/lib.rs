@@ -5,7 +5,7 @@ mod impls;
 pub mod model;
 
 use crate::impls::{coinbase, revolut, t212};
-pub use error::{ImportError, Result};
+pub use error::{ImportAmounts, ImportContext, ImportError, ImportField, Result};
 pub use model::{ImportData, Importer, ImporterKind, InputType, OutputType};
 
 pub async fn import(kind: ImporterKind, path: &str) -> Result<ImportData> {
@@ -46,19 +46,16 @@ pub async fn import(kind: ImporterKind, path: &str) -> Result<ImportData> {
 pub const IMPORTERS: &[Importer] = &[
     Importer {
         kind: ImporterKind::T212,
-        name: "Trading 212",
         input: &[InputType::Csv],
         output: &[OutputType::Dividend, OutputType::Interest],
     },
     Importer {
         kind: ImporterKind::Revolut,
-        name: "Revolut",
         input: &[InputType::Pdf],
         output: &[OutputType::Dividend],
     },
     Importer {
         kind: ImporterKind::Coinbase,
-        name: "Coinbase",
         input: &[InputType::Csv],
         output: &[OutputType::Crypto],
     },

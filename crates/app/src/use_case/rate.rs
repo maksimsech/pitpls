@@ -2,11 +2,31 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use chrono::NaiveDate;
 use pitpls_core::{common::Currency, rate::Rate};
-use pitpls_nbr::{load_api_rates, load_csv_rates};
+use pitpls_nbr::{
+    ApiImportError as NbpApiError, CsvImportError as NbpCsvError, load_api_rates, load_csv_rates,
+};
+use rust_decimal::Decimal;
 use serde::Serialize;
 
-use super::{error_message, validate_year};
+use super::validation::{Error as ValidationError, validate_year};
 use crate::App;
+use pitpls_db::RepositoryError;
+use thiserror::Error;
+
+#[derive(Debug, Error)]
+#[error("{self:?}")]
+pub enum CsvImportError {
+    Parse(#[from] NbpCsvError),
+    Repository(#[from] RepositoryError),
+}
+
+#[derive(Debug, Error)]
+#[error("{self:?}")]
+pub enum ApiImportError {
+    Validation(#[from] ValidationError),
+    Fetch(#[from] NbpApiError),
+    Repository(#[from] RepositoryError),
+}
 
 #[derive(Serialize)]
 pub struct RatesViewModel {
@@ -16,14 +36,14 @@ pub struct RatesViewModel {
 
 #[derive(Serialize)]
 pub struct RateDay {
-    pub date: String,
+    pub date: NaiveDate,
     pub rates: Vec<RateValue>,
 }
 
 #[derive(Serialize)]
 pub struct RateValue {
     pub currency: Currency,
-    pub rate: String,
+    pub rate: Decimal,
 }
 
 /// The dates of the stored NBP rates.
@@ -33,41 +53,39 @@ pub struct RateCoverage {
     pub last: NaiveDate,
 }
 
-pub async fn import_csv(app: &App, file: String) -> Result<u64, String> {
-    let rates = load_csv_rates(&file).await.map_err(error_message)?;
+pub async fn import_csv(app: &App, file: String) -> Result<u64, CsvImportError> {
+    let rates = load_csv_rates(&file).await?;
 
     app.db
         .rate_repo()
         .upload(rates.into_iter())
         .await
-        .map_err(error_message)
+        .map_err(CsvImportError::from)
 }
 
-pub async fn import_api(app: &App, year: i32) -> Result<u64, String> {
+pub async fn import_api(app: &App, year: i32) -> Result<u64, ApiImportError> {
     validate_year(year)?;
-    let rates = load_api_rates(&app.api_client, year)
-        .await
-        .map_err(error_message)?;
+    let rates = load_api_rates(&app.api_client, year).await?;
 
     app.db
         .rate_repo()
         .upload(rates.into_iter())
         .await
-        .map_err(error_message)
+        .map_err(ApiImportError::from)
 }
 
-pub async fn reset_rates(app: &App) -> Result<u64, String> {
-    app.db.rate_repo().reset().await.map_err(error_message)
+pub async fn reset_rates(app: &App) -> Result<u64, RepositoryError> {
+    app.db.rate_repo().reset().await
 }
 
 /// The earliest and latest rate dates, or nothing when no rates are stored.
-pub async fn rate_coverage(app: &App) -> Result<Option<RateCoverage>, String> {
-    let coverage = app.db.rate_repo().coverage().await.map_err(error_message)?;
+pub async fn rate_coverage(app: &App) -> Result<Option<RateCoverage>, RepositoryError> {
+    let coverage = app.db.rate_repo().coverage().await?;
     Ok(coverage.map(|(first, last)| RateCoverage { first, last }))
 }
 
-pub async fn list_rates(app: &App) -> Result<RatesViewModel, String> {
-    let rates = app.db.rate_repo().load_all().await.map_err(error_message)?;
+pub async fn list_rates(app: &App) -> Result<RatesViewModel, RepositoryError> {
+    let rates = app.db.rate_repo().load_all().await?;
 
     let mut currencies = BTreeSet::new();
     let mut rates_by_day = BTreeMap::<_, Vec<RateValue>>::new();
@@ -80,10 +98,7 @@ pub async fn list_rates(app: &App) -> Result<RatesViewModel, String> {
 
     let rows = rates_by_day
         .into_iter()
-        .map(|(date, rates)| RateDay {
-            date: date.to_string(),
-            rates,
-        })
+        .map(|(date, rates)| RateDay { date, rates })
         .collect();
 
     let mut currencies = currencies.into_iter().collect::<Vec<_>>();
@@ -99,7 +114,7 @@ fn rate_value(rate: &Rate) -> Option<RateValue> {
 
     Some(RateValue {
         currency: rate.currency,
-        rate: rate.rate.to_string(),
+        rate: rate.rate,
     })
 }
 

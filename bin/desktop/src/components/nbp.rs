@@ -1,5 +1,5 @@
 use super::{Status, dialog, form, spinner};
-use crate::theme::palette;
+use crate::{services::Error as ServiceError, theme::palette};
 use chrono::Datelike;
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::{
@@ -24,7 +24,7 @@ pub fn open<V: 'static>(
     input
 }
 
-pub async fn import(app: Arc<pitpls_app::App>, year: i32) -> Result<String, String> {
+pub async fn import(app: Arc<pitpls_app::App>, year: i32) -> Result<String, ServiceError> {
     let count = rate::import_api(&app, year).await?;
     Ok(format!("Imported {count} rates."))
 }

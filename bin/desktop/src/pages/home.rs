@@ -1,8 +1,8 @@
-use super::missing_rate;
 use crate::{
     components::{self, ButtonText, Status, data, header, nbp, notice, value},
     format::{DisplayText, pln, record_count},
     navigation::{Page, PageContext},
+    services::Error as ServiceError,
     theme::{palette, tabular_digits},
 };
 use chrono::{Datelike, Local};
@@ -15,7 +15,7 @@ use gpui_kit::{
 use pitpls_app::use_case::{
     import::{self, LastImport},
     rate::{self, RateCoverage},
-    tax,
+    tax::{self, Error as TaxError},
     year::{self, YearInfo},
 };
 use pitpls_core::summary::TaxSummary;
@@ -68,7 +68,7 @@ impl Overview {
         years: &[YearInfo],
         coverage: Option<RateCoverage>,
         last_import: Option<LastImport>,
-        summary: Result<TaxSummary, String>,
+        summary: Result<TaxSummary, TaxError>,
     ) -> Self {
         let selected = years
             .iter()
@@ -83,10 +83,16 @@ impl Overview {
             });
         let totals = match summary {
             Ok(summary) => Totals::Ready(Box::new(Forms::new(&summary))),
-            Err(error) => match missing_rate(&error) {
-                Some(conversion) => Totals::MissingRate(conversion.to_owned().into()),
-                None => Totals::Failed(error.into()),
-            },
+            Err(error) => {
+                let error = ServiceError::from(error);
+                let missing_rate = error.missing_rate();
+                let message = error.into();
+                if missing_rate {
+                    Totals::MissingRate(message)
+                } else {
+                    Totals::Failed(message)
+                }
+            }
         };
         Self {
             dividends,
@@ -502,7 +508,10 @@ impl HomePage {
                     })
                     .collect::<Vec<_>>()
                     .join("/");
-                format!("{} {formats}", importer.name)
+                format!(
+                    "{} {formats}",
+                    crate::messages::importer_name(importer.kind)
+                )
             })
             .collect::<Vec<_>>();
         let statements = match statements.split_last() {

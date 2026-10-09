@@ -8,16 +8,6 @@ use crate::navigation::{Page, PageContext};
 use gpui_kit::*;
 use records::{Crypto, Dividends, Interests, RecordsPage};
 
-/// The use cases return errors as text, so a missing NBP rate is matched by its
-/// message. The summary's "Failed to calculate … tax summary: " prefix is
-/// dropped.
-fn missing_rate(error: &str) -> Option<&str> {
-    let error = error
-        .split_once(" tax summary: ")
-        .map_or(error, |(_, inner)| inner);
-    error.starts_with("Failed to convert").then_some(error)
-}
-
 pub fn open(
     page: Page,
     context: PageContext,

@@ -1554,6 +1554,7 @@ dependencies = [
  "pitpls-core",
  "pitpls-db",
  "pitpls-importers",
+ "pitpls-nbr",
  "rfd",
  "rust_decimal",
  "serde",
@@ -5473,6 +5474,7 @@ dependencies = [
  "reqwest",
  "rust_decimal",
  "serde",
+ "thiserror 2.0.18",
  "uuid",
 ]
 

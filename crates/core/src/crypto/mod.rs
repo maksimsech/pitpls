@@ -11,10 +11,9 @@ pub use model::{Action, CalculatedCrypto, Crypto, CryptoTaxData};
 mod model;
 
 #[derive(Debug, Error)]
+#[error("{self:?}")]
 pub enum CalculateSellBuyValuesError {
-    #[error("Failed to convert crypto value to PLN: {0}")]
     ValueConversion(#[source] RateConverterError),
-    #[error("Failed to convert crypto fee to PLN: {0}")]
     FeeConversion(#[source] RateConverterError),
 }
 

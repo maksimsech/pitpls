@@ -1,7 +1,15 @@
-use super::{error_message, validate_year};
+use super::validation::{Error as ValidationError, validate_year};
 use crate::App;
+use pitpls_db::RepositoryError;
+use thiserror::Error;
 
-/// A year for the year selector: it has records, was added by hand, or both.
+#[derive(Debug, Error)]
+#[error("{self:?}")]
+pub enum Error {
+    Validation(#[from] ValidationError),
+    Repository(#[from] RepositoryError),
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct YearInfo {
     pub year: i32,
@@ -18,14 +26,8 @@ impl YearInfo {
     }
 }
 
-/// Years with records merged with the custom years, newest first.
-pub async fn list_year_info(app: &App) -> Result<Vec<YearInfo>, String> {
-    let years = app
-        .db
-        .year_repo()
-        .list_with_records()
-        .await
-        .map_err(error_message)?;
+pub async fn list_year_info(app: &App) -> Result<Vec<YearInfo>, RepositoryError> {
+    let years = app.db.year_repo().list_with_records().await?;
     Ok(years
         .into_iter()
         .map(|year| YearInfo {
@@ -38,12 +40,12 @@ pub async fn list_year_info(app: &App) -> Result<Vec<YearInfo>, String> {
         .collect())
 }
 
-pub async fn add_year(app: &App, year: i32) -> Result<(), String> {
+pub async fn add_year(app: &App, year: i32) -> Result<(), Error> {
     validate_year(year)?;
-    app.db.year_repo().add(year).await.map_err(error_message)
+    app.db.year_repo().add(year).await.map_err(Error::from)
 }
 
-pub async fn delete_year(app: &App, year: i32) -> Result<u64, String> {
+pub async fn delete_year(app: &App, year: i32) -> Result<u64, Error> {
     validate_year(year)?;
-    app.db.year_repo().delete(year).await.map_err(error_message)
+    app.db.year_repo().delete(year).await.map_err(Error::from)
 }

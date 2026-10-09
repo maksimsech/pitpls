@@ -4,7 +4,7 @@ use crate::{
     navigation::{Page, PageContext},
     theme::{palette, tabular_digits},
 };
-use chrono::{Datelike, NaiveDate};
+use chrono::Datelike;
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::{
     assets::IconName,
@@ -382,9 +382,7 @@ impl RatesPage {
                     .into_iter()
                     .rev()
                     .map(|row| RateRow {
-                        date: NaiveDate::parse_from_str(&row.date, "%Y-%m-%d")
-                            .map(|day| format::date(day).main)
-                            .unwrap_or_else(|_| row.date.into()),
+                        date: format::date(row.date).main,
                         rates: data
                             .currencies
                             .iter()
@@ -392,7 +390,7 @@ impl RatesPage {
                                 row.rates
                                     .iter()
                                     .find(|rate| rate.currency == *currency)
-                                    .map(|rate| rate.rate.clone().into())
+                                    .map(|rate| rate.rate.to_string().into())
                                     .unwrap_or_else(|| "—".into())
                             })
                             .collect(),

@@ -9,6 +9,7 @@ pub mod notice;
 pub mod records;
 pub mod value;
 
+use crate::services::Error as ServiceError;
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::{
     component::{alert::Alert, spinner::Spinner, *},
@@ -60,7 +61,7 @@ impl Status {
         }));
     }
 
-    pub fn loaded<T>(&mut self, result: Result<T, String>) -> Option<T> {
+    pub fn loaded<T>(&mut self, result: Result<T, ServiceError>) -> Option<T> {
         self.loading = false;
         self.loading_visible = false;
         self.loading_delay = None;
@@ -80,7 +81,7 @@ impl Status {
         self.message = None;
     }
 
-    pub fn saved(&mut self, result: Result<String, String>) -> bool {
+    pub fn saved(&mut self, result: Result<String, ServiceError>) -> bool {
         self.busy = false;
         match result {
             Ok(message) => {

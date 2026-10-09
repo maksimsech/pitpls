@@ -1,16 +1,30 @@
-use std::str::FromStr;
-
-use chrono::NaiveDate;
 use pitpls_core::{
     common::{Amount, Currency},
-    interest::{CalculatedInterest, Interest, InterestTaxData, calculate},
+    interest::{
+        CalculateInterestTaxError, CalculatedInterest, Interest, InterestTaxData, calculate,
+    },
     rate::NbpRateProvider,
 };
-use rust_decimal::Decimal;
 use serde::Deserialize;
 
-use super::{duplicate_id_error, error_message, rates_for, validate_optional_year};
+use super::rates_for;
+use super::validation::{
+    AmountField, Error as ValidationError, parse_amount, parse_date, validate_optional_year,
+};
 use crate::App;
+use pitpls_db::RepositoryError;
+use thiserror::Error;
+
+#[derive(Debug, Error)]
+#[error("{self:?}")]
+pub enum Error {
+    Validation(#[from] ValidationError),
+    Repository(#[from] RepositoryError),
+    DuplicateId(String),
+    NotFound(String),
+    Calculation(#[from] CalculateInterestTaxError),
+    NothingToPreview,
+}
 
 #[derive(Deserialize)]
 pub struct CreateInterestInput {
@@ -36,10 +50,9 @@ fn build_interest(
     value: &str,
     value_currency: Currency,
     provider: String,
-) -> Result<Interest, String> {
-    let date = NaiveDate::parse_from_str(date, "%Y-%m-%d")
-        .map_err(|_| "Invalid date (expected YYYY-MM-DD)".to_string())?;
-    let value_dec = Decimal::from_str(value).map_err(|_| format!("Invalid value: {value}"))?;
+) -> Result<Interest, ValidationError> {
+    let date = parse_date(date)?;
+    let value_dec = parse_amount(value, AmountField::Value)?;
 
     Ok(Interest {
         id,
@@ -52,7 +65,7 @@ fn build_interest(
     })
 }
 
-pub async fn create_interest(app: &App, input: CreateInterestInput) -> Result<String, String> {
+pub async fn create_interest(app: &App, input: CreateInterestInput) -> Result<String, Error> {
     let id = input
         .id
         .filter(|s| !s.trim().is_empty())
@@ -70,14 +83,20 @@ pub async fn create_interest(app: &App, input: CreateInterestInput) -> Result<St
         .interest_repo()
         .insert(&interest)
         .await
-        .map_err(|error| duplicate_id_error(error, "Interest", &id))?;
+        .map_err(|error| {
+            if error.is_unique_violation() {
+                Error::DuplicateId(id.clone())
+            } else {
+                Error::Repository(error)
+            }
+        })?;
 
     Ok(id)
 }
 
-pub async fn update_interest(app: &App, input: UpdateInterestInput) -> Result<(), String> {
+pub async fn update_interest(app: &App, input: UpdateInterestInput) -> Result<(), Error> {
     if input.id.trim().is_empty() {
-        return Err("ID is required".into());
+        return Err(ValidationError::MissingId.into());
     }
 
     let id = input.id.clone();
@@ -89,50 +108,34 @@ pub async fn update_interest(app: &App, input: UpdateInterestInput) -> Result<()
         input.provider,
     )?;
 
-    let rows = app
-        .db
-        .interest_repo()
-        .update(&interest)
-        .await
-        .map_err(error_message)?;
+    let rows = app.db.interest_repo().update(&interest).await?;
     if rows == 0 {
-        return Err(format!("Interest with ID '{id}' not found"));
+        return Err(Error::NotFound(id));
     }
     Ok(())
 }
 
-pub async fn delete_interests(app: &App, ids: Vec<String>) -> Result<u64, String> {
-    app.db
-        .interest_repo()
-        .delete_by_ids(&ids)
-        .await
-        .map_err(error_message)
+pub async fn delete_interests(app: &App, ids: Vec<String>) -> Result<u64, RepositoryError> {
+    app.db.interest_repo().delete_by_ids(&ids).await
 }
 
-pub async fn load_interests(app: &App, year: Option<i32>) -> Result<InterestTaxData, String> {
+pub async fn load_interests(app: &App, year: Option<i32>) -> Result<InterestTaxData, Error> {
     validate_optional_year(year)?;
-    let mut interests = app
-        .db
-        .interest_repo()
-        .get_by_year(year)
-        .await
-        .map_err(error_message)?;
+    let mut interests = app.db.interest_repo().get_by_year(year).await?;
 
-    interests.sort_unstable_by(|a, b| a.date.cmp(&b.date));
+    interests.sort_unstable_by_key(|a| a.date);
 
-    let rates = app.db.rate_repo().load_all().await.map_err(error_message)?;
+    let rates = app.db.rate_repo().load_all().await?;
     let rate_provider = NbpRateProvider::new(rates);
 
-    calculate(interests, &rate_provider).map_err(error_message)
+    calculate(interests, &rate_provider).map_err(Error::from)
 }
 
-/// Calculates one interest record without saving it, as `load_interests` does.
-pub async fn preview_interest(app: &App, interest: Interest) -> Result<CalculatedInterest, String> {
+pub async fn preview_interest(app: &App, interest: Interest) -> Result<CalculatedInterest, Error> {
     let rate_provider = rates_for(app, interest.date).await?;
 
-    calculate(vec![interest], &rate_provider)
-        .map_err(error_message)?
+    calculate(vec![interest], &rate_provider)?
         .calculated
         .pop()
-        .ok_or_else(|| "Nothing to preview".into())
+        .ok_or(Error::NothingToPreview)
 }

@@ -1,16 +1,30 @@
-use std::str::FromStr;
-
-use chrono::NaiveDate;
 use pitpls_core::{
     common::{Amount, Country, Currency},
-    dividend::{CalculatedDividend, Dividend, DividendTaxData, calculate},
+    dividend::{
+        CalculateDividendTaxError, CalculatedDividend, Dividend, DividendTaxData, calculate,
+    },
     rate::NbpRateProvider,
 };
-use rust_decimal::Decimal;
 use serde::Deserialize;
 
-use super::{duplicate_id_error, error_message, rates_for, validate_optional_year};
+use super::rates_for;
+use super::validation::{
+    AmountField, Error as ValidationError, parse_amount, parse_date, validate_optional_year,
+};
 use crate::App;
+use pitpls_db::RepositoryError;
+use thiserror::Error;
+
+#[derive(Debug, Error)]
+#[error("{self:?}")]
+pub enum Error {
+    Validation(#[from] ValidationError),
+    Repository(#[from] RepositoryError),
+    DuplicateId(String),
+    NotFound(String),
+    Calculation(#[from] CalculateDividendTaxError),
+    NothingToPreview,
+}
 
 #[derive(Deserialize)]
 pub struct CreateDividendInput {
@@ -48,12 +62,10 @@ fn build_dividend(
     tax_paid_currency: Currency,
     country: Country,
     provider: String,
-) -> Result<Dividend, String> {
-    let date = NaiveDate::parse_from_str(date, "%Y-%m-%d")
-        .map_err(|_| "Invalid date (expected YYYY-MM-DD)".to_string())?;
-    let value_dec = Decimal::from_str(value).map_err(|_| format!("Invalid value: {value}"))?;
-    let tax_paid_dec =
-        Decimal::from_str(tax_paid).map_err(|_| format!("Invalid tax_paid: {tax_paid}"))?;
+) -> Result<Dividend, ValidationError> {
+    let date = parse_date(date)?;
+    let value_dec = parse_amount(value, AmountField::Value)?;
+    let tax_paid_dec = parse_amount(tax_paid, AmountField::TaxPaid)?;
 
     Ok(Dividend {
         id,
@@ -72,7 +84,7 @@ fn build_dividend(
     })
 }
 
-pub async fn create_dividend(app: &App, input: CreateDividendInput) -> Result<String, String> {
+pub async fn create_dividend(app: &App, input: CreateDividendInput) -> Result<String, Error> {
     let id = input
         .id
         .filter(|s| !s.trim().is_empty())
@@ -94,14 +106,20 @@ pub async fn create_dividend(app: &App, input: CreateDividendInput) -> Result<St
         .dividend_repo()
         .insert(&dividend)
         .await
-        .map_err(|error| duplicate_id_error(error, "Dividend", &id))?;
+        .map_err(|error| {
+            if error.is_unique_violation() {
+                Error::DuplicateId(id.clone())
+            } else {
+                Error::Repository(error)
+            }
+        })?;
 
     Ok(id)
 }
 
-pub async fn update_dividend(app: &App, input: UpdateDividendInput) -> Result<(), String> {
+pub async fn update_dividend(app: &App, input: UpdateDividendInput) -> Result<(), Error> {
     if input.id.trim().is_empty() {
-        return Err("ID is required".into());
+        return Err(ValidationError::MissingId.into());
     }
 
     let id = input.id.clone();
@@ -117,62 +135,36 @@ pub async fn update_dividend(app: &App, input: UpdateDividendInput) -> Result<()
         input.provider,
     )?;
 
-    let rows = app
-        .db
-        .dividend_repo()
-        .update(&dividend)
-        .await
-        .map_err(error_message)?;
+    let rows = app.db.dividend_repo().update(&dividend).await?;
     if rows == 0 {
-        return Err(format!("Dividend with ID '{id}' not found"));
+        return Err(Error::NotFound(id));
     }
     Ok(())
 }
 
-pub async fn delete_dividends(app: &App, ids: Vec<String>) -> Result<u64, String> {
-    app.db
-        .dividend_repo()
-        .delete_by_ids(&ids)
-        .await
-        .map_err(error_message)
+pub async fn delete_dividends(app: &App, ids: Vec<String>) -> Result<u64, RepositoryError> {
+    app.db.dividend_repo().delete_by_ids(&ids).await
 }
 
-pub async fn load_dividends(app: &App, year: Option<i32>) -> Result<DividendTaxData, String> {
+pub async fn load_dividends(app: &App, year: Option<i32>) -> Result<DividendTaxData, Error> {
     validate_optional_year(year)?;
-    let mut dividends = app
-        .db
-        .dividend_repo()
-        .get_by_year(year)
-        .await
-        .map_err(error_message)?;
+    let mut dividends = app.db.dividend_repo().get_by_year(year).await?;
 
-    dividends.sort_unstable_by(|a, b| a.date.cmp(&b.date));
+    dividends.sort_unstable_by_key(|a| a.date);
 
-    let rates = app.db.rate_repo().load_all().await.map_err(error_message)?;
+    let rates = app.db.rate_repo().load_all().await?;
     let rate_provider = NbpRateProvider::new(rates);
-    let dividend_rounding = app
-        .db
-        .settings_repo()
-        .load_dividend_rounding()
-        .await
-        .map_err(error_message)?;
+    let dividend_rounding = app.db.settings_repo().load_dividend_rounding().await?;
 
-    calculate(dividends, &rate_provider, dividend_rounding).map_err(error_message)
+    calculate(dividends, &rate_provider, dividend_rounding).map_err(Error::from)
 }
 
-/// Calculates one dividend without saving it, as `load_dividends` does.
-pub async fn preview_dividend(app: &App, dividend: Dividend) -> Result<CalculatedDividend, String> {
+pub async fn preview_dividend(app: &App, dividend: Dividend) -> Result<CalculatedDividend, Error> {
     let rate_provider = rates_for(app, dividend.date).await?;
-    let dividend_rounding = app
-        .db
-        .settings_repo()
-        .load_dividend_rounding()
-        .await
-        .map_err(error_message)?;
+    let dividend_rounding = app.db.settings_repo().load_dividend_rounding().await?;
 
-    calculate(vec![dividend], &rate_provider, dividend_rounding)
-        .map_err(error_message)?
+    calculate(vec![dividend], &rate_provider, dividend_rounding)?
         .calculated
         .pop()
-        .ok_or_else(|| "Nothing to preview".into())
+        .ok_or(Error::NothingToPreview)
 }

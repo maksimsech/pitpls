@@ -6,6 +6,7 @@ use crate::{
     },
     format::{DisplayText, amount, date, pln},
     navigation::Page,
+    services::Error as ServiceError,
 };
 use chrono::NaiveDate;
 use gpui_kit::{
@@ -165,26 +166,32 @@ impl RecordKind for Crypto {
     async fn load(
         app: Arc<pitpls_app::App>,
         year: Option<i32>,
-    ) -> Result<(Vec<Decimal>, Vec<CalculatedCrypto>), String> {
+    ) -> Result<(Vec<Decimal>, Vec<CalculatedCrypto>), ServiceError> {
         let data = crypto::load_cryptos(&app, year).await?;
         Ok((vec![data.income, data.costs], data.calculated))
     }
 
-    async fn save(app: Arc<pitpls_app::App>, submission: CryptoSubmission) -> Result<(), String> {
+    async fn save(
+        app: Arc<pitpls_app::App>,
+        submission: CryptoSubmission,
+    ) -> Result<(), ServiceError> {
         match submission {
             Submission::Create(input) => crypto::create_crypto(&app, input).await.map(drop),
             Submission::Update(input) => crypto::update_crypto(&app, input).await,
         }
+        .map_err(ServiceError::from)
     }
 
-    async fn delete(app: Arc<pitpls_app::App>, ids: Vec<String>) -> Result<u64, String> {
-        crypto::delete_cryptos(&app, ids).await
+    async fn delete(app: Arc<pitpls_app::App>, ids: Vec<String>) -> Result<u64, ServiceError> {
+        crypto::delete_cryptos(&app, ids)
+            .await
+            .map_err(ServiceError::from)
     }
 
     async fn preview(
         app: Arc<pitpls_app::App>,
         draft: CryptoDraft,
-    ) -> Result<CalculatedCrypto, String> {
+    ) -> Result<CalculatedCrypto, ServiceError> {
         let (value, value_currency) = draft.value;
         let (fee, fee_currency) = draft.fee;
         let record = core_crypto::Crypto {
@@ -201,7 +208,9 @@ impl RecordKind for Crypto {
             date: draft.date,
             provider: String::new(),
         };
-        crypto::preview_crypto(&app, record).await
+        crypto::preview_crypto(&app, record)
+            .await
+            .map_err(ServiceError::from)
     }
 
     fn preview_display(record: &CalculatedCrypto) -> Preview {

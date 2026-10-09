@@ -12,8 +12,8 @@ use crate::{
 };
 
 #[derive(Debug, Error)]
+#[error("{self:?}")]
 pub enum CalculateInterestTaxError {
-    #[error("Failed to convert interest value to PLN: {0}")]
     InterestConversion(#[source] RateConverterError),
 }
 

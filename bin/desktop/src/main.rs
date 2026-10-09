@@ -2,6 +2,7 @@ mod app;
 mod components;
 mod config;
 mod format;
+mod messages;
 mod navigation;
 mod pages;
 mod services;
@@ -10,8 +11,8 @@ mod theme;
 use gpui_kit::*;
 use std::sync::Arc;
 
-pub(crate) const APP_NAME: &str = "pitpls";
-pub(crate) const TITLE_ROW_HEIGHT: Pixels = px(44.);
+const APP_NAME: &str = "pitpls";
+const TITLE_ROW_HEIGHT: Pixels = px(44.);
 
 actions!(desktop, [Quit]);
 #[cfg(target_os = "macos")]

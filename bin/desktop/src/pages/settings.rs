@@ -104,7 +104,7 @@ impl SettingsPage {
         self.status.task = Some(self.context.services.run(
             window,
             cx,
-            move |app| async move { settings::update_settings(&app, settings).await },
+            move |app| async move { Ok(settings::update_settings(&app, settings).await?) },
             move |this, result, _, cx| {
                 this.status.busy = false;
                 match result {
@@ -172,7 +172,7 @@ impl SettingsPage {
         self.status.task = Some(self.context.services.run(
             window,
             cx,
-            |app| async move { settings::load_settings(&app).await },
+            |app| async move { Ok(settings::load_settings(&app).await?) },
             |this, result, _, cx| {
                 if let Some(settings) = this.status.loaded(result) {
                     this.saved = Some(settings.dividend_rounding);

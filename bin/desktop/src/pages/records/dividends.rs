@@ -6,6 +6,7 @@ use crate::{
     },
     format::{DisplayText, amount, date, money, pln},
     navigation::Page,
+    services::Error as ServiceError,
 };
 use chrono::NaiveDate;
 use gpui_kit::{
@@ -149,26 +150,32 @@ impl RecordKind for Dividends {
     async fn load(
         app: Arc<pitpls_app::App>,
         year: Option<i32>,
-    ) -> Result<(Vec<Decimal>, Vec<CalculatedDividend>), String> {
+    ) -> Result<(Vec<Decimal>, Vec<CalculatedDividend>), ServiceError> {
         let data = dividend::load_dividends(&app, year).await?;
         Ok((vec![data.income, data.to_pay, data.paid], data.calculated))
     }
 
-    async fn save(app: Arc<pitpls_app::App>, submission: DividendSubmission) -> Result<(), String> {
+    async fn save(
+        app: Arc<pitpls_app::App>,
+        submission: DividendSubmission,
+    ) -> Result<(), ServiceError> {
         match submission {
             Submission::Create(input) => dividend::create_dividend(&app, input).await.map(drop),
             Submission::Update(input) => dividend::update_dividend(&app, input).await,
         }
+        .map_err(ServiceError::from)
     }
 
-    async fn delete(app: Arc<pitpls_app::App>, ids: Vec<String>) -> Result<u64, String> {
-        dividend::delete_dividends(&app, ids).await
+    async fn delete(app: Arc<pitpls_app::App>, ids: Vec<String>) -> Result<u64, ServiceError> {
+        dividend::delete_dividends(&app, ids)
+            .await
+            .map_err(ServiceError::from)
     }
 
     async fn preview(
         app: Arc<pitpls_app::App>,
         draft: DividendDraft,
-    ) -> Result<CalculatedDividend, String> {
+    ) -> Result<CalculatedDividend, ServiceError> {
         let (value, value_currency) = draft.value;
         let (tax_paid, tax_paid_currency) = draft.tax_paid;
         let dividend = Dividend {
@@ -186,7 +193,9 @@ impl RecordKind for Dividends {
             country: draft.country,
             provider: String::new(),
         };
-        dividend::preview_dividend(&app, dividend).await
+        dividend::preview_dividend(&app, dividend)
+            .await
+            .map_err(ServiceError::from)
     }
 
     fn preview_display(record: &CalculatedDividend) -> Preview {
@@ -293,7 +302,9 @@ impl RecordForm for DividendForm {
         let value_currency = form::selected(&self.value_currency, "Value currency", cx)?;
         let tax_paid = form::amount(&self.tax_paid, "Tax paid", cx)?;
         let tax_paid_currency = form::selected(&self.tax_paid_currency, "Tax paid currency", cx)?;
-        let country = form::required(&self.country, "Country code", cx)?.parse()?;
+        let country = form::required(&self.country, "Country code", cx)?
+            .parse()
+            .map_err(crate::messages::country_error)?;
         let provider = form::required(&self.provider, "Provider", cx)?;
         Ok(match self.existing_id.clone() {
             Some(id) => Submission::Update(UpdateDividendInput {

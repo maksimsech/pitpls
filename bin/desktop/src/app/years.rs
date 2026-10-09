@@ -21,7 +21,7 @@ impl Desktop {
         self.years_task = Some(context.services.run(
             window,
             cx,
-            |app| async move { year::list_year_info(&app).await },
+            |app| async move { Ok(year::list_year_info(&app).await?) },
             |this, result, _, cx| {
                 match result {
                     Ok(years) => this.years = years,
@@ -98,10 +98,11 @@ impl Desktop {
             cx,
             move |app| async move {
                 if remove {
-                    year::delete_year(&app, year).await.map(|_| ())
+                    year::delete_year(&app, year).await?;
                 } else {
-                    year::add_year(&app, year).await
+                    year::add_year(&app, year).await?;
                 }
+                Ok(())
             },
             move |this, result, window, cx| {
                 this.status.busy = false;

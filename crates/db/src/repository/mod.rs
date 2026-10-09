@@ -11,17 +11,14 @@ pub mod year;
 pub type Result<T> = std::result::Result<T, RepositoryError>;
 
 #[derive(Debug, Error)]
+#[error("{self:?}")]
 pub enum RepositoryError {
-    #[error("Database error: {0}")]
     Database(#[from] sqlx::Error),
 
-    #[error("Serialization error: {0}")]
     Serialization(#[from] serde_plain::Error),
 
-    #[error("Decimal parse error: {0}")]
     Decimal(#[from] rust_decimal::Error),
 
-    #[error("Year {0} is out of range")]
     InvalidYear(i32),
 }
 

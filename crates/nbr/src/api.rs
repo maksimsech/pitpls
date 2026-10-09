@@ -6,30 +6,27 @@ use serde::Deserialize;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
+#[error("{self:?}")]
 pub enum ApiImportError {
-    #[error("NBP rates are available from {min_year}")]
-    YearTooEarly { min_year: i32 },
-    #[error("Cannot import NBP rates for a future year")]
+    YearTooEarly {
+        min_year: i32,
+    },
     FutureYear,
-    #[error("Invalid date")]
     InvalidDate,
-    #[error("Invalid NBP date range")]
     InvalidDateRange,
-    #[error("{currency} rates are not imported from NBP")]
-    UnsupportedCurrency { currency: String },
-    #[error("Failed to request NBP rates: {source}")]
+    UnsupportedCurrency {
+        currency: Currency,
+    },
     Request {
         #[source]
         source: reqwest::Error,
     },
-    #[error("NBP API returned {status} for {code} rates from {start_date} to {end_date}")]
     HttpStatus {
         status: StatusCode,
         code: &'static str,
         start_date: NaiveDate,
         end_date: NaiveDate,
     },
-    #[error("Failed to parse NBP response: {source}")]
     Response {
         #[source]
         source: reqwest::Error,

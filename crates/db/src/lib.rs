@@ -22,12 +22,10 @@ pub const DB_FILENAME: &str = "pitpls.db";
 static MIGRATOR: Migrator = sqlx::migrate!();
 
 #[derive(Debug, Error)]
+#[error("{self:?}")]
 pub enum OpenDatabaseError {
-    #[error("Failed to create the database directory: {0}")]
     CreateDirectory(#[source] std::io::Error),
-    #[error("Failed to open the database: {0}")]
     Connect(#[source] sqlx::Error),
-    #[error("Failed to migrate the database: {0}")]
     Migrate(#[source] MigrateError),
 }
 

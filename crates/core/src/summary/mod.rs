@@ -13,12 +13,10 @@ pub use model::{CryptoTaxSummary, ForeignTaxSummary, TaxSummary};
 mod model;
 
 #[derive(Debug, Error)]
+#[error("{self:?}")]
 pub enum CalculateTaxSummaryError {
-    #[error("Failed to calculate crypto tax summary: {0}")]
     Crypto(#[from] CalculateSellBuyValuesError),
-    #[error("Failed to calculate dividend tax summary: {0}")]
     Dividend(#[from] CalculateDividendTaxError),
-    #[error("Failed to calculate interest tax summary: {0}")]
     Interest(#[from] CalculateInterestTaxError),
 }
 

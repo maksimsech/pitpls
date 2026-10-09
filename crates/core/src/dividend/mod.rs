@@ -13,10 +13,9 @@ mod model;
 pub use model::{CalculatedDividend, Dividend, DividendTaxData};
 
 #[derive(Debug, Error)]
+#[error("{self:?}")]
 pub enum CalculateDividendTaxError {
-    #[error("Failed to convert dividend value to PLN: {0}")]
     DividendConversion(#[source] RateConverterError),
-    #[error("Failed to convert paid dividend tax to PLN: {0}")]
     PaidTaxConversion(#[source] RateConverterError),
 }
 

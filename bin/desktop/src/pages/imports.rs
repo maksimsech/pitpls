@@ -317,7 +317,10 @@ impl ImportsPage {
         };
         let button = header::task_button(("import-file", index), None, label, busy)
             .when(!busy, |button| {
-                button.accessibility_label(format!("Choose {formats} file for {}", importer.name))
+                button.accessibility_label(format!(
+                    "Choose {formats} file for {}",
+                    crate::messages::importer_name(importer.kind)
+                ))
             })
             .disabled(self.locked())
             .on_click(cx.listener(move |this, _, window, cx| this.pick_file(index, window, cx)));
@@ -342,14 +345,19 @@ impl ImportsPage {
                             .text_size(px(11.5))
                             .font_semibold()
                             .text_color(p.muted)
-                            .child(initials(importer.name)),
+                            .child(initials(crate::messages::importer_name(importer.kind))),
                     )
                     .child(
                         v_flex()
                             .flex_1()
                             .min_w_0()
                             .gap(px(1.))
-                            .child(div().truncate().font_medium().child(importer.name))
+                            .child(
+                                div()
+                                    .truncate()
+                                    .font_medium()
+                                    .child(crate::messages::importer_name(importer.kind)),
+                            )
                             .child(
                                 div()
                                     .truncate()

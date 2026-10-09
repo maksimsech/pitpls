@@ -141,14 +141,16 @@ impl Desktop {
         self.status.begin_save();
         let config = self.config.clone();
         let job = self.runtime.spawn(async move {
-            let db = pitpls_db::Database::open(&config.database)
-                .await
-                .map_err(|e| e.to_string())?;
+            let db = pitpls_db::Database::open(&config.database).await?;
             let (preferences, warning) = match config::read_preferences(&config.preferences).await {
                 Ok(value) => (value, None),
                 Err(error) => (Preferences::default(), Some(error)),
             };
-            Ok((Arc::new(pitpls_app::App::new(db)), preferences, warning))
+            Ok::<_, pitpls_db::OpenDatabaseError>((
+                Arc::new(pitpls_app::App::new(db)),
+                preferences,
+                warning,
+            ))
         });
         self.status.task = Some(cx.spawn_in(window, async move |this, cx| {
             let result = finish(job).await;
