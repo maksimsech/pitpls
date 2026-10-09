@@ -8,7 +8,7 @@ pub use self::{crypto::Crypto, dividends::Dividends, interests::Interests};
 use super::{PageView, missing_rate};
 use crate::{
     components::{
-        Status, dialog, form, header, nbp, notice,
+        ButtonText, Status, dialog, form, header, nbp, notice,
         records::{
             ItemKey, Preview, RecordColumn, RecordTableState, RowDisplay, TableLayout,
             preview_band, record_skeleton,
@@ -1149,7 +1149,7 @@ impl<K: RecordKind> Render for RecordsPage<K> {
             body = body.child(
                 h_flex().px(px(20.)).gap_2().child(
                     Button::new("retry")
-                        .label("Retry")
+                        .text_label("Retry")
                         .outline()
                         .disabled(disabled)
                         .on_click(cx.listener(|this, _, window, cx| this.refresh(window, cx))),

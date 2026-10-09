@@ -1,6 +1,6 @@
 use super::PageView;
 use crate::{
-    components::{self, Status, data, header},
+    components::{self, ButtonText, Status, data, header},
     navigation::{Page, PageContext},
     theme::{palette, theme_choice},
 };
@@ -249,7 +249,7 @@ impl SettingsPage {
                                 .title("Couldn't load the settings"),
                         )
                         .child(h_flex().child(
-                            Button::new("retry").label("Retry").outline().on_click(
+                            Button::new("retry").text_label("Retry").outline().on_click(
                                 cx.listener(|this, _, window, cx| this.refresh(window, cx)),
                             ),
                         )),

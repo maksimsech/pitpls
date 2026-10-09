@@ -1,6 +1,6 @@
 use super::{PageView, missing_rate};
 use crate::{
-    components::{self, Status, data, dialog, header, nbp, notice, value},
+    components::{self, ButtonText, Status, data, dialog, header, nbp, notice, value},
     format::{DisplayText, pln},
     navigation::{Page, PageContext},
     theme::{palette, tabular_digits},
@@ -364,7 +364,7 @@ impl HomePage {
             None if !self.status.loading => column.child(
                 h_flex().child(
                     Button::new("retry")
-                        .label("Retry")
+                        .text_label("Retry")
                         .outline()
                         .on_click(cx.listener(|this, _, window, cx| this.refresh(window, cx))),
                 ),
@@ -439,7 +439,7 @@ impl HomePage {
                 .child(
                     h_flex().child(
                         Button::new("retry")
-                            .label("Retry")
+                            .text_label("Retry")
                             .outline()
                             .disabled(self.disabled())
                             .on_click(cx.listener(|this, _, window, cx| this.refresh(window, cx))),

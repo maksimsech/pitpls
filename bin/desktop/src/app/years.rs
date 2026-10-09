@@ -1,6 +1,6 @@
 use super::*;
 use crate::{
-    components::header,
+    components::{BUTTON_TEXT, header},
     theme::{palette, tabular_digits},
 };
 use gpui_kit::{
@@ -268,6 +268,7 @@ impl Desktop {
                             .flex_1()
                             .min_w_0()
                             .text_left()
+                            .text_size(BUTTON_TEXT)
                             .when(selected, |label| label.font_medium())
                             .child(label.clone()),
                     )

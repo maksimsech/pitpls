@@ -1,4 +1,4 @@
-use super::Status;
+use super::{ButtonText, Status};
 use crate::theme::palette;
 use gpui_kit::{
     component::{
@@ -60,7 +60,9 @@ pub fn form<V: 'static>(
         .child(div().pb(FOCUS_RING_ROOM).child(body))
         .footer(footer(
             None,
-            Button::new("dialog-submit").label(submit_label).primary(),
+            Button::new("dialog-submit")
+                .text_label(submit_label)
+                .primary(),
             busy,
         ))
 }
@@ -105,7 +107,9 @@ pub fn editor<V: 'static>(
                 .on_action(save(submit, cx))
                 .child(footer(
                     Some(hints),
-                    Button::new("dialog-submit").label(submit_label).primary(),
+                    Button::new("dialog-submit")
+                        .text_label(submit_label)
+                        .primary(),
                     busy,
                 )),
         )
@@ -187,7 +191,7 @@ pub fn confirm<V: 'static>(
             .child(message.clone())
             .footer(footer(
                 None,
-                Button::new("dialog-confirm").label(label).danger(),
+                Button::new("dialog-confirm").text_label(label).danger(),
                 false,
             ))
             .on_ok(move |_, window, cx| {
@@ -206,12 +210,11 @@ pub fn confirm<V: 'static>(
 fn footer(hints: Option<Div>, confirm: Button, disabled: bool) -> DialogFooter {
     DialogFooter::new()
         .children(hints)
-        .child(div().child(DialogClose::new().trigger(|button| {
-            button
-                .label("Cancel")
-                .accessibility_label("Cancel")
-                .outline()
-                .disabled(disabled)
-        })))
+        .child(
+            div().child(
+                DialogClose::new()
+                    .trigger(|button| button.text_label("Cancel").outline().disabled(disabled)),
+            ),
+        )
         .child(div().child(DialogAction::new().child(confirm.disabled(disabled))))
 }

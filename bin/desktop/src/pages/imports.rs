@@ -1,6 +1,6 @@
 use super::PageView;
 use crate::{
-    components::{self, Status, data, dialog, file_picker, header, nbp, spinner},
+    components::{self, ButtonText, Status, data, dialog, file_picker, header, nbp, spinner},
     navigation::{Page, PageContext},
     theme::{palette, tabular_digits},
 };
@@ -410,7 +410,7 @@ impl ImportsPage {
                     .child(
                         h_flex().child(
                             Button::new("retry")
-                                .label("Retry")
+                                .text_label("Retry")
                                 .outline()
                                 .disabled(self.load.loading)
                                 .on_click(

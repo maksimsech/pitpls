@@ -19,7 +19,7 @@ icon = ["assets/AppIcon-compact.icns"]
 copyright = "© 2026 Maksim Sech · MIT License"
 
 [dependencies]
-gpui-kit = "0.7.0"
+gpui-kit = "0.7.1"
 pitpls-core.workspace = true
 pitpls-app.workspace = true
 pitpls-db.workspace = true

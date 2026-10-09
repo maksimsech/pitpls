@@ -2,7 +2,7 @@ mod sidebar;
 mod years;
 
 use crate::{
-    components::{Status, form, header, spinner},
+    components::{ButtonText, Status, form, header, spinner},
     config::{self, Config, Preferences},
     navigation::{Page, PageContext, PageEvent, PageEvents},
     pages::{self, PageHandle},
@@ -277,7 +277,7 @@ impl Desktop {
                             view.child(
                                 h_flex().child(
                                     Button::new("retry-connection")
-                                        .label("Retry connection")
+                                        .text_label("Retry connection")
                                         .primary()
                                         .on_click(cx.listener(|this, _, window, cx| {
                                             this.connect(window, cx)

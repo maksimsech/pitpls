@@ -1,6 +1,6 @@
 use super::PageView;
 use crate::{
-    components::{Status, dialog, file_picker, header, nbp, notice, spinner},
+    components::{ButtonText, Status, dialog, file_picker, header, nbp, notice, spinner},
     format,
     navigation::{Page, PageContext},
     theme::{palette, tabular_digits},
@@ -369,7 +369,7 @@ impl RatesPage {
                 view.child(
                     h_flex().child(
                         Button::new("retry-rates")
-                            .label("Retry")
+                            .text_label("Retry")
                             .outline()
                             .disabled(disabled)
                             .on_click(cx.listener(|this, _, window, cx| this.refresh(window, cx))),

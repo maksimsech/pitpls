@@ -129,6 +129,24 @@ pub fn spinner() -> Spinner {
     Spinner::new().with_size(px(14.))
 }
 
+/// Text of a default-size button, as the kit drew it before 0.7.1, which
+/// moved them to `text_sm` (12.25px).
+pub const BUTTON_TEXT: Pixels = px(14.);
+
+pub trait ButtonText {
+    /// [`Button::label`] at [`BUTTON_TEXT`]: the kit sizes the label itself,
+    /// so the text goes on a child.
+    fn text_label(self, label: impl Into<SharedString>) -> Self;
+}
+
+impl ButtonText for button::Button {
+    fn text_label(self, label: impl Into<SharedString>) -> Self {
+        let label = label.into();
+        self.accessibility_label(label.clone())
+            .child(div().text_size(BUTTON_TEXT).child(label))
+    }
+}
+
 pub fn scroll(content: impl IntoElement) -> AnyElement {
     use gpui_kit::component::scroll::ScrollableElement;
     div()
