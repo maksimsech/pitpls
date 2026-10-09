@@ -5,7 +5,7 @@ use crate::{
 };
 use gpui_kit::{
     assets::IconName,
-    base::actions::Confirm,
+    base::{FocusTrapElement, actions::Confirm},
     component::{button::*, input::Input},
 };
 use pitpls_app::use_case::year::{self, YearInfo};
@@ -130,8 +130,9 @@ impl Desktop {
     }
 
     /// The tax year popover: all years, then every year newest first with its
-    /// record count, an inline field to add one, and a line of help.
-    pub(super) fn year_menu(&mut self, cx: &mut Context<Self>) -> Div {
+    /// record count, an inline field to add one, and a line of help. Tab and
+    /// Shift-Tab go round inside it while it's open.
+    pub(super) fn year_menu(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
         let p = *palette(cx);
         let busy = self.status.busy;
         let mut years = self.years.clone();
@@ -216,9 +217,10 @@ impl Desktop {
                     .text_color(p.faint)
                     .child(
                         "Years with records appear on their own. \
-                         Removing a year only hides it here.",
+                         Removing a year (× or ⌫) only hides it here.",
                     ),
             )
+            .focus_trap("year-menu-trap", &self.year_menu_focus)
     }
 
     /// One row of the year menu; `None` is "All years".

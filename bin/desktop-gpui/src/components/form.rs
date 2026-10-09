@@ -93,6 +93,21 @@ pub fn required(state: &Entity<InputState>, label: &str, cx: &App) -> Result<Str
     }
 }
 
+/// A required amount. A comma decimal, as the copy buttons copy it
+/// (`3,06`), is read as a dot; text with both a dot and a comma stays as
+/// typed, so the use case rejects it.
+pub fn amount(state: &Entity<InputState>, label: &str, cx: &App) -> Result<String, String> {
+    required(state, label, cx).map(|value| decimal_point(&value))
+}
+
+fn decimal_point(value: &str) -> String {
+    if value.contains('.') {
+        value.to_owned()
+    } else {
+        value.replacen(',', ".", 1)
+    }
+}
+
 pub fn year(state: &Entity<InputState>, cx: &App) -> Result<i32, String> {
     required(state, "Year", cx)?
         .parse()
@@ -215,7 +230,7 @@ pub fn parsed_amount(
     currency: &Entity<ChoiceState<Currency>>,
     cx: &App,
 ) -> Option<(Decimal, Currency)> {
-    let value = Decimal::from_str(&text(amount, cx)).ok()?;
+    let value = Decimal::from_str(&decimal_point(&text(amount, cx))).ok()?;
     let currency = currency.read(cx).selected_value().copied()?;
     Some((value, currency))
 }

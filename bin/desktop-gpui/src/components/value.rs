@@ -117,6 +117,17 @@ pub fn text_width(
         .width
 }
 
+/// The focus handle of the last "Copy full value" menu, so the tooltips can
+/// tell when it's open.
+struct ValueMenu(FocusHandle);
+
+impl Global for ValueMenu {}
+
+fn value_menu_open(window: &Window, cx: &App) -> bool {
+    cx.try_global::<ValueMenu>()
+        .is_some_and(|menu| menu.0.contains_focused(window, cx))
+}
+
 /// When the value hides digits, shows all of them in a tooltip and offers
 /// "Copy full value" on right click, which copies what a copy button would.
 pub fn reveal_full(element: Stateful<Div>, value: &DisplayText) -> AnyElement {
@@ -126,8 +137,26 @@ pub fn reveal_full(element: Stateful<Div>, value: &DisplayText) -> AnyElement {
     let full = value.full.clone();
     let copied = value.copy.clone();
     element
-        .tooltip(move |window, cx| Tooltip::new(full.clone()).build(window, cx))
-        .context_menu(move |menu, _, _| {
+        // A right click would focus the row or month header around the
+        // value, and the menu focuses itself while it's drawn. Two focused
+        // elements in one frame break the accessibility tree, so nothing has
+        // focus when the menu opens. Closing it gives focus back.
+        .on_mouse_down(MouseButton::Right, |_, window, cx| {
+            window.prevent_default();
+            window.blur(cx);
+        })
+        // The menu opens under the pointer, which still hovers the value, so
+        // its tooltip would come back over the menu. While a menu is open the
+        // tooltip is empty.
+        .tooltip(move |window, cx| {
+            if value_menu_open(window, cx) {
+                cx.new(|_| EmptyView).into()
+            } else {
+                Tooltip::new(full.clone()).build(window, cx)
+            }
+        })
+        .context_menu(move |menu, _, cx| {
+            cx.set_global(ValueMenu(menu.focus_handle(cx)));
             let copied = copied.clone();
             menu.item(
                 PopupMenuItem::new("Copy full value").on_click(move |_, _, cx| {

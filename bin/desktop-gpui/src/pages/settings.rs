@@ -59,6 +59,8 @@ pub struct SettingsPage {
     /// The theme segments, in `THEMES` order, so the page can tell which one
     /// has focus and draw its ring.
     theme_focus: [FocusHandle; 3],
+    /// Around the rounding options, so the arrow keys stay among them.
+    rounding_focus: FocusHandle,
 }
 
 impl SettingsPage {
@@ -69,6 +71,7 @@ impl SettingsPage {
             saved: None,
             picked: None,
             theme_focus: [cx.focus_handle(), cx.focus_handle(), cx.focus_handle()],
+            rounding_focus: cx.focus_handle(),
         };
         page.refresh(window, cx);
         page
@@ -121,6 +124,54 @@ impl SettingsPage {
             },
         ));
         cx.notify();
+    }
+
+    /// Up and Down move focus between the rounding options, without picking
+    /// one, and stop at the first and the last.
+    fn step_rounding(&mut self, event: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
+        let forward = match event.keystroke.key.as_str() {
+            "down" => true,
+            "up" => false,
+            _ => return,
+        };
+        if event.keystroke.modifiers.modified() {
+            return;
+        }
+        cx.stop_propagation();
+        let step = |forward: bool, window: &mut Window, cx: &mut App| {
+            if forward {
+                window.focus_next(cx);
+            } else {
+                window.focus_prev(cx);
+            }
+        };
+        step(forward, window, cx);
+        if !self.rounding_focus.contains_focused(window, cx) {
+            step(!forward, window, cx);
+        }
+    }
+
+    /// Left and Right move focus between the theme segments, without
+    /// applying one, and stop at the ends.
+    fn step_theme(&mut self, event: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
+        let step: isize = match event.keystroke.key.as_str() {
+            "right" => 1,
+            "left" => -1,
+            _ => return,
+        };
+        if event.keystroke.modifiers.modified() {
+            return;
+        }
+        let Some(index) = self
+            .theme_focus
+            .iter()
+            .position(|focus| focus.is_focused(window))
+        else {
+            return;
+        };
+        cx.stop_propagation();
+        let next = index.saturating_add_signed(step).min(THEMES.len() - 1);
+        window.focus(&self.theme_focus[next], cx);
     }
 }
 
@@ -262,8 +313,14 @@ impl SettingsPage {
                             .child(div().text_size(px(12.)).text_color(p.muted).child(*detail))
                     }),
             );
-        card.child(options)
-            .when(changed, |card| card.child(self.save_bar(cx)))
+        card.child(
+            div()
+                .w_full()
+                .track_focus(&self.rounding_focus)
+                .on_key_down(cx.listener(Self::step_rounding))
+                .child(options),
+        )
+        .when(changed, |card| card.child(self.save_bar(cx)))
     }
 
     /// "Unsaved change" with Discard and Save changes, or why saving failed.
@@ -335,6 +392,7 @@ impl SettingsPage {
                         .bg(cx.theme().button)
                         .border_1()
                         .border_color(p.line)
+                        .on_key_down(cx.listener(Self::step_theme))
                         .children(THEMES.iter().zip(&self.theme_focus).map(
                             |((dark, label), focus)| {
                                 let dark = *dark;

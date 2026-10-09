@@ -220,7 +220,7 @@ impl RecordForm for InterestForm {
 
     fn submission(&self, cx: &App) -> Result<InterestSubmission, String> {
         let date = form::selected_date(&self.date, "Date", cx)?;
-        let value = form::required(&self.value, "Value", cx)?;
+        let value = form::amount(&self.value, "Value", cx)?;
         let value_currency = form::selected(&self.value_currency, "Value currency", cx)?;
         let provider = form::required(&self.provider, "Provider", cx)?;
         Ok(match self.existing_id.clone() {

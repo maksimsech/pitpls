@@ -40,6 +40,8 @@ pub struct Desktop {
     year_menu_open: bool,
     year_input: Entity<InputState>,
     year_error: Option<SharedString>,
+    /// Keeps Tab inside the open year menu.
+    year_menu_focus: FocusHandle,
     focus: FocusHandle,
     _subscriptions: [Subscription; 4],
 }
@@ -117,6 +119,7 @@ impl Desktop {
             year_menu_open: false,
             year_input,
             year_error: None,
+            year_menu_focus: cx.focus_handle(),
             focus: cx.focus_handle(),
             _subscriptions: [
                 page_subscription,

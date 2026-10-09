@@ -294,9 +294,9 @@ impl RecordForm for DividendForm {
     fn submission(&self, cx: &App) -> Result<DividendSubmission, String> {
         let date = form::selected_date(&self.date, "Date", cx)?;
         let ticker = form::required(&self.ticker, "Ticker", cx)?;
-        let value = form::required(&self.value, "Value", cx)?;
+        let value = form::amount(&self.value, "Value", cx)?;
         let value_currency = form::selected(&self.value_currency, "Value currency", cx)?;
-        let tax_paid = form::required(&self.tax_paid, "Tax paid", cx)?;
+        let tax_paid = form::amount(&self.tax_paid, "Tax paid", cx)?;
         let tax_paid_currency = form::selected(&self.tax_paid_currency, "Tax paid currency", cx)?;
         let country = form::required(&self.country, "Country code", cx)?.parse()?;
         let provider = form::required(&self.provider, "Provider", cx)?;

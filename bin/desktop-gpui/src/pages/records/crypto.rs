@@ -334,9 +334,9 @@ impl RecordForm for CryptoForm {
     fn submission(&self, cx: &App) -> Result<CryptoSubmission, String> {
         let date = form::selected_date(&self.date, "Date", cx)?;
         let action = form::selected(&self.action, "Action", cx)?;
-        let value = form::required(&self.value, "Value", cx)?;
+        let value = form::amount(&self.value, "Value", cx)?;
         let value_currency = form::selected(&self.value_currency, "Value currency", cx)?;
-        let fee = form::required(&self.fee, "Fee", cx)?;
+        let fee = form::amount(&self.fee, "Fee", cx)?;
         let fee_currency = form::selected(&self.fee_currency, "Fee currency", cx)?;
         let provider = form::required(&self.provider, "Provider", cx)?;
         Ok(match self.existing_id.clone() {

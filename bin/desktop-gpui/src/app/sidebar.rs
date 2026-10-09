@@ -207,8 +207,15 @@ impl Desktop {
             .rounded(px(7.))
             .border_color(p.line)
             .accessibility_label(format!("Tax year {label}, change"))
-            .tooltip(format!("Tax year {label}"))
-            .tooltip_placement(Placement::Right)
+            // Only in the rail. While the sidebar expands, this button slides
+            // under the pointer and fades out; a tooltip it started would
+            // stay once it's no longer drawn, since the kit hides tooltips on
+            // hover-out.
+            .when(collapsed, |button| {
+                button
+                    .tooltip(format!("Tax year {label}"))
+                    .tooltip_placement(Placement::Right)
+            })
             .disabled(!enabled)
             .child(div().text_size(px(12.)).font_semibold().child(
                 if self.preferences.year.is_some() {
