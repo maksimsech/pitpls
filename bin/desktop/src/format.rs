@@ -6,25 +6,20 @@ use std::fmt::Display;
 
 pub const DATE_FORMAT: &str = "%d.%m.%Y";
 
-/// Separates thousands on screen: a narrow no-break space.
+/// A narrow no-break space.
 pub const THOUSANDS: char = '\u{202f}';
-/// Decimals drawn faint after the second one, before the "…".
 pub const EXTRA_DIGITS: usize = 3;
 
 pub fn date(value: NaiveDate) -> DisplayText {
     DisplayText::plain(value.format(DATE_FORMAT).to_string())
 }
 
-/// A value split for display: `main` in the regular colour, then up to
-/// [`EXTRA_DIGITS`] faint decimals in `extra`, then a faint "…" when `more`
-/// digits are hidden, then the `unit`. Plain text has only `main`.
 #[derive(Clone, PartialEq)]
 pub struct DisplayText {
     pub main: SharedString,
     pub extra: SharedString,
     pub more: bool,
     pub unit: Option<SharedString>,
-    /// Every digit, with the unit.
     pub full: SharedString,
     /// What a copy button copies: for numbers, every digit in Polish format
     /// (comma decimal, no thousands separator, no unit).
@@ -53,9 +48,9 @@ impl DisplayText {
     }
 }
 
-/// Money in any currency, with at least two decimals. Never rounds: digits past
-/// the second decimal are drawn faint, at most `EXTRA_DIGITS` of them, and a
-/// "…" marks any beyond that. `full` and `copy` keep every digit.
+/// Never rounds: digits past the second decimal are drawn faint, at most
+/// `EXTRA_DIGITS` of them, and a "…" marks any beyond that. `full` and `copy`
+/// keep every digit.
 pub fn money(value: Decimal) -> DisplayText {
     let value = value.normalize();
     let digits = format!("{:.*}", value.scale().max(2) as usize, value.abs());
@@ -71,6 +66,14 @@ pub fn money(value: Decimal) -> DisplayText {
         unit: None,
         full: format!("{grouped}.{fraction}").into(),
         copy: format!("{sign}{whole},{fraction}").into(),
+    }
+}
+
+pub fn record_count(count: u32) -> String {
+    match count {
+        0 => "no records".to_owned(),
+        1 => "1 record".to_owned(),
+        count => format!("{count} records"),
     }
 }
 

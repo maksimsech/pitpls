@@ -19,7 +19,7 @@ impl Config {
                 }
                 Some("--help" | "-h") => {
                     println!(
-                        "{} [--database PATH]\n\nDefaults to the existing pitpls application database.",
+                        "{} [--database PATH]\n\nDefaults to the pitpls database in the application data directory.",
                         crate::APP_NAME
                     );
                     return Ok(None);
@@ -52,10 +52,11 @@ pub struct Preferences {
 
 pub async fn read_preferences(path: &std::path::Path) -> Result<Preferences, String> {
     match tokio::fs::read(path).await {
-        Ok(bytes) => serde_json::from_slice(&bytes)
-            .map_err(|e| format!("Could not read native preferences: {e}")),
+        Ok(bytes) => {
+            serde_json::from_slice(&bytes).map_err(|e| format!("Could not read preferences: {e}"))
+        }
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Preferences::default()),
-        Err(e) => Err(format!("Could not read native preferences: {e}")),
+        Err(e) => Err(format!("Could not read preferences: {e}")),
     }
 }
 
@@ -63,5 +64,5 @@ pub async fn save_preferences(path: PathBuf, preferences: Preferences) -> Result
     let bytes = serde_json::to_vec_pretty(&preferences).map_err(|e| e.to_string())?;
     tokio::fs::write(path, bytes)
         .await
-        .map_err(|e| format!("Could not save native preferences: {e}"))
+        .map_err(|e| format!("Could not save preferences: {e}"))
 }

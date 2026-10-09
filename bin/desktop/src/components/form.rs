@@ -93,9 +93,8 @@ pub fn required(state: &Entity<InputState>, label: &str, cx: &App) -> Result<Str
     }
 }
 
-/// A required amount. A comma decimal, as the copy buttons copy it
-/// (`3,06`), is read as a dot; text with both a dot and a comma stays as
-/// typed, so the use case rejects it.
+/// A comma decimal, as the copy buttons copy it (`3,06`), is read as a dot;
+/// text with both a dot and a comma stays as typed, so the use case rejects it.
 pub fn amount(state: &Entity<InputState>, label: &str, cx: &App) -> Result<String, String> {
     required(state, label, cx).map(|value| decimal_point(&value))
 }
@@ -135,12 +134,10 @@ pub fn currency(
     )
 }
 
-/// A record editor's two equal columns of fields.
 pub fn grid() -> Div {
     div().grid().grid_cols(2).gap_x(px(12.)).gap_y(px(14.))
 }
 
-/// A control with its label above it (12px, muted).
 pub fn field(label: &'static str, control: impl IntoElement, cx: &App) -> Div {
     v_flex()
         .min_w_0()
@@ -185,8 +182,6 @@ pub fn select_field<T: Clone + PartialEq + 'static>(
     )
 }
 
-/// An amount and its currency in one field: the currency is a select at the
-/// end of the input, labelled `currency_label` for accessibility.
 pub fn amount_field(
     label: &'static str,
     currency_label: &'static str,
@@ -223,8 +218,6 @@ pub fn amount_field(
     )
 }
 
-/// The amount and its currency, if the amount parses as the use cases parse
-/// it and a currency is chosen.
 pub fn parsed_amount(
     amount: &Entity<InputState>,
     currency: &Entity<ChoiceState<Currency>>,
@@ -235,8 +228,8 @@ pub fn parsed_amount(
     Some((value, currency))
 }
 
-/// Calls `changed` whenever `entity` notifies, which a field does on every
-/// edit (and on focus and cursor changes, so compare before acting).
+/// Fields also notify on focus and cursor changes, so `changed` should compare
+/// before acting.
 pub fn watch<V: 'static, T: 'static>(
     entity: &Entity<T>,
     window: &mut Window,

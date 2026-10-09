@@ -1,6 +1,9 @@
 use super::*;
-use crate::components::records::{
-    self, END_SPACE, Item, ItemKey, cell, control, details, focus_ring, heading, measure_width,
+use crate::{
+    components::records::{
+        self, END_SPACE, Item, ItemKey, cell, control, details, focus_ring, heading, measure_width,
+    },
+    format::record_count,
 };
 use gpui_kit::{
     Role,
@@ -11,15 +14,14 @@ use gpui_kit::{
     },
 };
 
-/// A month header's or row's focus handle. Keyboard focus entering the item
-/// scrolls it into view, so Tab walks on past the rows on screen.
+/// Keyboard focus entering the item scrolls it into view, so Tab walks on past
+/// the rows on screen.
 pub(super) struct ItemFocus {
     handle: FocusHandle,
     _reveal: Subscription,
 }
 
 impl<K: RecordKind> RecordsPage<K> {
-    /// The focus handle of the item with `key`, made on first use.
     fn ensure_focus(
         &mut self,
         key: &ItemKey,
@@ -63,7 +65,6 @@ impl<K: RecordKind> RecordsPage<K> {
         cx.notify();
     }
 
-    /// Selects or clears the records at `indices`; other selections stay.
     fn select(&mut self, indices: &[usize], checked: bool) {
         for &index in indices {
             let id = K::id(&self.records[index]);
@@ -144,19 +145,6 @@ impl<K: RecordKind> RecordsPage<K> {
             )
     }
 
-    fn chevron(open: bool, cx: &App) -> Icon {
-        let p = *palette(cx);
-        Icon::new(if open {
-            IconName::ChevronDown
-        } else {
-            IconName::ChevronRight
-        })
-        .size(px(14.))
-        .text_color(if open { p.text } else { p.faint })
-    }
-
-    /// A month header: select the month, fold it, and its subtotal. With
-    /// compact columns there's no room for the record count, so it's left out.
     fn month_row(
         &self,
         group: usize,
@@ -170,7 +158,6 @@ impl<K: RecordKind> RecordsPage<K> {
         let key = group.key;
         let open = !self.folded.contains(&key);
         let indices = group.records.clone();
-        let count = group.records.len();
         let counted = !layout.compact;
         records::row(layout)
             .id(SharedString::from(format!("month-{}-{}", key.0, key.1)))
@@ -203,7 +190,7 @@ impl<K: RecordKind> RecordsPage<K> {
                     })),
                 ),
             )
-            .child(Self::chevron(open, cx))
+            .child(chevron(open, cx))
             .child(
                 div()
                     .ml(px(8.))
@@ -221,11 +208,7 @@ impl<K: RecordKind> RecordsPage<K> {
                     .text_color(p.muted)
                     .font_features(tabular_digits())
                     .when(counted, |summary| {
-                        summary.child(if count == 1 {
-                            "1 record".to_owned()
-                        } else {
-                            format!("{count} records")
-                        })
+                        summary.child(record_count(group.records.len() as u32))
                     })
                     .children(
                         group
@@ -256,8 +239,6 @@ impl<K: RecordKind> RecordsPage<K> {
             })
     }
 
-    /// A record's row: click anywhere, or press Enter or Space on it, to open
-    /// it. The checkbox and "⋯" are their own targets.
     fn record_line(
         &self,
         index: usize,
@@ -313,7 +294,7 @@ impl<K: RecordKind> RecordsPage<K> {
                 div()
                     .w(layout.frame[1])
                     .flex_shrink_0()
-                    .child(Self::chevron(open, cx)),
+                    .child(chevron(open, cx)),
             )
             .children(
                 layout
@@ -355,8 +336,7 @@ impl<K: RecordKind> RecordsPage<K> {
             })
     }
 
-    /// "⋯" with Edit and Delete. It shows on hover and on an opened row. On a
-    /// closed row it's no Tab stop, since it's hidden; opening the row shows
+    /// On a closed row it's hidden, so it's no Tab stop; opening the row shows
     /// Edit and Delete.
     #[allow(clippy::too_many_arguments)]
     fn more_menu(
@@ -485,9 +465,8 @@ impl<K: RecordKind> RecordsPage<K> {
         }
     }
 
-    /// Rebuilds the list items and their heights: month headers, then the
-    /// rows of unfolded months. Collapsed rows and headers are measured once;
-    /// opened rows once each until the width or fonts change.
+    /// Collapsed rows and month headers are measured once; opened rows once
+    /// each until the width or fonts change.
     fn rebuild(&mut self, layout: &TableLayout, window: &mut Window, cx: &mut Context<Self>) {
         let available = size(
             AvailableSpace::Definite(layout.width),
@@ -646,8 +625,17 @@ impl<K: RecordKind> RecordsPage<K> {
     }
 }
 
-/// Whether a row or month header shows its focus ring: focused from the
-/// keyboard, not by a click.
+fn chevron(open: bool, cx: &App) -> Icon {
+    let p = *palette(cx);
+    Icon::new(if open {
+        IconName::ChevronDown
+    } else {
+        IconName::ChevronRight
+    })
+    .size(px(14.))
+    .text_color(if open { p.text } else { p.faint })
+}
+
 fn ring(focus: Option<&FocusHandle>, window: &Window) -> bool {
     window.last_input_was_keyboard() && focus.is_some_and(|focus| focus.is_focused(window))
 }

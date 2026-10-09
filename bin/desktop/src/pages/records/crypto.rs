@@ -1,11 +1,11 @@
 use super::{RecordForm, RecordKind, Submission, conversion, day};
-use crate::navigation::Page;
 use crate::{
     components::{
         form::{self, Choice, ChoiceState},
         records::{CellStyle, Preview, RecordColumn, RowDisplay, Step, StepLine},
     },
     format::{DisplayText, amount, date, pln},
+    navigation::Page,
 };
 use chrono::NaiveDate;
 use gpui_kit::{
@@ -43,7 +43,6 @@ impl RecordKind for Crypto {
         record.date
     }
 
-    /// The fees give way first in a narrow panel; the opened row shows them.
     fn columns() -> Vec<RecordColumn> {
         vec![
             RecordColumn::new("Date", CellStyle::Muted, 60., 50.),
@@ -128,8 +127,7 @@ impl RecordKind for Crypto {
         }
     }
 
-    /// Income and costs as the calculation adds them up; a part shows only
-    /// when the month has records for it.
+    /// A part shows only when the month has records for it.
     fn subtotal(records: &[&CalculatedCrypto]) -> Vec<(Option<&'static str>, Decimal)> {
         let (mut income, mut costs) = (Decimal::ZERO, Decimal::ZERO);
         let (mut sells, mut buys) = (false, false);
@@ -206,8 +204,6 @@ impl RecordKind for Crypto {
         crypto::preview_crypto(&app, record).await
     }
 
-    /// The value, then the fee and what the record adds to, as in the opened
-    /// row's "Adds to" step.
     fn preview_display(record: &CalculatedCrypto) -> Preview {
         let mut results = vec![("Calculated fee", pln(record.calculated_fee))];
         match record.action {
@@ -229,7 +225,6 @@ impl RecordKind for Crypto {
     }
 }
 
-/// `+value PLN`: what a record adds to a form total.
 fn added(value: Decimal) -> DisplayText {
     let value = pln(value);
     DisplayText {
@@ -238,7 +233,6 @@ fn added(value: Decimal) -> DisplayText {
     }
 }
 
-/// What the crypto calculation reads; the provider doesn't count.
 #[derive(Clone, PartialEq)]
 pub struct CryptoDraft {
     date: NaiveDate,

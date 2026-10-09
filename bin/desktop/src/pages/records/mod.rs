@@ -5,7 +5,7 @@ mod table;
 
 pub use self::{crypto::Crypto, dividends::Dividends, interests::Interests};
 
-use super::{PageView, missing_rate};
+use super::missing_rate;
 use crate::{
     components::{
         ButtonText, Status, dialog, form, header, nbp, notice,
@@ -15,7 +15,7 @@ use crate::{
         },
         spinner, value,
     },
-    format::{DisplayText, pln},
+    format::{DisplayText, amount, pln},
     navigation::{Page, PageContext},
     theme::{palette, tabular_digits},
 };
@@ -34,10 +34,7 @@ use gpui_kit::{
     },
     *,
 };
-use pitpls_app::use_case::{
-    rate,
-    year::{self, YearInfo},
-};
+use pitpls_app::use_case::year::{self, YearInfo};
 use pitpls_core::common::Amount;
 use pitpls_importers::{IMPORTERS, OutputType};
 use rust_decimal::Decimal;
@@ -55,29 +52,25 @@ pub enum Submission<C, U> {
 pub trait RecordForm: 'static {
     type Record;
     type Submission: Send + 'static;
-    /// The values the calculation reads, for the preview.
+    /// The values the calculation reads, so the preview recalculates only when
+    /// they change.
     type Draft: Clone + PartialEq + Send + 'static;
 
     fn new(record: Option<&Self::Record>, window: &mut Window, cx: &mut App) -> Self;
     fn title(&self) -> &'static str;
-    /// The record being edited, or `None` when adding one.
     fn existing_id(&self) -> Option<&str>;
-    /// The optional ID, folded away below the other fields.
     fn id_input(&self) -> &Entity<InputState>;
-    /// The input focused when the editor opens. Enter opens a focused date
-    /// picker, so this is a text input, where Enter saves.
+    /// A text input, not the date picker: Enter opens a focused date picker
+    /// instead of saving.
     fn first_input(&self) -> &Entity<InputState>;
     fn submission(&self, cx: &App) -> Result<Self::Submission, String>;
-    /// The values the calculation reads, once every one of them is valid.
     fn draft(&self, cx: &App) -> Option<Self::Draft>;
-    /// Calls `changed` on the view whenever a field changes.
     fn watch<V: 'static>(
         &self,
         window: &mut Window,
         cx: &mut Context<V>,
         changed: fn(&mut V, &mut Window, &mut Context<V>),
     ) -> Vec<Subscription>;
-    /// Every field but the ID, in two columns.
     fn render(&self, busy: bool, cx: &App) -> Div;
 }
 
@@ -88,9 +81,7 @@ pub trait RecordKind: 'static {
     type Form: RecordForm<Record = Self::Record>;
 
     const PAGE: Page;
-    /// Names a single record in accessibility labels and year links.
     const NAME: &'static str;
-    /// Names the records in the empty state: "No dividends in 2026".
     const PLURAL: &'static str;
     const TOTAL_LABELS: &'static [&'static str];
 
@@ -98,16 +89,13 @@ pub trait RecordKind: 'static {
     fn date(record: &Self::Record) -> NaiveDate;
     fn columns() -> Vec<RecordColumn>;
     fn display(record: &Self::Record) -> RowDisplay;
-    /// A month header's sums of its records' calculated values, each with an
-    /// optional label. They are information only: summed here at full
-    /// precision, never by the calculation.
+    /// Information only: summed here at full precision, never by the
+    /// calculation.
     fn subtotal(records: &[&Self::Record]) -> Vec<(Option<&'static str>, Decimal)>;
-    /// Whether an importer output fills this page.
     fn imported(output: &OutputType) -> bool;
-    /// How many of this page's records a year has.
     fn count(year: &YearInfo) -> u32;
 
-    /// Loads the totals, in `TOTAL_LABELS` order, and the records.
+    /// The totals come in `TOTAL_LABELS` order.
     fn load(
         app: Arc<pitpls_app::App>,
         year: Option<i32>,
@@ -120,37 +108,28 @@ pub trait RecordKind: 'static {
         app: Arc<pitpls_app::App>,
         ids: Vec<String>,
     ) -> impl Future<Output = Result<u64, String>> + Send;
-    /// Calculates a draft as the page would once it is saved, without saving.
     fn preview(
         app: Arc<pitpls_app::App>,
         draft: Draft<Self>,
     ) -> impl Future<Output = Result<Self::Record, String>> + Send;
-    /// The editor's preview band for a calculated draft.
     fn preview_display(record: &Self::Record) -> Preview;
 }
 
-/// `value × rate` for an opened row's conversion step and the preview.
 fn conversion(value: Amount, rate: Decimal) -> Vec<DisplayText> {
-    vec![
-        crate::format::amount(value),
-        DisplayText::plain(format!("× {rate}")),
-    ]
+    vec![amount(value), DisplayText::plain(format!("× {rate}"))]
 }
 
-/// A rate such as 0.19 as `19%`.
 fn percent(rate: Decimal) -> String {
     format!("{}%", (rate * Decimal::ONE_HUNDRED).normalize())
 }
 
-/// `dd.mm`: the month header carries the month and year.
+/// The month header carries the month and year.
 fn day(date: NaiveDate) -> DisplayText {
     DisplayText::plain(date.format("%d.%m").to_string())
 }
 
-/// Below this table width, Import in the header shows only its icon.
 const NARROW: f32 = 600.;
 
-/// The records of one month that match the filter, by index.
 struct MonthGroup {
     key: (i32, u32),
     title: SharedString,
@@ -158,12 +137,9 @@ struct MonthGroup {
     summary: Vec<(Option<&'static str>, DisplayText)>,
 }
 
-/// An open add or edit dialog.
 struct Editor<K: RecordKind> {
     form: K::Form,
-    /// Whether the optional ID is unfolded.
     id_open: bool,
-    /// The values the shown or pending preview is for.
     draft: Option<Draft<K>>,
     /// Kept while a newer preview calculates, so the band doesn't flicker.
     preview: Option<Result<Preview, SharedString>>,
@@ -181,26 +157,20 @@ pub struct RecordsPage<K: RecordKind> {
     columns: Vec<RecordColumn>,
     groups: Vec<MonthGroup>,
     filter: Entity<InputState>,
-    /// The filter in lower case, trimmed.
     query: String,
     folded: HashSet<(i32, u32)>,
     table_scroll: ScrollHandle,
     page_scroll: ScrollHandle,
     table_state: RecordTableState,
-    /// Focus for each month header and row in the list, kept across rebuilds.
     item_focus: HashMap<ItemKey, table::ItemFocus>,
-    /// The focus handle of each list item, by index; the end space has none.
     item_handles: Vec<Option<FocusHandle>>,
     selected: HashSet<String>,
     expanded: HashSet<String>,
     editor: Option<Editor<K>>,
     pending_delete: Option<Vec<String>>,
-    /// The records being deleted, which show a spinner.
     deleting: HashSet<String>,
     nbp_year: Option<Entity<InputState>>,
-    /// The last load's conversion error, while a missing rate blocks the page.
     missing_rate: Option<SharedString>,
-    /// For the empty state: the nearest year with this page's records.
     other_year: Option<(i32, u32)>,
     focus: FocusHandle,
     _subscriptions: [Subscription; 2],
@@ -270,27 +240,22 @@ impl<K: RecordKind> RecordsPage<K> {
         view
     }
 
-    fn disabled(&self) -> bool {
+    fn locked(&self) -> bool {
         self.status.busy
-            || self.status.loading
             || self.editor.is_some()
             || self.pending_delete.is_some()
             || self.nbp_year.is_some()
     }
 
+    fn disabled(&self) -> bool {
+        self.locked() || self.status.loading
+    }
+
     fn notify(&self, cx: &mut Context<Self>) {
-        self.context.set_locked(
-            self.status.busy
-                || self.editor.is_some()
-                || self.pending_delete.is_some()
-                || self.nbp_year.is_some(),
-            cx,
-        );
+        self.context.set_locked(self.locked(), cx);
         cx.notify();
     }
 
-    /// Takes a successful load. Selection and opened rows keep the records
-    /// that are still there.
     fn apply(
         &mut self,
         totals: Vec<Decimal>,
@@ -317,7 +282,6 @@ impl<K: RecordKind> RecordsPage<K> {
         }
     }
 
-    /// Groups the records that match the filter by month, with subtotals.
     fn regroup(&mut self) {
         let mut groups: Vec<MonthGroup> = Vec::new();
         let rows = self.records.iter().zip(&self.table_state.rows);
@@ -352,7 +316,6 @@ impl<K: RecordKind> RecordsPage<K> {
         self.table_state.dirty = true;
     }
 
-    /// The records that match the filter.
     fn visible(&self) -> impl Iterator<Item = &str> {
         self.groups
             .iter()
@@ -379,8 +342,6 @@ impl<K: RecordKind> RecordsPage<K> {
         self.notify(cx);
     }
 
-    /// Recalculates the preview when a value it reads changes; an invalid
-    /// value hides it. Only the latest calculation's result is shown.
     fn update_preview(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let Some(editor) = &self.editor else {
             return;
@@ -416,7 +377,6 @@ impl<K: RecordKind> RecordsPage<K> {
         cx.notify();
     }
 
-    /// Unfolds or folds the optional ID. Unfolding it while adding focuses it.
     fn toggle_id(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let Some(editor) = &mut self.editor else {
             return;
@@ -546,7 +506,7 @@ impl<K: RecordKind> RecordsPage<K> {
         );
     }
 
-    /// Deletes every selected record, including any the filter hides.
+    /// Includes the selected records the filter hides.
     fn delete_selected(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let visible = self.visible().collect::<HashSet<_>>();
         let hidden = self
@@ -618,9 +578,6 @@ impl<K: RecordKind> RecordsPage<K> {
         .pb(px(14.))
     }
 
-    /// The optional ID, folded under "ID · optional, generated if left
-    /// blank". When editing, the line shows the record's ID instead, and the
-    /// field can't be changed.
     fn id_field(&self, editor: &Editor<K>, busy: bool, cx: &mut Context<Self>) -> Collapsible {
         let p = *palette(cx);
         let existing = editor.form.existing_id();
@@ -670,18 +627,14 @@ impl<K: RecordKind> RecordsPage<K> {
             ))
     }
 
-    /// The Rates page's "Import from NBP" dialog, prefilled with the year.
     fn open_nbp(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if self.disabled() {
             return;
         }
         let year = self.year.unwrap_or_else(|| chrono::Local::now().year());
-        let input = nbp::year_input(year, window, cx);
-        self.nbp_year = Some(input.clone());
+        self.nbp_year = Some(nbp::open(year, Self::nbp_dialog, window, cx));
         self.status.error = None;
         self.status.message = None;
-        dialog::open(window, cx, Self::nbp_dialog);
-        window.focus(&input.focus_handle(cx), cx);
         self.notify(cx);
     }
 
@@ -710,10 +663,7 @@ impl<K: RecordKind> RecordsPage<K> {
         self.status.task = Some(self.context.services.run(
             window,
             cx,
-            move |app| async move {
-                let count = rate::import_api(&app, year).await?;
-                Ok(format!("Imported {count} rates."))
-            },
+            move |app| nbp::import(app, year),
             |this, result, window, cx| {
                 if this.status.saved(result) {
                     window.close_dialog(cx);
@@ -797,33 +747,27 @@ impl<K: RecordKind> RecordsPage<K> {
                         // A width, not a flex basis: the row sizes itself
                         // from its content, so a basis left the field at its
                         // minimum.
-                        div()
-                            .w(px(180.))
-                            .flex_shrink(1.)
-                            .min_w(px(110.))
-                            .child(
-                                Input::new(&self.filter)
-                                    .small()
-                                    // `Input::h` only sizes multi-line inputs.
-                                    .map(|input| Styled::h(input, px(28.)))
-                                    .pl(px(11.))
-                                    .gap_2()
-                                    .text_size(px(13.))
-                                    .rounded(px(8.))
-                                    // The buttons' fill; disabled keeps the
-                                    // input's, close to a disabled button's.
-                                    .when(!filter_disabled, |input| {
-                                        input.bg(cx.theme().tokens.button)
-                                    })
-                                    .aria_label("Filter records")
-                                    .prefix(
-                                        Icon::new(IconName::Search)
-                                            .size(px(14.))
-                                            .text_color(p.faint),
-                                    )
-                                    .cleanable(true)
-                                    .disabled(filter_disabled),
-                            ),
+                        div().w(px(180.)).flex_shrink(1.).min_w(px(110.)).child(
+                            Input::new(&self.filter)
+                                .small()
+                                // `Input::h` only sizes multi-line inputs.
+                                .map(|input| Styled::h(input, px(28.)))
+                                .pl(px(11.))
+                                .gap_2()
+                                .text_size(px(13.))
+                                .rounded(px(8.))
+                                // The buttons' fill; disabled keeps the
+                                // input's, close to a disabled button's.
+                                .when(!filter_disabled, |input| input.bg(cx.theme().tokens.button))
+                                .aria_label("Filter records")
+                                .prefix(
+                                    Icon::new(IconName::Search)
+                                        .size(px(14.))
+                                        .text_color(p.faint),
+                                )
+                                .cleanable(true)
+                                .disabled(filter_disabled),
+                        ),
                     ),
             )
         })
@@ -863,7 +807,6 @@ impl<K: RecordKind> RecordsPage<K> {
             }))
     }
 
-    /// The year totals with copy buttons. A filter doesn't change them.
     fn totals(&self, compact: bool, cx: &App) -> Div {
         h_flex()
             .flex_shrink_0()
@@ -910,8 +853,6 @@ impl<K: RecordKind> RecordsPage<K> {
             .child(record_skeleton(&self.columns, &layout, visible, cx))
     }
 
-    /// No records for the year: Import, Add new, and a link to the nearest
-    /// year that has this page's records.
     fn empty_state(&self, cx: &mut Context<Self>) -> Empty {
         let disabled = self.disabled();
         let title = match self.year {
@@ -972,8 +913,7 @@ impl<K: RecordKind> RecordsPage<K> {
         )
     }
 
-    /// Floats over the table while anything is selected. The count includes
-    /// records the filter hides.
+    /// The count includes records the filter hides.
     fn selection_bar(&self, cx: &mut Context<Self>) -> Div {
         let p = *palette(cx);
         let disabled = self.disabled();
@@ -1060,8 +1000,8 @@ fn month_title((year, month): (i32, u32), with_year: bool) -> SharedString {
     }
 }
 
-/// The year with this page's records nearest to `selected`, newer first on a
-/// tie. Nothing for all years, which already includes every record.
+/// Newer first on a tie. Nothing for all years, which already includes every
+/// record.
 fn other_year<K: RecordKind>(selected: Option<i32>, years: &[YearInfo]) -> Option<(i32, u32)> {
     let selected = selected?;
     years
@@ -1071,7 +1011,7 @@ fn other_year<K: RecordKind>(selected: Option<i32>, years: &[YearInfo]) -> Optio
         .map(|info| (info.year, K::count(info)))
 }
 
-impl<K: RecordKind> PageView for RecordsPage<K> {
+impl<K: RecordKind> RecordsPage<K> {
     fn refresh(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if self.disabled() {
             return;

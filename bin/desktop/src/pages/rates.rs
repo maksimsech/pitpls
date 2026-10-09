@@ -1,4 +1,3 @@
-use super::PageView;
 use crate::{
     components::{ButtonText, Status, dialog, file_picker, header, nbp, notice, spinner},
     format,
@@ -6,11 +5,10 @@ use crate::{
     theme::{palette, tabular_digits},
 };
 use chrono::{Datelike, NaiveDate};
-use gpui_kit::component::{dialog::Dialog, input::InputState};
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::{
     assets::IconName,
-    component::{button::*, scroll::ScrollableElement, *},
+    component::{button::*, dialog::Dialog, input::InputState, scroll::ScrollableElement, *},
     *,
 };
 use pitpls_app::use_case::rate::{self, RateCoverage};
@@ -18,11 +16,8 @@ use std::ops::Range;
 
 /// The pinned Date column, including the panel's 20px inset.
 const DATE_WIDTH: Pixels = px(120.);
-/// The least width of a currency column.
 const RATE_WIDTH: Pixels = px(104.);
-/// The least space before a rate, in columns its digits widen.
 const RATE_GAP: Pixels = px(24.);
-/// Space after the last column.
 const END_PADDING: Pixels = px(20.);
 const HEADING_HEIGHT: Pixels = px(32.);
 const ROW_HEIGHT: Pixels = px(34.);
@@ -31,7 +26,6 @@ const TEXT_SIZE: Pixels = px(13.);
 #[derive(PartialEq)]
 struct RateRow {
     date: SharedString,
-    /// One per currency, "—" where the day has no rate for it.
     rates: Vec<SharedString>,
 }
 
@@ -39,23 +33,19 @@ struct RateRow {
 struct RateData {
     coverage: Option<RateCoverage>,
     currencies: Vec<SharedString>,
-    /// Newest day first.
     rows: Vec<RateRow>,
 }
 
-/// Where each currency column starts and ends, from the table's left edge.
 #[derive(Default)]
 struct Columns {
     starts: Vec<Pixels>,
     ends: Vec<Pixels>,
-    /// Date, every currency and the end padding.
     width: Pixels,
 }
 
 impl Columns {
-    /// Rates are shown as stored, never cut, so a column grows past
-    /// [`RATE_WIDTH`] when its longest rate needs it. With tabular digits the
-    /// longest string is the widest.
+    /// With tabular digits the longest rate is the widest, so only it is
+    /// measured.
     fn new(data: &RateData, window: &Window, cx: &App) -> Self {
         let font = Font {
             features: tabular_digits(),
@@ -90,8 +80,6 @@ impl Columns {
         columns
     }
 
-    /// The columns in view right of the pinned Date column, for a table
-    /// scrolled `scroll` to the left in a `viewport` this wide.
     fn visible(&self, scroll: Pixels, viewport: Pixels) -> Range<usize> {
         let first = self.ends.partition_point(|end| *end <= scroll + DATE_WIDTH);
         let end = self
@@ -107,7 +95,6 @@ enum Change {
     Reset,
 }
 
-/// The operation the page is running, whose button shows a spinner.
 #[derive(Clone, Copy, PartialEq)]
 enum Running {
     Csv,
@@ -144,15 +131,20 @@ impl RatesPage {
         page
     }
 
+    fn locked(&self) -> bool {
+        self.status.busy || self.nbp_year.is_some() || self.confirm_reset
+    }
+
+    fn disabled(&self) -> bool {
+        self.locked() || self.status.loading
+    }
+
     fn notify(&self, cx: &mut Context<Self>) {
-        self.context.set_locked(
-            self.status.busy || self.nbp_year.is_some() || self.confirm_reset,
-            cx,
-        );
+        self.context.set_locked(self.locked(), cx);
         cx.notify();
     }
 
-    fn close_form(&mut self, cx: &mut Context<Self>) {
+    fn close_nbp(&mut self, cx: &mut Context<Self>) {
         self.nbp_year = None;
         self.status.error = None;
         self.notify(cx);
@@ -178,10 +170,7 @@ impl RatesPage {
                         "Imported {} rates.",
                         rate::import_csv(&app, file).await?
                     )),
-                    Change::Nbp(year) => Ok(format!(
-                        "Imported {} rates.",
-                        rate::import_api(&app, year).await?
-                    )),
+                    Change::Nbp(year) => nbp::import(app, year).await,
                     Change::Reset => {
                         Ok(format!("Removed {} rates.", rate::reset_rates(&app).await?))
                     }
@@ -193,7 +182,7 @@ impl RatesPage {
                     if this.nbp_year.is_some() {
                         window.close_dialog(cx);
                     }
-                    this.close_form(cx);
+                    this.close_nbp(cx);
                     this.refresh(window, cx);
                 }
                 this.notify(cx);
@@ -227,12 +216,10 @@ impl RatesPage {
     }
 
     fn open_nbp(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let year = nbp::year_input(chrono::Local::now().year(), window, cx);
-        self.nbp_year = Some(year.clone());
+        let year = chrono::Local::now().year();
+        self.nbp_year = Some(nbp::open(year, Self::nbp_dialog, window, cx));
         self.status.error = None;
         self.status.message = None;
-        dialog::open(window, cx, Self::nbp_dialog);
-        window.focus(&year.focus_handle(cx), cx);
         self.notify(cx);
     }
 
@@ -262,7 +249,7 @@ impl RatesPage {
             year,
             |this| &this.status,
             Self::import_nbp,
-            Self::close_form,
+            Self::close_nbp,
             cx,
         )
     }
@@ -283,10 +270,6 @@ impl RatesPage {
             cx,
         );
         self.notify(cx);
-    }
-
-    fn disabled(&self) -> bool {
-        self.status.busy || self.status.loading || self.nbp_year.is_some() || self.confirm_reset
     }
 
     fn header(&self, window: &mut Window, cx: &mut Context<Self>) -> Stateful<Div> {
@@ -351,8 +334,8 @@ impl RatesPage {
         )
     }
 
-    /// Operation results and, after a failed load, Retry. The NBP dialog
-    /// shows its own errors, so nothing shows here while it's open.
+    /// The NBP dialog shows its own errors, so nothing shows here while it's
+    /// open.
     fn notices(&self, cx: &mut Context<Self>) -> Div {
         let disabled = self.disabled();
         let form_open = self.nbp_year.is_some();
@@ -377,9 +360,7 @@ impl RatesPage {
                 )
             })
     }
-}
 
-impl PageView for RatesPage {
     fn refresh(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if self.disabled() {
             return;
@@ -466,8 +447,8 @@ impl Render for RatesPage {
 }
 
 impl RatesPage {
-    /// Every day and currency. Rows draw only the columns in view, and the
-    /// Date column stays at the left edge.
+    /// Rows draw only the columns in view, and the Date column stays at the
+    /// left edge.
     fn table(&self, cx: &mut Context<Self>) -> AnyElement {
         let p = *palette(cx);
         let mut list = uniform_list(
@@ -566,8 +547,8 @@ impl RatesPage {
             .into_any_element()
     }
 
-    /// A day as plain text: the visible `columns`, then the date, moved right
-    /// by `scroll` so it stays at the left edge over the rates passing under.
+    /// The date moves right by `scroll`, so it stays at the left edge over the
+    /// rates passing under.
     fn row(&self, index: usize, columns: Range<usize>, scroll: Pixels, cx: &App) -> Div {
         let p = *palette(cx);
         let row = &self.data.rows[index];
@@ -602,8 +583,6 @@ impl RatesPage {
             )
     }
 
-    /// Placeholders reserve their space at once but stay hidden until
-    /// `loading_visible`.
     fn skeleton(&self, cx: &App) -> Div {
         let p = *palette(cx);
         let visible = self.status.loading_visible;
@@ -654,8 +633,7 @@ impl RatesPage {
     }
 }
 
-/// A Date cell on the surface colour, so the rates scrolling under it stay
-/// hidden. The caller places it.
+/// On the surface colour, so the rates scrolling under it stay hidden.
 fn pinned(surface: Hsla) -> Div {
     div()
         .absolute()

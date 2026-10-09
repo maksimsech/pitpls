@@ -9,10 +9,24 @@ use gpui_kit::{
     },
     *,
 };
+use pitpls_app::use_case::rate;
+use std::sync::Arc;
 
-/// The year field of the "Import from NBP" dialog, holding `year`.
-pub fn year_input(year: i32, window: &mut Window, cx: &mut App) -> Entity<InputState> {
-    form::input(year.to_string(), window, cx)
+pub fn open<V: 'static>(
+    year: i32,
+    render: fn(&V, Dialog, &mut Context<V>) -> Dialog,
+    window: &mut Window,
+    cx: &mut Context<V>,
+) -> Entity<InputState> {
+    let input = form::input(year.to_string(), window, cx);
+    dialog::open(window, cx, render);
+    window.focus(&input.focus_handle(cx), cx);
+    input
+}
+
+pub async fn import(app: Arc<pitpls_app::App>, year: i32) -> Result<String, String> {
+    let count = rate::import_api(&app, year).await?;
+    Ok(format!("Imported {count} rates."))
 }
 
 /// The year in the field, if NBP publishes rates for it.
@@ -27,9 +41,6 @@ pub fn year(input: &Entity<InputState>, cx: &App) -> Result<i32, String> {
     })
 }
 
-/// The "Import from NBP" dialog: one year field, with a spinner at its end
-/// while importing. `submit` reads it with [`year`] and imports; the view
-/// closes the dialog once that succeeds.
 pub fn dialog<V: 'static>(
     this: &V,
     dialog: Dialog,

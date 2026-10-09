@@ -1,11 +1,11 @@
 use super::{RecordForm, RecordKind, Submission, conversion, day, percent};
-use crate::navigation::Page;
 use crate::{
     components::{
         form::{self, ChoiceState},
         records::{CellStyle, Preview, RecordColumn, RowDisplay, Step, StepLine},
     },
     format::{DisplayText, amount, date, money, pln},
+    navigation::Page,
 };
 use chrono::NaiveDate;
 use gpui_kit::{
@@ -202,7 +202,6 @@ impl RecordKind for Dividends {
     }
 }
 
-/// What the dividend calculation reads; ticker and provider don't count.
 #[derive(Clone, PartialEq)]
 pub struct DividendDraft {
     date: NaiveDate,

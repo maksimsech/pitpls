@@ -1,11 +1,11 @@
 use super::{RecordForm, RecordKind, Submission, conversion, day, percent};
-use crate::navigation::Page;
 use crate::{
     components::{
         form::{self, ChoiceState},
         records::{CellStyle, Preview, RecordColumn, RowDisplay, Step, StepLine},
     },
     format::{DisplayText, amount, date, money, pln},
+    navigation::Page,
 };
 use chrono::NaiveDate;
 use gpui_kit::{
@@ -151,7 +151,6 @@ impl RecordKind for Interests {
     }
 }
 
-/// What the interest calculation reads; the provider doesn't count.
 #[derive(Clone, PartialEq)]
 pub struct InterestDraft {
     date: NaiveDate,

@@ -1,6 +1,5 @@
-use super::PageView;
 use crate::{
-    components::{self, ButtonText, Status, data, dialog, file_picker, header, nbp, spinner},
+    components::{self, ButtonText, Status, data, file_picker, header, nbp},
     navigation::{Page, PageContext},
     theme::{palette, tabular_digits},
 };
@@ -18,15 +17,12 @@ use pitpls_app::use_case::{
 use pitpls_importers::{IMPORTERS, InputType, OutputType, model::Importer};
 use std::path::Path;
 
-/// The import that runs, or ran last; its outcome shows under its row.
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Active {
-    /// A statement, by its index in `IMPORTERS`.
     Statement(usize),
     Rates,
 }
 
-/// The state of the rates and the last statement.
 struct Data {
     coverage: Option<RateCoverage>,
     last_import: Option<LastImport>,
@@ -35,9 +31,8 @@ struct Data {
 pub struct ImportsPage {
     context: PageContext,
     year: Option<i32>,
-    /// The imports: the busy lock and their outcome.
     status: Status,
-    /// Loading `data`, apart from the imports.
+    /// Apart from `status`, so a reload keeps the last import's outcome.
     load: Status,
     data: Option<Data>,
     active: Option<Active>,
@@ -68,7 +63,6 @@ impl ImportsPage {
         page
     }
 
-    /// Navigation stays put while an import runs or the NBP dialog is open.
     fn locked(&self) -> bool {
         self.status.busy || self.nbp_year.is_some()
     }
@@ -151,20 +145,16 @@ impl ImportsPage {
         ));
     }
 
-    /// The Rates page's "Import from NBP" dialog, prefilled with the year.
     fn open_nbp(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if self.locked() {
             return;
         }
         let year = self.year.unwrap_or_else(|| Local::now().year());
-        let input = nbp::year_input(year, window, cx);
-        self.nbp_year = Some(input.clone());
+        self.nbp_year = Some(nbp::open(year, Self::nbp_dialog, window, cx));
         self.active = Some(Active::Rates);
         self.file_name = None;
         self.status.error = None;
         self.status.message = None;
-        dialog::open(window, cx, Self::nbp_dialog);
-        window.focus(&input.focus_handle(cx), cx);
         self.notify(cx);
     }
 
@@ -187,10 +177,7 @@ impl ImportsPage {
                 self.status.task = Some(self.context.services.run(
                     window,
                     cx,
-                    move |app| async move {
-                        let count = rate::import_api(&app, year).await?;
-                        Ok(format!("Imported {count} rates."))
-                    },
+                    move |app| nbp::import(app, year),
                     |this, result, window, cx| {
                         if this.status.saved(result) {
                             window.close_dialog(cx);
@@ -224,10 +211,8 @@ impl ImportsPage {
             cx,
         )
     }
-}
 
-impl PageView for ImportsPage {
-    /// Loads the rate and last import status; a running load starts over.
+    /// A running load starts over.
     fn refresh(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.load.begin_load(window, cx, |this| &mut this.load);
         self.load.task = Some(self.context.services.run(
@@ -293,8 +278,6 @@ impl ImportsPage {
             )
     }
 
-    /// A provider's row: its mark, name, formats and outputs, then the file
-    /// button. The outcome of its last import follows.
     fn provider(&self, index: usize, importer: &Importer, cx: &mut Context<Self>) -> Div {
         let p = *palette(cx);
         let active = self.active == Some(Active::Statement(index));
@@ -321,36 +304,23 @@ impl ImportsPage {
             Some(file_name) if active => file_name.to_string(),
             _ => formats.clone(),
         };
-        let button =
-            if active && self.status.busy {
-                // The picker is open or the file is importing.
-                Button::new(("import-file", index))
-                    .h(px(28.))
-                    .px(px(11.))
-                    .rounded(px(8.))
-                    .disabled(true)
-                    .child(spinner())
-                    .child(div().text_size(px(13.)).font_medium().child(
-                        if self.file_name.is_some() {
-                            "Importing…"
-                        } else {
-                            "Choosing file…"
-                        },
-                    ))
-            } else {
-                header::button(
-                    ("import-file", index),
-                    None,
-                    if active && self.status.error.is_some() {
-                        "Try another file".to_owned()
-                    } else {
-                        format!("Choose {formats}")
-                    },
-                )
-                .accessibility_label(format!("Choose {formats} file for {}", importer.name))
-                .disabled(self.locked())
-                .on_click(cx.listener(move |this, _, window, cx| this.pick_file(index, window, cx)))
-            };
+        // The picker is open or the file is importing.
+        let busy = active && self.status.busy;
+        let label = if busy && self.file_name.is_some() {
+            "Importing…".to_owned()
+        } else if busy {
+            "Choosing file…".to_owned()
+        } else if active && self.status.error.is_some() {
+            "Try another file".to_owned()
+        } else {
+            format!("Choose {formats}")
+        };
+        let button = header::task_button(("import-file", index), None, label, busy)
+            .when(!busy, |button| {
+                button.accessibility_label(format!("Choose {formats} file for {}", importer.name))
+            })
+            .disabled(self.locked())
+            .on_click(cx.listener(move |this, _, window, cx| this.pick_file(index, window, cx)));
         v_flex()
             .border_t_1()
             .border_color(p.line)
@@ -395,8 +365,6 @@ impl ImportsPage {
             })
     }
 
-    /// The rates and last import cards: placeholders while the first load
-    /// is slow, and an alert with Retry above them when a load fails.
     fn data_cards(&self, cx: &mut Context<Self>) -> Vec<AnyElement> {
         let mut cards = vec![];
         if let Some(error) = &self.load.error {
@@ -477,8 +445,6 @@ impl ImportsPage {
         )
     }
 
-    /// What the last import on a row did, indented to its text: the
-    /// records or rates imported, or why it failed.
     fn outcome(&self, failure: &'static str, indent: Pixels, cx: &App) -> Option<Div> {
         let p = palette(cx);
         let band = h_flex()
@@ -515,8 +481,6 @@ impl ImportsPage {
     }
 }
 
-/// A 56px card row: status dot, then the title over a muted detail line.
-/// Callers add the right padding and what goes at the end.
 fn status_row(dot: Hsla, title: &'static str, detail: StyledText, cx: &App) -> Div {
     h_flex()
         .h(px(56.))
@@ -539,8 +503,6 @@ fn status_row(dot: Hsla, title: &'static str, detail: StyledText, cx: &App) -> D
         )
 }
 
-/// A status card's placeholder: its title, and a bar where the detail will
-/// be.
 fn status_row_skeleton(title: &'static str, cx: &App) -> Div {
     data::card(cx).child(
         h_flex()
@@ -563,7 +525,6 @@ fn status_row_skeleton(title: &'static str, cx: &App) -> Div {
     )
 }
 
-/// The provider's initials for its mark, such as "T2" for Trading 212.
 fn initials(name: &str) -> String {
     name.split_whitespace()
         .filter_map(|word| word.chars().next())

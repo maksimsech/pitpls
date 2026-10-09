@@ -21,8 +21,8 @@ pub struct Status {
     pub loading: bool,
     pub loading_visible: bool,
     loading_delay: Option<Task<()>>,
-    /// Whether the last load succeeded. Forms also set and clear `error`, so
-    /// it cannot tell a failed load from empty data.
+    /// Forms also set and clear `error`, so it can't tell a failed load from
+    /// empty data.
     pub ready: bool,
     pub error: Option<SharedString>,
     pub message: Option<SharedString>,
@@ -32,8 +32,6 @@ pub struct Status {
 }
 
 impl Status {
-    /// Whether [`render`](Self::render) shows anything. A running operation
-    /// shows a spinner on whatever started it instead.
     pub fn is_visible(&self) -> bool {
         self.error.is_some() || self.message.is_some()
     }
@@ -112,7 +110,6 @@ impl Status {
         })
     }
 
-    /// "Refreshing…" for the page header while loaded data reloads.
     pub fn refreshing(&self, cx: &App) -> Div {
         div()
             .text_size(px(12.))
@@ -123,8 +120,9 @@ impl Status {
     }
 }
 
-/// The 14px spinner on whatever started a running operation, in place of an
-/// icon or beside a field.
+/// How far the kit's focus ring reaches outside a control.
+pub const FOCUS_RING: Pixels = px(3.);
+
 pub fn spinner() -> Spinner {
     Spinner::new().with_size(px(14.))
 }
@@ -134,8 +132,8 @@ pub fn spinner() -> Spinner {
 pub const BUTTON_TEXT: Pixels = px(14.);
 
 pub trait ButtonText {
-    /// [`Button::label`] at [`BUTTON_TEXT`]: the kit sizes the label itself,
-    /// so the text goes on a child.
+    /// The kit sizes [`Button::label`] itself, so the text goes on a child at
+    /// [`BUTTON_TEXT`].
     fn text_label(self, label: impl Into<SharedString>) -> Self;
 }
 

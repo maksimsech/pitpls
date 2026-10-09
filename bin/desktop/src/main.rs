@@ -11,7 +11,6 @@ use gpui_kit::*;
 use std::sync::Arc;
 
 pub(crate) const APP_NAME: &str = "pitpls";
-/// The sidebar's top row, which holds the traffic lights.
 pub(crate) const TITLE_ROW_HEIGHT: Pixels = px(44.);
 
 actions!(desktop, [Quit]);
@@ -48,7 +47,7 @@ fn run() -> Result<(), String> {
             .map_err(|error| error.to_string())?,
     );
     gpui_kit::application()
-        // The default bundle lacks icons such as SquarePen and Trash.
+        // The default bundle lacks icons such as Trash and Upload.
         .with_assets(gpui_kit::assets::AllAssets)
         .run(move |cx| {
             gpui_kit::init(cx);

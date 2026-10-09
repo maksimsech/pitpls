@@ -1,4 +1,4 @@
-use super::{ButtonText, Status};
+use super::{ButtonText, FOCUS_RING, Status};
 use crate::theme::palette;
 use gpui_kit::{
     component::{
@@ -12,21 +12,15 @@ use gpui_kit::{
 
 actions!(record_editor, [SaveRecord]);
 
-/// The key context of a record editor's body and footer, where
-/// [`SAVE_KEYS`] saves from any field. Enter saves from a text field, as in
-/// every dialog, but opens a focused select or date picker.
+/// Enter opens a focused select or date picker instead of saving, so
+/// [`SAVE_KEYS`] saves from any field.
 const EDITOR_CONTEXT: &str = "RecordEditor";
 const SAVE_KEYS: &str = "secondary-enter";
-
-/// The kit's focus ring is painted outside a control, and a dialog's body
-/// clips its content, so the body leaves this much room below its last field.
-const FOCUS_RING_ROOM: Pixels = px(3.);
 
 pub fn bind_keys(cx: &mut App) {
     cx.bind_keys([KeyBinding::new(SAVE_KEYS, SaveRecord, Some(EDITOR_CONTEXT))]);
 }
 
-/// Opens a dialog that `render` rebuilds from the view on every frame.
 pub fn open<V: 'static>(
     window: &mut Window,
     cx: &mut Context<V>,
@@ -39,10 +33,6 @@ pub fn open<V: 'static>(
     });
 }
 
-/// A form that can't be dismissed while busy. Confirming runs `submit` and
-/// keeps the dialog open; the view closes it once the submission succeeds.
-/// Only errors show above `body`: `body` shows progress itself, and the page
-/// reports success.
 #[allow(clippy::too_many_arguments)]
 pub fn form<V: 'static>(
     this: &V,
@@ -57,7 +47,8 @@ pub fn form<V: 'static>(
     let busy = status(this).busy;
     behaviour(this, dialog, status, submit, close, cx)
         .children(status(this).error_alert())
-        .child(div().pb(FOCUS_RING_ROOM).child(body))
+        // The body clips, so it leaves room for the last field's ring.
+        .child(div().pb(FOCUS_RING).child(body))
         .footer(footer(
             None,
             Button::new("dialog-submit")
@@ -67,9 +58,6 @@ pub fn form<V: 'static>(
         ))
 }
 
-/// A record editor: a [`form`] whose `body` shows its own errors, with the
-/// keyboard hints in the footer before Cancel and the submit button.
-/// [`SAVE_KEYS`] runs `submit` from anywhere in the body or footer.
 #[allow(clippy::too_many_arguments)]
 pub fn editor<V: 'static>(
     this: &V,
@@ -98,7 +86,7 @@ pub fn editor<V: 'static>(
             div()
                 .key_context(EDITOR_CONTEXT)
                 .on_action(save(submit, cx))
-                .pb(FOCUS_RING_ROOM)
+                .pb(FOCUS_RING)
                 .child(body),
         )
         .footer(
@@ -122,7 +110,6 @@ fn save<V: 'static>(
     cx.listener(move |this, _: &SaveRecord, window, cx| submit(this, window, cx))
 }
 
-/// A keystroke in the kit's `Kbd`, drawn as an outlined 18px key.
 fn key_hint(keys: &str, cx: &App) -> Kbd {
     let p = palette(cx);
     Kbd::new(Keystroke::parse(keys).expect("a valid keystroke"))
@@ -138,8 +125,6 @@ fn key_hint(keys: &str, cx: &App) -> Kbd {
         .text_size(px(11.))
 }
 
-/// What every form dialog shares: no dismissing while busy, Enter submits
-/// without closing, and `close` runs when it closes.
 fn behaviour<V: 'static>(
     this: &V,
     dialog: Dialog,
@@ -157,6 +142,8 @@ fn behaviour<V: 'static>(
         .close_button(!busy)
         .on_ok(move |_, window, cx| {
             let _ = submit_view.update(cx, |this, cx| submit(this, window, cx));
+            // Stay open: the view closes the dialog once the submission
+            // succeeds.
             false
         })
         .on_cancel(move |_, _, cx| {
@@ -170,8 +157,7 @@ fn behaviour<V: 'static>(
         }))
 }
 
-/// Opens a confirmation for a destructive action. Closing it any way runs
-/// `close`, after `confirm` when confirmed.
+/// `close` runs on any close, after `confirm` when confirmed.
 pub fn confirm<V: 'static>(
     title: &'static str,
     message: impl Into<SharedString>,
@@ -205,8 +191,7 @@ pub fn confirm<V: 'static>(
     });
 }
 
-/// Kit buttons that send Cancel and Confirm to the dialog they're in, sized to
-/// their labels rather than to the footer, after the optional `hints`.
+/// The `div`s size the buttons to their labels instead of the footer.
 fn footer(hints: Option<Div>, confirm: Button, disabled: bool) -> DialogFooter {
     DialogFooter::new()
         .children(hints)

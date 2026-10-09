@@ -42,10 +42,8 @@ pub enum PageEvent {
     Navigate(Page),
     LockNavigation(bool),
     YearsChanged,
-    /// Selects the tax year, `None` meaning every year.
     SelectYear(Option<i32>),
-    /// Applies and saves the theme: `Some(dark)`, or `None` to follow the
-    /// system.
+    /// `None` follows the system.
     SetTheme(Option<bool>),
 }
 

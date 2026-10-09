@@ -9,12 +9,11 @@ use gpui_kit::{
     *,
 };
 
-pub const HEIGHT: Pixels = px(52.);
+const HEIGHT: Pixels = px(52.);
 
-/// Moves the window when dragged and zooms it on double click, the way the
-/// kit's `TitleBar` does: on macOS the app owns titlebar dragging, so empty
-/// chrome has to start the move itself. Children that handle the mouse go
-/// inside [`no_drag`]. Full screen windows can't move, so nothing is added.
+/// On macOS the app owns titlebar dragging, so empty chrome starts the move and
+/// zooms on double click itself, as the kit's `TitleBar` does. Children that
+/// handle the mouse go inside [`no_drag`]. Full screen windows can't move.
 pub fn drag_region(id: impl Into<ElementId>, window: &mut Window, cx: &mut App) -> Stateful<Div> {
     let id = id.into();
     let region = div().id(id.clone());
@@ -54,13 +53,10 @@ pub fn drag_region(id: impl Into<ElementId>, window: &mut Window, cx: &mut App) 
         })
 }
 
-/// Keeps presses on controls from moving the window or zooming it.
 pub fn no_drag() -> Div {
     div().on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
 }
 
-/// The 52px row at the top of a page: title, a faint context label, then the
-/// children (usually [`actions`]) on the right. It moves the window.
 pub fn page(
     title: &'static str,
     context: Option<SharedString>,
@@ -96,12 +92,10 @@ pub fn page(
         .child(div().flex_1())
 }
 
-/// The page's buttons, on the right of the header.
 pub fn actions() -> Div {
     no_drag().flex().flex_shrink_0().items_center().gap(px(8.))
 }
 
-/// A 28px header button with an optional 14px icon and a 13px label.
 pub fn button(
     id: impl Into<ElementId>,
     icon: impl Into<Option<IconName>>,
@@ -113,11 +107,9 @@ pub fn button(
     labelled(id, icon, label)
 }
 
-/// A [`button`] that starts an operation, with a spinner in place of its icon
-/// while the operation runs.
 pub fn task_button(
     id: impl Into<ElementId>,
-    icon: IconName,
+    icon: impl Into<Option<IconName>>,
     label: impl Into<SharedString>,
     running: bool,
 ) -> Button {
@@ -143,7 +135,6 @@ fn labelled(
         .child(div().text_size(px(13.)).font_medium().child(label))
 }
 
-/// A 28px ghost button with a 16px icon and a tooltip.
 pub fn icon_button(id: impl Into<ElementId>, icon: IconName, label: &'static str) -> Button {
     // A child icon, since `icon()` sizes it from the 14px rem.
     Button::new(id)
@@ -157,12 +148,10 @@ pub fn icon_button(id: impl Into<ElementId>, icon: IconName, label: &'static str
         .tooltip_placement(Placement::Bottom)
 }
 
-/// The label for a tax year, `None` meaning every year.
 pub fn year_label(year: Option<i32>) -> SharedString {
     year.map_or_else(|| "All years".into(), |year| year.to_string().into())
 }
 
-/// The page's refresh button.
 pub fn refresh(disabled: bool, cx: &App) -> Button {
     icon_button("page-refresh", IconName::RefreshCw, "Refresh")
         .text_color(cx.theme().muted_foreground)

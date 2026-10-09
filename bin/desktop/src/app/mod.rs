@@ -5,7 +5,7 @@ use crate::{
     components::{ButtonText, Status, form, header, spinner},
     config::{self, Config, Preferences},
     navigation::{Page, PageContext, PageEvent, PageEvents},
-    pages::{self, PageHandle},
+    pages,
     services::{Services, finish},
     theme::{apply_theme, configure_theme, palette},
 };
@@ -30,7 +30,7 @@ pub struct Desktop {
     context: Option<PageContext>,
     events: Entity<PageEvents>,
     page: Page,
-    active: Option<PageHandle>,
+    active: Option<AnyView>,
     page_locked: bool,
     preferences: Preferences,
     preference_task: Option<Task<()>>,
@@ -40,7 +40,6 @@ pub struct Desktop {
     year_menu_open: bool,
     year_input: Entity<InputState>,
     year_error: Option<SharedString>,
-    /// Keeps Tab inside the open year menu.
     year_menu_focus: FocusHandle,
     focus: FocusHandle,
     _subscriptions: [Subscription; 4],
@@ -134,8 +133,6 @@ impl Desktop {
         view
     }
 
-    /// Navigation and the tax year stay put while the shell or a page is
-    /// saving, or while a page has an editor or confirmation open.
     fn locked(&self) -> bool {
         self.status.busy || self.page_locked
     }
@@ -206,8 +203,6 @@ impl Desktop {
         cx.notify();
     }
 
-    /// Applies the theme at once and saves it: `Some(dark)`, or `None` to
-    /// follow the system.
     fn set_theme(&mut self, dark: Option<bool>, window: &mut Window, cx: &mut Context<Self>) {
         self.preferences.dark = dark;
         apply_theme(dark, window, cx);
@@ -235,8 +230,6 @@ impl Desktop {
         }));
     }
 
-    /// The inset panel that holds the page, or the connection state before
-    /// the database opens.
     fn main_panel(&self, window: &mut Window, cx: &mut Context<Self>) -> Div {
         let panel = v_flex()
             .flex_1()
@@ -288,30 +281,20 @@ impl Desktop {
                 );
         }
         panel
-            .when_some(self.active.as_ref(), |panel, page| {
+            .when_some(self.active.clone(), |panel, page| {
+                panel.child(v_flex().flex_1().min_h_0().min_w_0().child(page))
+            })
+            .when(self.status.is_visible(), |panel| {
                 panel.child(
-                    v_flex()
-                        .flex_1()
-                        .min_h_0()
-                        .min_w_0()
-                        .child(page.view.clone()),
+                    div()
+                        .flex_shrink_0()
+                        .px(px(20.))
+                        .py_3()
+                        .border_t_1()
+                        .border_color(cx.theme().border)
+                        .child(self.status.render()),
                 )
             })
-            // Shell errors, such as a failed year change, below the page.
-            .when(
-                self.status.error.is_some() || self.status.message.is_some(),
-                |panel| {
-                    panel.child(
-                        div()
-                            .flex_shrink_0()
-                            .px(px(20.))
-                            .py_3()
-                            .border_t_1()
-                            .border_color(cx.theme().border)
-                            .child(self.status.render()),
-                    )
-                },
-            )
     }
 }
 

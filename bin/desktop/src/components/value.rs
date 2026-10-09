@@ -19,15 +19,12 @@ use std::{ops::Range, sync::Arc};
 const FIGURE_SPACE: char = '\u{2007}';
 const MORE: &str = "…";
 
-/// How a part of a value's text is drawn.
 enum Shade {
     Faint,
-    /// Takes its room but isn't seen.
     Hidden,
     Muted,
 }
 
-/// The text [`text`] draws, and the parts it shades.
 fn compose(value: &DisplayText, slot: bool, unit: bool) -> (String, Vec<(Range<usize>, Shade)>) {
     let mut text = value.main.to_string();
     let mut parts = Vec::with_capacity(3);
@@ -62,11 +59,9 @@ fn compose(value: &DisplayText, slot: bool, unit: bool) -> (String, Vec<(Range<u
     (text, parts)
 }
 
-/// The value as one text element: `main` in the inherited colour, the extra
-/// decimals and "…" faint, and the unit muted when `unit` is set. With
-/// `slot`, the room for every extra decimal and the "…" is kept even when
-/// they are absent, so the decimal points of a column line up. Only use
-/// `slot` for numbers, inside an element with tabular digits.
+/// With `slot`, the room for every extra decimal and the "…" is kept even when
+/// they're absent, so a column's decimal points line up. Only for numbers
+/// inside an element with tabular digits.
 pub fn text(value: &DisplayText, slot: bool, unit: bool, cx: &App) -> StyledText {
     let p = palette(cx);
     let (text, parts) = compose(value, slot, unit);
@@ -89,8 +84,6 @@ pub fn text(value: &DisplayText, slot: bool, unit: bool, cx: &App) -> StyledText
     StyledText::new(text).with_highlights(highlights)
 }
 
-/// How wide [`text`] draws the value at `size`, in the regular weight with
-/// tabular digits.
 pub fn text_width(
     value: &DisplayText,
     slot: bool,
@@ -117,8 +110,7 @@ pub fn text_width(
         .width
 }
 
-/// The focus handle of the last "Copy full value" menu, so the tooltips can
-/// tell when it's open.
+/// So the tooltips can tell when a "Copy full value" menu is open.
 struct ValueMenu(FocusHandle);
 
 impl Global for ValueMenu {}
@@ -128,8 +120,6 @@ fn value_menu_open(window: &Window, cx: &App) -> bool {
         .is_some_and(|menu| menu.0.contains_focused(window, cx))
 }
 
-/// When the value hides digits, shows all of them in a tooltip and offers
-/// "Copy full value" on right click, which copies what a copy button would.
 pub fn reveal_full(element: Stateful<Div>, value: &DisplayText) -> AnyElement {
     if !value.more {
         return element.into_any_element();
@@ -167,21 +157,16 @@ pub fn reveal_full(element: Stateful<Div>, value: &DisplayText) -> AnyElement {
         .into_any_element()
 }
 
-/// How far the baseline of text in `size` sits below that of text in `unit`
-/// when both are centred on the same line.
 fn baseline_drop(size: Pixels, unit: Pixels, cx: &App) -> Pixels {
     let system = cx.text_system();
     let font = system.resolve_font(&font(cx.theme().font_family.clone()));
     // A line centres its text by ascent and descent, so the baseline sits
     // half their difference below the middle. Platforms disagree on the sign
     // of the descent.
-    let below_middle =
-        |size| (system.ascent(font, size) - system.descent(font, size).abs()) / 2.;
+    let below_middle = |size| (system.ascent(font, size) - system.descent(font, size).abs()) / 2.;
     below_middle(size) - below_middle(unit)
 }
 
-/// A form value: the number in `size`, medium weight unless `regular`, then
-/// its unit in a smaller muted type on the same baseline.
 fn form_value(
     id: ElementId,
     value: &DisplayText,
@@ -224,9 +209,8 @@ fn copy_button(id: &ElementId, value: &DisplayText) -> CopyButton {
     )
 }
 
-/// A total: the label above its value and copy button. Totals sit side by
-/// side without a fixed column, so the copy button shows only a check, which
-/// doesn't move the next total.
+/// Totals sit side by side without a fixed column, so the copy button shows
+/// only a check, which doesn't move the next total.
 pub fn stat(
     id: impl Into<ElementId>,
     label: impl Into<SharedString>,
@@ -250,9 +234,7 @@ pub fn stat(
         )
 }
 
-/// A form row in a card: label, value and copy button. The copy button has a
-/// fixed column, so "Copied" does not move the value. A `muted` row is for a
-/// value derived from the others, such as a difference.
+/// The copy button's fixed column keeps "Copied" from moving the value.
 pub fn card_row(
     id: impl Into<ElementId>,
     label: impl Into<SharedString>,
@@ -275,8 +257,6 @@ pub fn card_row(
         )
 }
 
-/// A card row's placeholder: its label, and a bar where the value will be.
-/// The bar reserves its space at once but stays hidden until `visible`.
 pub fn card_row_skeleton(label: &'static str, visible: bool, cx: &App) -> Div {
     card_row_frame(cx)
         .child(div().flex_1().min_w_0().truncate().child(label))
@@ -285,7 +265,7 @@ pub fn card_row_skeleton(label: &'static str, visible: bool, cx: &App) -> Div {
                 .h(px(20.))
                 .w(px(110.))
                 .rounded(px(4.))
-                .bg(gpui_kit::component::ActiveTheme::theme(cx).skeleton)
+                .bg(cx.theme().skeleton)
                 .opacity(if visible { 1. } else { 0. }),
         )
         .child(div().w(px(86.)).flex_shrink_0())
@@ -301,8 +281,6 @@ fn card_row_frame(cx: &App) -> Div {
         .border_color(palette(cx).line)
 }
 
-/// A total's placeholder: its label, and a bar where the value will be.
-/// The bar reserves its space at once but stays hidden until `visible`.
 pub fn stat_skeleton(label: &'static str, visible: bool, cx: &App) -> Div {
     v_flex()
         .gap(px(2.))
@@ -318,7 +296,7 @@ pub fn stat_skeleton(label: &'static str, visible: bool, cx: &App) -> Div {
                 .h(px(22.))
                 .w(px(120.))
                 .rounded(px(4.))
-                .bg(gpui_kit::component::ActiveTheme::theme(cx).skeleton)
+                .bg(cx.theme().skeleton)
                 .opacity(if visible { 1. } else { 0. }),
         )
 }

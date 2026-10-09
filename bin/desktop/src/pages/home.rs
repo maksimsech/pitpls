@@ -1,7 +1,7 @@
-use super::{PageView, missing_rate};
+use super::missing_rate;
 use crate::{
-    components::{self, ButtonText, Status, data, dialog, header, nbp, notice, value},
-    format::{DisplayText, pln},
+    components::{self, ButtonText, Status, data, header, nbp, notice, value},
+    format::{DisplayText, pln, record_count},
     navigation::{Page, PageContext},
     theme::{palette, tabular_digits},
 };
@@ -21,12 +21,9 @@ use pitpls_app::use_case::{
 use pitpls_core::summary::TaxSummary;
 use pitpls_importers::{IMPORTERS, InputType};
 
-/// The form values with their labels, exactly as the calculation
-/// returned them.
 struct Forms {
     foreign: [(&'static str, DisplayText); 3],
-    /// Tax to pay (G-47) minus paid tax (G-48): a plain subtraction of the
-    /// two totals, never rounded.
+    /// A plain subtraction of the two totals, never rounded.
     difference: DisplayText,
     crypto: [(&'static str, DisplayText); 2],
 }
@@ -51,18 +48,14 @@ impl Forms {
 
 enum Totals {
     Ready(Box<Forms>),
-    /// A missing NBP rate failed the calculation: the conversion error.
     MissingRate(SharedString),
     Failed(SharedString),
 }
 
-/// Everything Summary shows, from one load.
 struct Overview {
-    /// Records in the selected year, or in every year.
     dividends: u32,
     interests: u32,
     cryptos: u32,
-    /// No rates and no records in any year.
     first_run: bool,
     coverage: Option<RateCoverage>,
     last_import: Option<LastImport>,
@@ -110,8 +103,6 @@ impl Overview {
         self.dividends + self.interests + self.cryptos
     }
 
-    /// The records page behind the foreign totals: Interests when the year
-    /// has interest but no dividends.
     fn foreign_page(&self) -> Page {
         if self.dividends == 0 && self.interests > 0 {
             Page::Interests
@@ -127,7 +118,6 @@ pub struct HomePage {
     status: Status,
     overview: Option<Overview>,
     nbp_year: Option<Entity<InputState>>,
-    /// Whether the running import is the Data card's Update.
     updating: bool,
     focus: FocusHandle,
 }
@@ -152,7 +142,6 @@ impl HomePage {
         page
     }
 
-    /// Navigation stays put while rates import or the dialog is open.
     fn locked(&self) -> bool {
         self.status.busy || self.nbp_year.is_some()
     }
@@ -166,7 +155,6 @@ impl HomePage {
         cx.notify();
     }
 
-    /// The Data card's Update: imports the current year from NBP.
     fn update_rates(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if self.disabled() {
             return;
@@ -180,10 +168,7 @@ impl HomePage {
         self.status.task = Some(self.context.services.run(
             window,
             cx,
-            move |app| async move {
-                let count = rate::import_api(&app, year).await?;
-                Ok(format!("Imported {count} rates."))
-            },
+            move |app| nbp::import(app, year),
             |this, result, window, cx| {
                 this.updating = false;
                 if this.status.saved(result) {
@@ -200,18 +185,14 @@ impl HomePage {
         self.notify(cx);
     }
 
-    /// The Rates page's "Import from NBP" dialog, prefilled with the year.
     fn open_nbp(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if self.disabled() {
             return;
         }
         let year = self.year.unwrap_or_else(|| Local::now().year());
-        let input = nbp::year_input(year, window, cx);
-        self.nbp_year = Some(input.clone());
+        self.nbp_year = Some(nbp::open(year, Self::nbp_dialog, window, cx));
         self.status.error = None;
         self.status.message = None;
-        dialog::open(window, cx, Self::nbp_dialog);
-        window.focus(&input.focus_handle(cx), cx);
         self.notify(cx);
     }
 
@@ -251,9 +232,7 @@ impl HomePage {
             cx,
         )
     }
-}
 
-impl PageView for HomePage {
     fn refresh(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if self.status.loading || self.locked() {
             return;
@@ -315,11 +294,7 @@ impl HomePage {
         }
         let year = header::year_label(self.year);
         let label = match &self.overview {
-            Some(overview) => match overview.records() {
-                0 => format!("{year} · no records").into(),
-                1 => format!("{year} · 1 record").into(),
-                count => format!("{year} · {count} records").into(),
-            },
+            Some(overview) => format!("{year} · {}", record_count(overview.records())).into(),
             None => year,
         };
         let disabled = self.disabled();
@@ -342,7 +317,6 @@ impl HomePage {
         )
     }
 
-    /// The cards, centred in a 680px column.
     fn summary(&self, cx: &mut Context<Self>) -> Div {
         let column = v_flex()
             .w_full()
@@ -495,7 +469,6 @@ impl HomePage {
         .child(last_import)
     }
 
-    /// The cards' placeholders while the first load is slow.
     fn skeleton(&self, cx: &App) -> [Div; 2] {
         let rows = |labels: &[&'static str]| {
             labels
@@ -514,7 +487,6 @@ impl HomePage {
         ]
     }
 
-    /// No rates and no records anywhere: three steps to the first totals.
     fn welcome(&self, cx: &mut Context<Self>) -> Div {
         let p = *palette(cx);
         let disabled = self.disabled();
@@ -560,12 +532,7 @@ impl HomePage {
                         ),
                 )
                 .child(
-                    v_flex()
-                        .border_1()
-                        .border_color(p.line)
-                        .rounded(px(12.))
-                        .bg(p.raised)
-                        .overflow_hidden()
+                    data::card(cx)
                         .child(step(
                             1,
                             "Import exchange rates",
@@ -616,7 +583,6 @@ fn form_id(label: &'static str) -> SharedString {
     format!("form-{label}").into()
 }
 
-/// A raised card with a 44px header: the title, then an optional link.
 fn card(title: &'static str, link: Option<Button>, cx: &App) -> Div {
     data::card(cx).child(
         h_flex()
@@ -629,8 +595,6 @@ fn card(title: &'static str, link: Option<Button>, cx: &App) -> Div {
     )
 }
 
-/// A card header's link to a page: the label and a chevron, muted until
-/// hovered.
 fn link(id: &'static str, label: &'static str, disabled: bool, cx: &App) -> Button {
     Button::new(id)
         .ghost()
@@ -644,8 +608,6 @@ fn link(id: &'static str, label: &'static str, disabled: bool, cx: &App) -> Butt
         .child(Icon::new(IconName::ChevronRight).size(px(13.)))
 }
 
-/// A 48px row of the Data card: status dot, name, detail, and what goes on
-/// the right.
 fn data_row(
     dot: Hsla,
     label: &'static str,
@@ -674,8 +636,6 @@ fn data_row(
         .children(end.map(|end| h_flex().flex_shrink_0().child(end)))
 }
 
-/// A first-run step: its number, title and description, then its button.
-/// The current step's number is filled.
 fn step(
     number: u8,
     title: &'static str,

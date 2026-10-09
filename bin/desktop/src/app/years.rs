@@ -1,6 +1,8 @@
+use super::sidebar::CONTROL;
 use super::*;
 use crate::{
-    components::{BUTTON_TEXT, header},
+    components::{BUTTON_TEXT, FOCUS_RING, header},
+    format::record_count,
     theme::{palette, tabular_digits},
 };
 use gpui_kit::{
@@ -105,8 +107,6 @@ impl Desktop {
                 this.status.busy = false;
                 match result {
                     Ok(()) => {
-                        // An added year is selected; a removed one that was
-                        // selected falls back to all years.
                         let selected = if remove {
                             this.preferences.year.filter(|selected| *selected != year)
                         } else {
@@ -129,9 +129,6 @@ impl Desktop {
         cx.notify();
     }
 
-    /// The tax year popover: all years, then every year newest first with its
-    /// record count, an inline field to add one, and a line of help. Tab and
-    /// Shift-Tab go round inside it while it's open.
     pub(super) fn year_menu(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
         let p = *palette(cx);
         let busy = self.status.busy;
@@ -156,14 +153,14 @@ impl Desktop {
             .child(self.year_item(None, cx))
             .child(divider())
             .child(
-                // The kit draws a focus ring 3px outside a row. The padding
-                // leaves it room inside the scroll clip, and the negative
-                // margin keeps the rows where they were.
+                // The padding leaves a row's focus ring room inside the
+                // scroll clip, and the negative margin keeps the rows where
+                // they were.
                 v_flex()
                     .id("year-menu-years")
-                    .m(-RING_ROOM)
-                    .p(RING_ROOM)
-                    .max_h(px(224.) + RING_ROOM * 2.)
+                    .m(-FOCUS_RING)
+                    .p(FOCUS_RING)
+                    .max_h(px(224.) + FOCUS_RING * 2.)
                     .overflow_y_scroll()
                     .children(years.into_iter().map(|info| self.year_item(Some(info), cx))),
             )
@@ -186,7 +183,7 @@ impl Desktop {
                                 // Not disabled while saving, so it keeps focus
                                 // for a correction; Enter waits until then.
                                 Input::new(&self.year_input)
-                                    .h(CONTROL_HEIGHT)
+                                    .h(CONTROL)
                                     .font_features(tabular_digits())
                                     .aria_label("Add year"),
                             ),
@@ -223,17 +220,14 @@ impl Desktop {
             .focus_trap("year-menu-trap", &self.year_menu_focus)
     }
 
-    /// One row of the year menu; `None` is "All years".
     fn year_item(&self, info: Option<YearInfo>, cx: &mut Context<Self>) -> Button {
         let p = *palette(cx);
         let year = info.map(|info| info.year);
         let label = header::year_label(year);
         let selected = self.preferences.year == year;
-        let meta: SharedString = match info.map(|info| info.records()) {
+        let meta: SharedString = match info {
+            Some(info) => record_count(info.records()).into(),
             None => "historical".into(),
-            Some(0) => "no records".into(),
-            Some(1) => "1 record".into(),
-            Some(count) => format!("{count} records").into(),
         };
         // Years with records come back on their own, so only empty custom
         // years can be removed.
@@ -321,7 +315,3 @@ impl Desktop {
             .on_click(cx.listener(move |this, _, window, cx| this.select_year(year, window, cx)))
     }
 }
-
-const CONTROL_HEIGHT: Pixels = px(28.);
-/// The width of the kit's focus ring, drawn outside a control.
-const RING_ROOM: Pixels = px(3.);

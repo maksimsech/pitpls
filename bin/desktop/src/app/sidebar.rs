@@ -11,18 +11,13 @@ use gpui_kit::{
 use std::time::Duration;
 
 const ITEM_HEIGHT: Pixels = px(30.);
-const CONTROL: Pixels = px(28.);
+pub(super) const CONTROL: Pixels = px(28.);
 const SWITCHER_WIDTH: Pixels = px(204.);
-/// The app's "pls" wordmark. GPUI fills it with the element's text colour;
-/// the size keeps the SVG's 775.5 × 532.6 view box.
+/// The size keeps the SVG's 775.5 × 532.6 view box.
 const WORDMARK: &[u8] = include_bytes!("../../assets/pls-wordmark.svg");
 const WORDMARK_WIDTH: Pixels = px(24.75);
 const WORDMARK_HEIGHT: Pixels = px(17.);
 
-/// How far the sidebar is expanded: 1 is the labelled sidebar, 0 the icon
-/// rail. `size` drives widths and positions, `fade` the labels, counts and
-/// group names, and `line` the rail's group dividers, each with the timing
-/// of the design mockup.
 #[derive(Clone, Copy)]
 pub struct Expansion {
     size: f32,
@@ -67,7 +62,6 @@ impl Expansion {
         }
     }
 
-    /// `rail` in the icon rail, `expanded` in the labelled sidebar.
     fn size(&self, rail: f32, expanded: f32) -> Pixels {
         px(rail + (expanded - rail) * self.size)
     }
@@ -77,10 +71,9 @@ pub fn width(expansion: Expansion) -> Pixels {
     expansion.size(84., 220.)
 }
 
-/// The sidebar's side padding. The rail's content is 60px wide as in the
-/// mockup, but macOS draws the traffic lights about 60px wide from x = 16,
-/// so the rail pads 12px a side (84px) to keep 8px between them and the
-/// panel.
+/// The rail's content is 60px wide as in the mockup, but macOS draws the
+/// traffic lights about 60px wide from x = 16, so the rail pads 12px a side
+/// (84px) to keep 8px between them and the panel.
 fn padding(expansion: Expansion) -> Pixels {
     expansion.size(12., 8.)
 }
@@ -107,7 +100,6 @@ impl Desktop {
             .h_full()
             .overflow_hidden()
             .text_size(px(13.))
-            // The traffic lights and the toggle sit in this area.
             .child(
                 header::drag_region("sidebar-drag", window, cx)
                     .absolute()
@@ -152,8 +144,6 @@ impl Desktop {
             )
     }
 
-    /// The year switcher: a large button in the sidebar and a small one in
-    /// the rail, crossfading. The one for the current state opens the menu.
     fn year_switcher(&self, expansion: Expansion, cx: &mut Context<Self>) -> Div {
         let p = *palette(cx);
         let collapsed = self.preferences.sidebar_collapsed;
@@ -430,9 +420,8 @@ impl Desktop {
     }
 }
 
-/// The wordmark beside the traffic lights, which macOS draws about 60pt wide
-/// from x = 16 (none in full screen). It fades out with the labels: the rail
-/// has no room for it.
+/// macOS draws the traffic lights about 60pt wide from x = 16, and none in full
+/// screen.
 fn wordmark(expansion: Expansion, window: &Window, cx: &App) -> Svg {
     let left = if cfg!(target_os = "macos") && !window.is_fullscreen() {
         px(92.)
@@ -450,8 +439,6 @@ fn wordmark(expansion: Expansion, window: &Window, cx: &App) -> Svg {
         .opacity(expansion.fade)
 }
 
-/// A 30px sidebar row: icon, then the label and `trailing` (a count or a
-/// tag), which fade out in the rail while the icon slides to the centre.
 fn nav_item(
     id: impl Into<ElementId>,
     label: &'static str,
@@ -495,7 +482,6 @@ fn nav_item(
         )
 }
 
-/// A group name over its pages; in the rail, a short divider instead.
 fn group(label: &'static str, expansion: Expansion, cx: &App) -> Div {
     let p = *palette(cx);
     div()

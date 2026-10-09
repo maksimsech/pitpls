@@ -5,14 +5,13 @@ use gpui_kit::{
     assets::IconName,
     component::{
         Disableable, Icon, StyledExt,
-        button::{Button, ButtonVariants},
+        button::ButtonVariants,
         empty::{Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle},
         h_flex,
     },
     *,
 };
 
-/// A centred notice in the page body, built from the kit's `Empty`.
 pub fn notice(
     icon: IconName,
     warning: bool,
@@ -52,8 +51,6 @@ pub fn notice(
     )
 }
 
-/// One missing NBP rate fails the calculation for the whole page, as it
-/// always has. The error says which rate; importing the year fixes it.
 pub fn missing_rate(
     year: Option<i32>,
     error: SharedString,
@@ -78,14 +75,9 @@ pub fn missing_rate(
                 .gap(px(8.))
                 .mt(px(6.))
                 .child(
-                    Button::new("missing-import")
-                        .h(px(28.))
-                        .px(px(11.))
-                        .rounded(px(8.))
+                    header::button("missing-import", None, import)
                         .primary()
-                        .accessibility_label(import.clone())
                         .disabled(disabled)
-                        .child(div().text_size(px(13.)).font_medium().child(import))
                         .on_click(on_import),
                 )
                 .child(

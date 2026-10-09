@@ -1,8 +1,7 @@
 use super::{copy::CopyButton, value};
 use crate::{
     format::{DisplayText, date},
-    theme::palette,
-    theme::tabular_digits,
+    theme::{palette, tabular_digits},
 };
 use chrono::NaiveDate;
 use gpui_kit::{
@@ -12,39 +11,26 @@ use gpui_kit::{
 };
 use std::rc::Rc;
 
-/// Side padding of every table row.
 const PADDING: f32 = 12.;
-/// Widths of the checkbox, chevron and "⋯" columns, normal and compact.
+/// Checkbox, chevron and "⋯" columns.
 const FRAME: [f32; 3] = [30., 20., 36.];
 const COMPACT_FRAME: [f32; 3] = [28., 18., 28.];
-/// The least width the growing column keeps, normal and compact.
 const GROW_MIN: f32 = 140.;
 const COMPACT_GROW_MIN: f32 = 60.;
-/// Space before a number, so it doesn't touch the column to its left.
 const NUMBER_INSET: f32 = 8.;
-/// The text size of a collapsed row.
 pub const ROW_TEXT: Pixels = px(13.);
-/// Below this table width, an opened row stacks its steps.
 const STACK_BELOW: f32 = 680.;
 /// Room under the last row, so the selection bar doesn't cover it.
 pub const END_SPACE: Pixels = px(72.);
 
-/// How a record column draws its cells.
 #[derive(Clone, Copy, PartialEq)]
 pub enum CellStyle {
-    /// Dates and secondary text.
     Muted,
-    /// The record's name, such as a ticker.
     Strong,
-    /// A small outlined pill, such as Buy or Sell.
     Tag,
-    /// A right-aligned number with a fixed slot for its extra decimals.
     Number,
 }
 
-/// A column of a record table, with px widths at the normal and the minimum
-/// window size. The column that grows takes whatever width is left. An
-/// `optional` column is left out when even the compact widths don't fit.
 pub struct RecordColumn {
     pub label: &'static str,
     pub style: CellStyle,
@@ -66,8 +52,6 @@ impl RecordColumn {
         }
     }
 
-    /// Left out when even the compact widths don't fit, for a value the
-    /// opened row shows anyway.
     pub const fn optional(mut self) -> Self {
         self.optional = true;
         self
@@ -85,25 +69,19 @@ impl RecordColumn {
     }
 }
 
-/// Column widths for a table viewport. The table fills the viewport. When
-/// the normal widths don't fit, it takes the compact ones, then leaves out
-/// the optional columns. Only when even that doesn't fit does it get wider
-/// and scroll sideways.
+/// The table fills the viewport. When the normal widths don't fit, it takes the
+/// compact ones, then leaves out the optional columns. Only when even that
+/// doesn't fit does it get wider and scroll sideways.
 #[derive(Clone, PartialEq)]
 pub struct TableLayout {
     pub width: Pixels,
-    /// The checkbox, chevron and "⋯" columns.
     pub frame: [Pixels; 3],
-    /// Each column's width, or `None` when it's left out.
     pub columns: Vec<Option<Pixels>>,
     pub compact: bool,
-    /// Whether an opened row stacks its steps.
     pub stacked: bool,
 }
 
 impl TableLayout {
-    /// `fit` holds each column's least width from [`fit_widths`], or nothing
-    /// before the records load. A column is never narrower than that.
     pub fn new(columns: &[RecordColumn], fit: &[Pixels], viewport: Pixels) -> Self {
         let viewport = viewport / px(1.);
         let widths = |compact: bool, optional: bool| -> Vec<Option<f32>> {
@@ -158,7 +136,6 @@ impl TableLayout {
         }
     }
 
-    /// Pairs `items`, one per column, with the widths of the columns shown.
     pub fn shown<T>(
         &self,
         items: impl IntoIterator<Item = T>,
@@ -169,8 +146,6 @@ impl TableLayout {
             .filter_map(|(item, width)| Some((item, (*width)?)))
     }
 
-    /// Where an opened row's content starts: under the first data column, or
-    /// close to the edge once the steps stack.
     pub fn indent(&self) -> Pixels {
         if self.stacked {
             px(46.)
@@ -180,14 +155,12 @@ impl TableLayout {
     }
 }
 
-/// A table row's horizontal frame: full table width and the side padding.
 pub fn row(layout: &TableLayout) -> Div {
     h_flex().w(layout.width).flex_shrink_0().px(px(PADDING))
 }
 
-/// The keyboard focus ring of a row or month header. It sits inside the row,
-/// since the table's scroll container clips the kit's ring, which sits
-/// outside.
+/// Inside the row, since the table's scroll container clips the kit's ring,
+/// which sits outside.
 pub fn focus_ring(cx: &App) -> Div {
     div()
         .absolute()
@@ -196,8 +169,6 @@ pub fn focus_ring(cx: &App) -> Div {
         .border_color(cx.theme().ring)
 }
 
-/// Keeps a press on a control inside a clickable row from also opening or
-/// folding the row.
 pub fn control(width: Pixels) -> Div {
     div()
         .w(width)
@@ -207,7 +178,6 @@ pub fn control(width: Pixels) -> Div {
         .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
 }
 
-/// A header cell: the column's label, right-aligned over numbers.
 pub fn heading(column: &RecordColumn, width: Pixels) -> Div {
     div()
         .w(width)
@@ -219,8 +189,7 @@ pub fn heading(column: &RecordColumn, width: Pixels) -> Div {
         .child(column.label)
 }
 
-/// A record cell as plain text: hundreds of selectable cells are too slow.
-/// Numbers that hide digits show them in a tooltip and the context menu.
+/// Plain text: hundreds of selectable cells are too slow.
 pub fn cell(
     id: impl Into<ElementId>,
     value: &DisplayText,
@@ -253,21 +222,20 @@ pub fn cell(
                     .child(value.main.clone()),
             )
             .into_any_element(),
-        CellStyle::Number => super::value::reveal_full(
+        CellStyle::Number => value::reveal_full(
             frame
                 .id(id)
                 .pl(px(NUMBER_INSET))
                 .text_right()
                 .font_features(tabular_digits())
-                .child(super::value::text(value, true, true, cx)),
+                .child(value::text(value, true, true, cx)),
             value,
         ),
     }
 }
 
-/// Each number column's least width: its widest cell, measured once per
-/// load, so a number is never cut. Other columns get nothing. With tabular
-/// digits, the longest value in each unit is the widest.
+/// With tabular digits the longest value in each unit is the widest, so only
+/// those are measured.
 pub fn fit_widths(
     columns: &[RecordColumn],
     rows: &[RowDisplay],
@@ -300,17 +268,11 @@ pub fn fit_widths(
         .collect()
 }
 
-/// A line of an opened row's step. Its values follow the gray-digit rule, as
-/// in the table, with every digit in the tooltip.
 #[derive(PartialEq)]
 pub enum StepLine {
-    /// The calculation, such as `8.352 USD × 3.6142`, as text and values.
     Formula(Vec<DisplayText>),
-    /// The step's result, as text and values.
     Result(Vec<DisplayText>),
-    /// What the result is.
     Caption(SharedString),
-    /// A labelled value; `strong` marks the one that is used.
     Entry {
         label: &'static str,
         value: DisplayText,
@@ -318,7 +280,6 @@ pub enum StepLine {
     },
 }
 
-/// One numbered step of an opened row's calculation.
 #[derive(PartialEq)]
 pub struct Step {
     pub title: &'static str,
@@ -329,13 +290,11 @@ pub struct Step {
 pub struct RowDisplay {
     pub cells: Vec<DisplayText>,
     pub steps: Vec<Step>,
-    /// What the filter matches, in lower case.
+    /// Lower case, for the filter.
     pub search: String,
-    /// Names the record in accessibility labels.
     pub label: SharedString,
 }
 
-/// Text and values side by side, each value drawn as in the table.
 fn parts(id: impl Into<ElementId>, parts: &[DisplayText], cx: &App) -> Stateful<Div> {
     h_flex()
         .id(id)
@@ -424,20 +383,13 @@ fn step(index: usize, step: &Step, cx: &App) -> Stateful<Div> {
         }))
 }
 
-/// A record editor's preview of the record as typed: its conversion and the
-/// kind's key results, from the same calculation as the page.
 pub struct Preview {
     pub nbp_date: NaiveDate,
-    /// `value × rate`, as in the opened row's first step.
     pub formula: Vec<DisplayText>,
-    /// The calculated value in PLN.
     pub value: DisplayText,
     pub results: Vec<(&'static str, DisplayText)>,
 }
 
-/// The preview band: "Preview" and the NBP date, `value × rate = PLN`, then
-/// the key results. Values follow the gray-digit rule, with every digit in
-/// the tooltip. A failed calculation, such as a missing rate, shows its error.
 pub fn preview_band(preview: &Result<Preview, SharedString>, cx: &App) -> Div {
     let p = *palette(cx);
     let header = h_flex()
@@ -510,8 +462,6 @@ fn preview_value(
     )
 }
 
-/// An opened row: the calculation steps on a raised band, then the record ID
-/// with its copy button, and the record's `actions`.
 pub fn details(
     record_id: &str,
     steps: &[Step],
@@ -578,7 +528,6 @@ pub fn details(
         )
 }
 
-/// Placeholders reserve their space at once but stay hidden until `visible`.
 pub fn record_skeleton(
     columns: &[RecordColumn],
     layout: &TableLayout,
@@ -629,8 +578,6 @@ pub fn record_skeleton(
         }))
 }
 
-/// A virtual list item: a month header, a record (with its details when
-/// opened), or the space after the last row.
 #[derive(Clone, Copy, PartialEq)]
 pub enum Item {
     Month(usize),
@@ -638,7 +585,6 @@ pub enum Item {
     End,
 }
 
-/// Identifies an item across rebuilds, for scroll anchoring and focus.
 #[derive(Clone, PartialEq, Eq, Hash)]
 pub enum ItemKey {
     Month(i32, u32),
@@ -653,12 +599,10 @@ pub struct RecordTableState {
     pub sizes: Rc<Vec<Size<Pixels>>>,
     /// Shared by every collapsed row: their cells are single truncated lines.
     pub collapsed: Option<Size<Pixels>>,
-    /// Shared by every month header.
     pub month: Option<Size<Pixels>>,
     pub expanded: Vec<Option<Size<Pixels>>>,
     pub scroll: VirtualListScrollHandle,
     pub viewport_width: Option<Pixels>,
-    /// Each column's least width for `rows`, from [`fit_widths`].
     pub fit: Option<Vec<Pixels>>,
     pub layout: Option<TableLayout>,
     pub layout_key: Option<(TableLayout, Pixels, SharedString, SharedString)>,
@@ -685,8 +629,8 @@ impl Default for RecordTableState {
     }
 }
 
-/// Reports the width of the stationary table viewport, not the horizontally
-/// scrolling table, after layout so that rows can be remeasured.
+/// Measures the stationary viewport, not the sideways-scrolling table, and
+/// reports it after layout.
 pub fn measure_width<V: 'static>(
     current: Option<Pixels>,
     state: fn(&mut V) -> &mut RecordTableState,
@@ -712,8 +656,8 @@ pub fn measure_width<V: 'static>(
 }
 
 impl RecordTableState {
-    /// New rows from a reload. The items stay until the next rebuild, so the
-    /// first visible one keeps its place if it is still listed.
+    /// The items stay until the next rebuild, so the first visible one keeps
+    /// its place if it's still listed.
     pub fn reset(&mut self, rows: Vec<RowDisplay>) {
         self.rows = rows;
         self.fit = None;
@@ -727,8 +671,8 @@ impl RecordTableState {
         self.dirty = true;
     }
 
-    /// Scrolls the item with `key` into view, with the items next to it, so
-    /// that Tab and Shift-Tab find them rendered.
+    /// Also reveals the items next to it, so Tab and Shift-Tab find them
+    /// rendered.
     pub fn reveal(&self, key: &ItemKey) {
         let Some(index) = self.keys.iter().position(|item| item == key) else {
             return;
@@ -751,7 +695,7 @@ impl RecordTableState {
         self.scroll.set_offset(offset);
     }
 
-    /// Scrolls to the top without anchoring, for a new filter.
+    /// Clearing the keys skips anchoring on the next rebuild.
     pub fn scroll_to_top(&mut self) {
         self.scroll.set_offset(point(px(0.), px(0.)));
         self.keys.clear();

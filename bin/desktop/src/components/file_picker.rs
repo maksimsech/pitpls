@@ -1,6 +1,5 @@
 use gpui_kit::*;
 
-/// Cancelling the picker completes with `Ok(None)`.
 pub fn pick<V: 'static>(
     extension: &'static str,
     window: &Window,

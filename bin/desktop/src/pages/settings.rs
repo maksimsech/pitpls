@@ -1,4 +1,3 @@
-use super::PageView;
 use crate::{
     components::{self, ButtonText, Status, data, header},
     navigation::{Page, PageContext},
@@ -17,7 +16,6 @@ use gpui_kit::{
 use pitpls_app::use_case::settings;
 use pitpls_core::settings::{DividendRounding, Settings};
 
-/// The rounding options, with one line on what each does.
 const ROUNDINGS: [(DividendRounding, &str, &str); 4] = [
     (
         DividendRounding::SumToGroszy,
@@ -41,7 +39,6 @@ const ROUNDINGS: [(DividendRounding, &str, &str); 4] = [
     ),
 ];
 
-/// The theme choices, as `Preferences.dark`.
 const THEMES: [(Option<bool>, &str); 3] = [
     (None, "System"),
     (Some(false), "Light"),
@@ -51,13 +48,8 @@ const THEMES: [(Option<bool>, &str); 3] = [
 pub struct SettingsPage {
     context: PageContext,
     status: Status,
-    /// The rounding in the database, once loaded.
     saved: Option<DividendRounding>,
-    /// The rounding chosen on the page. It differs from `saved` until it is
-    /// saved or discarded.
     picked: Option<DividendRounding>,
-    /// The theme segments, in `THEMES` order, so the page can tell which one
-    /// has focus and draw its ring.
     theme_focus: [FocusHandle; 3],
     /// Around the rounding options, so the arrow keys stay among them.
     rounding_focus: FocusHandle,
@@ -126,8 +118,8 @@ impl SettingsPage {
         cx.notify();
     }
 
-    /// Up and Down move focus between the rounding options, without picking
-    /// one, and stop at the first and the last.
+    /// Up and Down move focus without picking an option. A step out of the
+    /// group steps back, so focus stops at the ends.
     fn step_rounding(&mut self, event: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
         let forward = match event.keystroke.key.as_str() {
             "down" => true,
@@ -151,8 +143,6 @@ impl SettingsPage {
         }
     }
 
-    /// Left and Right move focus between the theme segments, without
-    /// applying one, and stop at the ends.
     fn step_theme(&mut self, event: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
         let step: isize = match event.keystroke.key.as_str() {
             "right" => 1,
@@ -173,9 +163,7 @@ impl SettingsPage {
         let next = index.saturating_add_signed(step).min(THEMES.len() - 1);
         window.focus(&self.theme_focus[next], cx);
     }
-}
 
-impl PageView for SettingsPage {
     fn refresh(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if self.status.busy || self.status.loading {
             return;
@@ -221,8 +209,6 @@ impl Render for SettingsPage {
 }
 
 impl SettingsPage {
-    /// The rounding options, and the save bar while the choice differs from
-    /// the saved one. Before the first load: placeholders, or why it failed.
     fn rounding_card(&self, cx: &mut Context<Self>) -> Div {
         let p = *palette(cx);
         // Not clipped, so a focused option's ring shows.
@@ -323,7 +309,6 @@ impl SettingsPage {
         .when(changed, |card| card.child(self.save_bar(cx)))
     }
 
-    /// "Unsaved change" with Discard and Save changes, or why saving failed.
     fn save_bar(&self, cx: &mut Context<Self>) -> Div {
         let p = *palette(cx);
         let busy = self.status.busy;
@@ -366,13 +351,11 @@ impl SettingsPage {
             )
     }
 
-    /// "Theme" with System / Light / Dark, applied at once.
-    ///
     /// The kit's `ToggleGroup` drops clicks made with Enter or Space, so the
     /// segments are the base `Toggle`, which takes them, each with its own
     /// handler. The base toggle draws nothing, so the page draws the chosen
-    /// fill, a hover that only changes the text colour, as in the mockup, and
-    /// the kit's ring while a segment has keyboard focus.
+    /// fill, a hover that only changes the text colour, and the kit's ring
+    /// while a segment has keyboard focus.
     fn theme_card(&self, window: &Window, cx: &mut Context<Self>) -> Div {
         let p = *palette(cx);
         let current = theme_choice(cx);
@@ -430,8 +413,6 @@ impl SettingsPage {
     }
 }
 
-/// An option's placeholder: an empty radio, its title and a bar where the
-/// explanation will be.
 fn option_skeleton(title: &'static str, cx: &App) -> Div {
     h_flex()
         .items_start()

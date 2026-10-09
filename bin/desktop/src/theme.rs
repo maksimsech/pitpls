@@ -4,34 +4,23 @@ use gpui_kit::{
 };
 use std::sync::Arc;
 
-/// The design D tokens from docs/gpui-redesign-plan.md. `configure_theme`
-/// maps them onto the kit theme; read the ones it has no slot for, such as
-/// `faint`, `raised` and `ok`, with [`palette`].
 #[derive(Clone, Copy)]
 pub struct Palette {
-    /// Sidebar and window chrome.
     pub chrome: Hsla,
-    /// The main panel.
     pub surface: Hsla,
-    /// Cards and the opened row band.
     pub raised: Hsla,
     pub line: Hsla,
-    /// Popovers and tags.
     pub strong_line: Hsla,
     pub text: Hsla,
     pub muted: Hsla,
-    /// Extra decimals and hints.
     pub faint: Hsla,
-    /// Selected navigation items and rows.
     pub selected: Hsla,
     pub hover: Hsla,
     pub popover: Hsla,
     pub primary: Hsla,
     pub primary_text: Hsla,
-    /// Rate warnings only.
     pub warning: Hsla,
     pub danger: Hsla,
-    /// The rate status dot and "Copied".
     pub ok: Hsla,
 }
 
@@ -87,7 +76,6 @@ pub fn palette(cx: &App) -> &Palette {
     cx.global::<Palette>()
 }
 
-/// Tabular digits for the regular UI font, so numbers line up in columns.
 pub fn tabular_digits() -> FontFeatures {
     FontFeatures(Arc::new(vec![("tnum".into(), 1)]))
 }
@@ -218,12 +206,10 @@ pub fn configure_theme(cx: &mut App) {
     cx.set_global(p);
 }
 
-/// The theme the user chose, as `Preferences.dark`. Set by [`apply_theme`].
 struct ThemeChoice(Option<bool>);
 
 impl Global for ThemeChoice {}
 
-/// `Some(dark)` for a chosen theme, or `None` to follow the system.
 pub fn theme_choice(cx: &App) -> Option<bool> {
     cx.try_global::<ThemeChoice>().and_then(|choice| choice.0)
 }
