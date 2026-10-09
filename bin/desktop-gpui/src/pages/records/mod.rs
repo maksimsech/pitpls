@@ -746,6 +746,7 @@ impl<K: RecordKind> RecordsPage<K> {
         let disabled = self.disabled();
         let p = *palette(cx);
         let filterable = self.status.ready && !self.records.is_empty();
+        let filter_disabled = self.editor.is_some() || self.nbp_year.is_some();
         let shown = self
             .groups
             .iter()
@@ -793,15 +794,27 @@ impl<K: RecordKind> RecordsPage<K> {
                         )
                     })
                     .child(
+                        // A width, not a flex basis: the row sizes itself
+                        // from its content, so a basis left the field at its
+                        // minimum.
                         div()
-                            .flex_basis(px(180.))
+                            .w(px(180.))
                             .flex_shrink(1.)
                             .min_w(px(110.))
                             .child(
                                 Input::new(&self.filter)
                                     .small()
-                                    .h(px(28.))
+                                    // `Input::h` only sizes multi-line inputs.
+                                    .map(|input| Styled::h(input, px(28.)))
+                                    .pl(px(11.))
+                                    .gap_2()
+                                    .text_size(px(13.))
                                     .rounded(px(8.))
+                                    // The buttons' fill; disabled keeps the
+                                    // input's, close to a disabled button's.
+                                    .when(!filter_disabled, |input| {
+                                        input.bg(cx.theme().tokens.button)
+                                    })
                                     .aria_label("Filter records")
                                     .prefix(
                                         Icon::new(IconName::Search)
@@ -809,7 +822,7 @@ impl<K: RecordKind> RecordsPage<K> {
                                             .text_color(p.faint),
                                     )
                                     .cleanable(true)
-                                    .disabled(self.editor.is_some() || self.nbp_year.is_some()),
+                                    .disabled(filter_disabled),
                             ),
                     ),
             )

@@ -117,9 +117,9 @@ impl Status {
         div()
             .text_size(px(12.))
             .text_color(crate::theme::palette(cx).faint)
-            .when(self.ready && self.loading_visible, |view| {
-                view.child("Refreshing…")
-            })
+            .child("Refreshing…")
+            // Hidden, not empty, so it adds no gap to the header's row.
+            .when(!(self.ready && self.loading_visible), |view| view.hidden())
     }
 }
 
