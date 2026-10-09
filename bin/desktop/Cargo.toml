@@ -1,5 +1,7 @@
 [package]
-name = "desktop-gpui"
+name = "desktop"
+version = "0.1.0"
+description = "Polish PIT tax calculations and records"
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
@@ -8,6 +10,13 @@ publish = false
 [[bin]]
 name = "pitpls"
 path = "src/main.rs"
+
+# Read by `cargo bundle`, which builds the macOS .app (`just r`).
+[package.metadata.bundle]
+name = "pitpls"
+identifier = "com.mngapp.pitpls"
+icon = ["assets/AppIcon-compact.icns"]
+copyright = "© 2026 Maksim Sech · MIT License"
 
 [dependencies]
 gpui-kit = "0.7.0"
@@ -26,5 +35,4 @@ serde_json = "1"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6"
-objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSApplication", "NSImage"] }
-objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSData"] }
+objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSApplication", "NSResponder"] }

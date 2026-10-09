@@ -1,6 +1,4 @@
 mod app;
-#[cfg(target_os = "macos")]
-mod app_icon;
 mod components;
 mod config;
 mod format;
@@ -16,11 +14,12 @@ pub(crate) const APP_NAME: &str = "pitpls";
 /// The sidebar's top row, which holds the traffic lights.
 pub(crate) const TITLE_ROW_HEIGHT: Pixels = px(44.);
 
-actions!(desktop_gpui, [Quit]);
+actions!(desktop, [Quit]);
 #[cfg(target_os = "macos")]
 actions!(
-    desktop_gpui,
+    desktop,
     [
+        About,
         Hide,
         HideOthers,
         ShowAll,
@@ -52,8 +51,6 @@ fn run() -> Result<(), String> {
         // The default bundle lacks icons such as SquarePen and Trash.
         .with_assets(gpui_kit::assets::AllAssets)
         .run(move |cx| {
-            #[cfg(target_os = "macos")]
-            app_icon::install();
             gpui_kit::init(cx);
             gpui_kit::component::Theme::sync_system_appearance(None, cx);
             theme::configure_theme(cx);
@@ -117,6 +114,11 @@ fn install_macos_menus(cx: &mut App) {
         KeyBinding::new("ctrl-cmd-f", ToggleFullScreen, None),
         KeyBinding::new("cmd-w", CloseWindow, None),
     ]);
+    // AppKit fills the panel from the bundle's Info.plist.
+    cx.on_action(|_: &About, _| {
+        let mtm = objc2::MainThreadMarker::new().expect("Actions run on the main thread");
+        objc2_app_kit::NSApplication::sharedApplication(mtm).orderFrontStandardAboutPanel(None);
+    });
     cx.on_action(|_: &Hide, cx| cx.hide());
     cx.on_action(|_: &HideOthers, cx| cx.hide_other_apps());
     cx.on_action(|_: &ShowAll, cx| cx.unhide_other_apps());
@@ -128,6 +130,8 @@ fn install_macos_menus(cx: &mut App) {
     cx.on_action(|_: &CloseWindow, cx| with_active_window(cx, |window| window.remove_window()));
     cx.set_menus([
         Menu::new(APP_NAME).items([
+            MenuItem::action(format!("About {APP_NAME}"), About),
+            MenuItem::separator(),
             MenuItem::os_submenu("Services", SystemMenuType::Services),
             MenuItem::separator(),
             MenuItem::action(format!("Hide {APP_NAME}"), Hide),

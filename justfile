@@ -1,3 +1,7 @@
 [positional-arguments]
-dg *args:
-    cargo run --locked -p desktop-gpui -- "$@"
+d *args:
+    cargo run --locked -p desktop -- "$@"
+
+r:
+    cd bin/desktop && cargo bundle --release --format osx
+    open target/release/bundle/osx/pitpls.app

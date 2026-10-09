@@ -13,6 +13,11 @@ use std::time::Duration;
 const ITEM_HEIGHT: Pixels = px(30.);
 const CONTROL: Pixels = px(28.);
 const SWITCHER_WIDTH: Pixels = px(204.);
+/// The app's "pls" wordmark. GPUI fills it with the element's text colour;
+/// the size keeps the SVG's 775.5 × 532.6 view box.
+const WORDMARK: &[u8] = include_bytes!("../../assets/pls-wordmark.svg");
+const WORDMARK_WIDTH: Pixels = px(24.75);
+const WORDMARK_HEIGHT: Pixels = px(17.);
 
 /// How far the sidebar is expanded: 1 is the labelled sidebar, 0 the icon
 /// rail. `size` drives widths and positions, `fade` the labels, counts and
@@ -94,6 +99,7 @@ impl Desktop {
         } else {
             "Collapse sidebar"
         };
+        let wordmark = (expansion.fade > 0.).then(|| wordmark(expansion, window, cx));
         div()
             .relative()
             .flex_shrink_0()
@@ -108,7 +114,8 @@ impl Desktop {
                     .top_0()
                     .left_0()
                     .w_full()
-                    .h(body_top),
+                    .h(body_top)
+                    .children(wordmark),
             )
             .child(
                 v_flex()
@@ -416,6 +423,26 @@ impl Desktop {
                     ),
             )
     }
+}
+
+/// The wordmark beside the traffic lights, which macOS draws about 60pt wide
+/// from x = 16 (none in full screen). It fades out with the labels: the rail
+/// has no room for it.
+fn wordmark(expansion: Expansion, window: &Window, cx: &App) -> Svg {
+    let left = if cfg!(target_os = "macos") && !window.is_fullscreen() {
+        px(92.)
+    } else {
+        px(16.)
+    };
+    svg()
+        .data(WORDMARK)
+        .absolute()
+        .left(left)
+        .top((crate::TITLE_ROW_HEIGHT - WORDMARK_HEIGHT) / 2.)
+        .w(WORDMARK_WIDTH)
+        .h(WORDMARK_HEIGHT)
+        .text_color(palette(cx).muted)
+        .opacity(expansion.fade)
 }
 
 /// A 30px sidebar row: icon, then the label and `trailing` (a count or a

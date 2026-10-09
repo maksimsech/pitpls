@@ -1,6 +1,6 @@
 [workspace]
 members = [
-    "bin/desktop-gpui",
+    "bin/desktop",
     "crates/app",
     "crates/core",
     "crates/db",

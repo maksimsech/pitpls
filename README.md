@@ -16,13 +16,13 @@ Make sure Rust is available on your machine, then run the app in development
 mode:
 
 ```sh
-just dg
+just d
 ```
 
 For a separate database during local testing:
 
 ```sh
-just dg --database /tmp/pitpls/pitpls.db
+just d --database /tmp/pitpls/pitpls.db
 ```
 
 No builds are provided. At the moment, the project is intended to be run in development mode only.
@@ -31,7 +31,7 @@ No builds are provided. At the moment, the project is intended to be run in deve
 
 The repository is split into a small set of focused parts:
 
-- `bin/desktop-gpui/` - native GPUI desktop application using the shared Rust services.
+- `bin/desktop/` - native GPUI desktop application using the shared Rust services.
 - `crates/app/` - application use cases, input validation, and orchestration.
 - `crates/core/` - shared financial domain types used across the app.
 - `crates/db/` - SQLite schema and repositories.
