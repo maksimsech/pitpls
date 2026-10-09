@@ -9,7 +9,7 @@ pub enum DividendRounding {
     AllToZlote,
 }
 
-#[derive(Clone, Copy, Deserialize, Serialize, Default)]
+#[derive(Clone, Copy, Default)]
 pub struct Settings {
     pub dividend_rounding: DividendRounding,
 }

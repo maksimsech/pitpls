@@ -1,7 +1,6 @@
 use pitpls_core::{crypto::Crypto, dividend::Dividend, interest::Interest};
-use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ImporterKind {
     T212,
     Revolut,
@@ -20,20 +19,17 @@ impl ImporterKind {
     }
 }
 
-#[derive(Serialize)]
 pub enum InputType {
     Csv,
     Pdf,
 }
 
-#[derive(Serialize)]
 pub enum OutputType {
     Dividend,
     Crypto,
     Interest,
 }
 
-#[derive(Serialize)]
 pub struct Importer {
     pub kind: ImporterKind,
     pub input: &'static [InputType],

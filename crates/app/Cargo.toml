@@ -14,5 +14,4 @@ thiserror.workspace = true
 chrono.workspace = true
 reqwest.workspace = true
 rust_decimal.workspace = true
-serde = { version = "1", features = ["derive"] }
 uuid.workspace = true

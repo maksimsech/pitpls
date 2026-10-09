@@ -1,6 +1,5 @@
 use chrono::NaiveDate;
 use rust_decimal::Decimal;
-use serde::Serialize;
 
 use crate::common::Amount;
 
@@ -11,7 +10,6 @@ pub struct Interest {
     pub provider: String,
 }
 
-#[derive(Serialize)]
 pub struct CalculatedInterest {
     pub id: String,
     pub date: NaiveDate,
@@ -45,7 +43,6 @@ impl CalculatedInterest {
     }
 }
 
-#[derive(Serialize)]
 pub struct InterestTaxData {
     pub to_pay: Decimal,
     pub income: Decimal,

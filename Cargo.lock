@@ -5473,7 +5473,6 @@ dependencies = [
  "pitpls-nbr",
  "reqwest",
  "rust_decimal",
- "serde",
  "thiserror 2.0.18",
  "uuid",
 ]
@@ -5485,7 +5484,6 @@ dependencies = [
  "chrono",
  "rust_decimal",
  "serde",
- "serde_json",
  "thiserror 2.0.18",
 ]
 
@@ -5509,7 +5507,6 @@ dependencies = [
  "pdf-extract",
  "pitpls-core",
  "rust_decimal",
- "serde",
  "thiserror 2.0.18",
  "tokio",
  "uuid",

@@ -2,7 +2,6 @@ use std::{collections::BTreeSet, path::Path};
 
 use chrono::{Datelike, NaiveDate, Utc};
 use pitpls_importers::{ImportError as ParseError, import, model::ImporterKind};
-use serde::Serialize;
 
 use super::validation::validate_year;
 use crate::App;
@@ -18,7 +17,6 @@ pub enum Error {
 
 pub use pitpls_db::repository::last_import::LastImport;
 
-#[derive(Serialize)]
 pub struct ImportResult {
     pub dividends: u64,
     pub cryptos: u64,

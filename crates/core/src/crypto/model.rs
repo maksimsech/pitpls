@@ -10,7 +10,6 @@ pub enum Action {
     FiatSell,
 }
 
-#[derive(Clone)]
 pub struct Crypto {
     pub id: String,
     pub value: Amount,
@@ -20,7 +19,6 @@ pub struct Crypto {
     pub provider: String,
 }
 
-#[derive(Serialize)]
 pub struct CalculatedCrypto {
     pub id: String,
     pub value: Amount,
@@ -62,7 +60,6 @@ impl CalculatedCrypto {
     }
 }
 
-#[derive(Serialize)]
 pub struct CryptoTaxData {
     pub income: Decimal,
     pub costs: Decimal,

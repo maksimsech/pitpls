@@ -29,7 +29,6 @@ pub enum OpenDatabaseError {
     Migrate(#[source] MigrateError),
 }
 
-#[derive(Clone)]
 pub struct Database {
     pool: SqlitePool,
 }

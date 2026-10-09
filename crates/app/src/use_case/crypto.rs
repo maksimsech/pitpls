@@ -6,7 +6,6 @@ use pitpls_core::{
     },
     rate::NbpRateProvider,
 };
-use serde::Deserialize;
 
 use super::rates_for;
 use super::validation::{
@@ -27,57 +26,44 @@ pub enum Error {
     NothingToPreview,
 }
 
-#[derive(Deserialize)]
+pub struct CryptoFields {
+    pub date: String,
+    pub action: Action,
+    pub value: String,
+    pub value_currency: Currency,
+    pub fee: String,
+    pub fee_currency: Currency,
+    pub provider: String,
+}
+
 pub struct CreateCryptoInput {
     pub id: Option<String>,
-    pub date: String,
-    pub action: Action,
-    pub value: String,
-    pub value_currency: Currency,
-    pub fee: String,
-    pub fee_currency: Currency,
-    pub provider: String,
+    pub fields: CryptoFields,
 }
 
-#[derive(Deserialize)]
 pub struct UpdateCryptoInput {
     pub id: String,
-    pub date: String,
-    pub action: Action,
-    pub value: String,
-    pub value_currency: Currency,
-    pub fee: String,
-    pub fee_currency: Currency,
-    pub provider: String,
+    pub fields: CryptoFields,
 }
 
-fn build_crypto(
-    id: String,
-    date: &str,
-    action: Action,
-    value: &str,
-    value_currency: Currency,
-    fee: &str,
-    fee_currency: Currency,
-    provider: String,
-) -> Result<Crypto, ValidationError> {
-    let date = parse_date(date)?;
-    let value_dec = parse_amount(value, AmountField::Value)?;
-    let fee_dec = parse_amount(fee, AmountField::Fee)?;
+fn build_crypto(id: String, fields: CryptoFields) -> Result<Crypto, ValidationError> {
+    let date = parse_date(&fields.date)?;
+    let value_dec = parse_amount(&fields.value, AmountField::Value)?;
+    let fee_dec = parse_amount(&fields.fee, AmountField::Fee)?;
 
     Ok(Crypto {
         id,
         date,
-        action,
+        action: fields.action,
         value: Amount {
             value: value_dec,
-            currency: value_currency,
+            currency: fields.value_currency,
         },
         fee: Amount {
             value: fee_dec,
-            currency: fee_currency,
+            currency: fields.fee_currency,
         },
-        provider,
+        provider: fields.provider,
     })
 }
 
@@ -87,16 +73,7 @@ pub async fn create_crypto(app: &App, input: CreateCryptoInput) -> Result<String
         .filter(|s| !s.trim().is_empty())
         .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
 
-    let crypto = build_crypto(
-        id.clone(),
-        &input.date,
-        input.action,
-        &input.value,
-        input.value_currency,
-        &input.fee,
-        input.fee_currency,
-        input.provider,
-    )?;
+    let crypto = build_crypto(id.clone(), input.fields)?;
 
     app.db
         .crypto_repo()
@@ -119,16 +96,7 @@ pub async fn update_crypto(app: &App, input: UpdateCryptoInput) -> Result<(), Er
     }
 
     let id = input.id.clone();
-    let crypto = build_crypto(
-        id.clone(),
-        &input.date,
-        input.action,
-        &input.value,
-        input.value_currency,
-        &input.fee,
-        input.fee_currency,
-        input.provider,
-    )?;
+    let crypto = build_crypto(id.clone(), input.fields)?;
 
     let rows = app.db.crypto_repo().update(&crypto).await?;
     if rows == 0 {

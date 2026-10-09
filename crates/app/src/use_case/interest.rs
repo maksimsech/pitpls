@@ -5,7 +5,6 @@ use pitpls_core::{
     },
     rate::NbpRateProvider,
 };
-use serde::Deserialize;
 
 use super::rates_for;
 use super::validation::{
@@ -26,7 +25,6 @@ pub enum Error {
     NothingToPreview,
 }
 
-#[derive(Deserialize)]
 pub struct CreateInterestInput {
     pub id: Option<String>,
     pub date: String,
@@ -35,7 +33,6 @@ pub struct CreateInterestInput {
     pub provider: String,
 }
 
-#[derive(Deserialize)]
 pub struct UpdateInterestInput {
     pub id: String,
     pub date: String,

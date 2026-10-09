@@ -6,7 +6,6 @@ use pitpls_nbr::{
     ApiImportError as NbpApiError, CsvImportError as NbpCsvError, load_api_rates, load_csv_rates,
 };
 use rust_decimal::Decimal;
-use serde::Serialize;
 
 use super::validation::{Error as ValidationError, validate_year};
 use crate::App;
@@ -28,19 +27,16 @@ pub enum ApiImportError {
     Repository(#[from] RepositoryError),
 }
 
-#[derive(Serialize)]
 pub struct RatesViewModel {
     pub currencies: Vec<Currency>,
     pub rows: Vec<RateDay>,
 }
 
-#[derive(Serialize)]
 pub struct RateDay {
     pub date: NaiveDate,
     pub rates: Vec<RateValue>,
 }
 
-#[derive(Serialize)]
 pub struct RateValue {
     pub currency: Currency,
     pub rate: Decimal,

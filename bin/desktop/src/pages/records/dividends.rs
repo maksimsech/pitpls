@@ -14,7 +14,7 @@ use gpui_kit::{
     *,
 };
 use pitpls_app::use_case::{
-    dividend::{self, CreateDividendInput, UpdateDividendInput},
+    dividend::{self, CreateDividendInput, DividendFields, UpdateDividendInput},
     year::YearInfo,
 };
 use pitpls_core::{
@@ -306,28 +306,21 @@ impl RecordForm for DividendForm {
             .parse()
             .map_err(crate::messages::country_error)?;
         let provider = form::required(&self.provider, "Provider", cx)?;
+        let fields = DividendFields {
+            date,
+            ticker,
+            value,
+            value_currency,
+            tax_paid,
+            tax_paid_currency,
+            country,
+            provider,
+        };
         Ok(match self.existing_id.clone() {
-            Some(id) => Submission::Update(UpdateDividendInput {
-                id,
-                date,
-                ticker,
-                value,
-                value_currency,
-                tax_paid,
-                tax_paid_currency,
-                country,
-                provider,
-            }),
+            Some(id) => Submission::Update(UpdateDividendInput { id, fields }),
             None => Submission::Create(CreateDividendInput {
                 id: form::optional(&self.id, cx),
-                date,
-                ticker,
-                value,
-                value_currency,
-                tax_paid,
-                tax_paid_currency,
-                country,
-                provider,
+                fields,
             }),
         })
     }

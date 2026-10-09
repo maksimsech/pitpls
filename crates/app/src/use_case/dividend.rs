@@ -5,7 +5,6 @@ use pitpls_core::{
     },
     rate::NbpRateProvider,
 };
-use serde::Deserialize;
 
 use super::rates_for;
 use super::validation::{
@@ -26,61 +25,46 @@ pub enum Error {
     NothingToPreview,
 }
 
-#[derive(Deserialize)]
+pub struct DividendFields {
+    pub date: String,
+    pub ticker: String,
+    pub value: String,
+    pub value_currency: Currency,
+    pub tax_paid: String,
+    pub tax_paid_currency: Currency,
+    pub country: Country,
+    pub provider: String,
+}
+
 pub struct CreateDividendInput {
     pub id: Option<String>,
-    pub date: String,
-    pub ticker: String,
-    pub value: String,
-    pub value_currency: Currency,
-    pub tax_paid: String,
-    pub tax_paid_currency: Currency,
-    pub country: Country,
-    pub provider: String,
+    pub fields: DividendFields,
 }
 
-#[derive(Deserialize)]
 pub struct UpdateDividendInput {
     pub id: String,
-    pub date: String,
-    pub ticker: String,
-    pub value: String,
-    pub value_currency: Currency,
-    pub tax_paid: String,
-    pub tax_paid_currency: Currency,
-    pub country: Country,
-    pub provider: String,
+    pub fields: DividendFields,
 }
 
-fn build_dividend(
-    id: String,
-    date: &str,
-    ticker: String,
-    value: &str,
-    value_currency: Currency,
-    tax_paid: &str,
-    tax_paid_currency: Currency,
-    country: Country,
-    provider: String,
-) -> Result<Dividend, ValidationError> {
-    let date = parse_date(date)?;
-    let value_dec = parse_amount(value, AmountField::Value)?;
-    let tax_paid_dec = parse_amount(tax_paid, AmountField::TaxPaid)?;
+fn build_dividend(id: String, fields: DividendFields) -> Result<Dividend, ValidationError> {
+    let date = parse_date(&fields.date)?;
+    let value_dec = parse_amount(&fields.value, AmountField::Value)?;
+    let tax_paid_dec = parse_amount(&fields.tax_paid, AmountField::TaxPaid)?;
 
     Ok(Dividend {
         id,
         date,
-        ticker,
+        ticker: fields.ticker,
         value: Amount {
             value: value_dec,
-            currency: value_currency,
+            currency: fields.value_currency,
         },
         tax_paid: Amount {
             value: tax_paid_dec,
-            currency: tax_paid_currency,
+            currency: fields.tax_paid_currency,
         },
-        country,
-        provider,
+        country: fields.country,
+        provider: fields.provider,
     })
 }
 
@@ -90,17 +74,7 @@ pub async fn create_dividend(app: &App, input: CreateDividendInput) -> Result<St
         .filter(|s| !s.trim().is_empty())
         .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
 
-    let dividend = build_dividend(
-        id.clone(),
-        &input.date,
-        input.ticker,
-        &input.value,
-        input.value_currency,
-        &input.tax_paid,
-        input.tax_paid_currency,
-        input.country,
-        input.provider,
-    )?;
+    let dividend = build_dividend(id.clone(), input.fields)?;
 
     app.db
         .dividend_repo()
@@ -123,17 +97,7 @@ pub async fn update_dividend(app: &App, input: UpdateDividendInput) -> Result<()
     }
 
     let id = input.id.clone();
-    let dividend = build_dividend(
-        id.clone(),
-        &input.date,
-        input.ticker,
-        &input.value,
-        input.value_currency,
-        &input.tax_paid,
-        input.tax_paid_currency,
-        input.country,
-        input.provider,
-    )?;
+    let dividend = build_dividend(id.clone(), input.fields)?;
 
     let rows = app.db.dividend_repo().update(&dividend).await?;
     if rows == 0 {

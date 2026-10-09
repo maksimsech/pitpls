@@ -14,7 +14,7 @@ use gpui_kit::{
     *,
 };
 use pitpls_app::use_case::{
-    crypto::{self, CreateCryptoInput, UpdateCryptoInput},
+    crypto::{self, CreateCryptoInput, CryptoFields, UpdateCryptoInput},
     year::YearInfo,
 };
 use pitpls_core::{
@@ -343,26 +343,20 @@ impl RecordForm for CryptoForm {
         let fee = form::amount(&self.fee, "Fee", cx)?;
         let fee_currency = form::selected(&self.fee_currency, "Fee currency", cx)?;
         let provider = form::required(&self.provider, "Provider", cx)?;
+        let fields = CryptoFields {
+            date,
+            action,
+            value,
+            value_currency,
+            fee,
+            fee_currency,
+            provider,
+        };
         Ok(match self.existing_id.clone() {
-            Some(id) => Submission::Update(UpdateCryptoInput {
-                id,
-                date,
-                action,
-                value,
-                value_currency,
-                fee,
-                fee_currency,
-                provider,
-            }),
+            Some(id) => Submission::Update(UpdateCryptoInput { id, fields }),
             None => Submission::Create(CreateCryptoInput {
                 id: form::optional(&self.id, cx),
-                date,
-                action,
-                value,
-                value_currency,
-                fee,
-                fee_currency,
-                provider,
+                fields,
             }),
         })
     }
