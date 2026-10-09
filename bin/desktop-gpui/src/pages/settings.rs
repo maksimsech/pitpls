@@ -186,7 +186,8 @@ impl SettingsPage {
     /// the saved one. Before the first load: placeholders, or why it failed.
     fn rounding_card(&self, cx: &mut Context<Self>) -> Div {
         let p = *palette(cx);
-        let card = data::card(cx).child(
+        // Not clipped, so a focused option's ring shows.
+        let card = data::open_card(cx).child(
             v_flex()
                 .gap(px(2.))
                 .pt(px(14.))
@@ -221,6 +222,7 @@ impl SettingsPage {
             };
         }
         let disabled = self.status.busy || self.status.loading;
+        let changed = self.has_changes();
         let options = RadioGroup::new("dividend-rounding")
             .w_full()
             .disabled(disabled)
@@ -249,6 +251,9 @@ impl SettingsPage {
                             // The group puts a fixed `gap_3` between radios;
                             // the rows touch, as in the mockup.
                             .when(index > 0, |row| row.mt(rems(-0.75)))
+                            .when(index == ROUNDINGS.len() - 1 && !changed, |row| {
+                                row.rounded_b(data::CARD_INNER_RADIUS)
+                            })
                             .when(checked, |row| row.bg(p.selected))
                             .when(!checked && !disabled, |row| {
                                 row.hover(|style| style.bg(p.hover))
@@ -270,7 +275,7 @@ impl SettingsPage {
                     }),
             );
         card.child(options)
-            .when(self.has_changes(), |card| card.child(self.save_bar(cx)))
+            .when(changed, |card| card.child(self.save_bar(cx)))
     }
 
     /// "Unsaved change" with Discard and Save changes, or why saving failed.
@@ -294,6 +299,7 @@ impl SettingsPage {
             .pr(px(12.))
             .border_t_1()
             .border_color(p.line)
+            .rounded_b(data::CARD_INNER_RADIUS)
             .bg(p.surface)
             .child(note.flex_1().min_w_0())
             .child(

@@ -41,7 +41,7 @@ pub struct Desktop {
     year_input: Entity<InputState>,
     year_error: Option<SharedString>,
     focus: FocusHandle,
-    _subscriptions: [Subscription; 3],
+    _subscriptions: [Subscription; 4],
 }
 
 impl Desktop {
@@ -90,6 +90,17 @@ impl Desktop {
                 _ => {}
             },
         );
+        // When the focused element goes away (its page is replaced, its
+        // virtual row scrolls out of view), focus moves to its nearest
+        // focusable ancestor, such as the page, or else to the root, so Tab
+        // keeps working. An open dialog keeps focus to itself.
+        let focus_subscription = cx.on_focus_lost(window, |this, window, cx| {
+            match window.focus_lost_restore_target(cx) {
+                Some(target) => window.focus(&target, cx),
+                None if !window.has_active_dialog(cx) => window.focus(&this.focus, cx),
+                None => {}
+            }
+        });
         let mut view = Self {
             config,
             runtime,
@@ -111,8 +122,11 @@ impl Desktop {
                 page_subscription,
                 appearance_subscription,
                 input_subscription,
+                focus_subscription,
             ],
         };
+        // So Tab works before the first click.
+        window.focus(&view.focus, cx);
         view.connect(window, cx);
         view
     }

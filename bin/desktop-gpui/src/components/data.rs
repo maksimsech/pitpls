@@ -8,6 +8,13 @@ use pitpls_app::use_case::{import::LastImport, rate::RateCoverage};
 
 /// A card on the raised colour, with a 12px radius.
 pub fn card(cx: &App) -> Div {
+    open_card(cx).overflow_hidden()
+}
+
+/// A [`card`] that doesn't clip its content, so the kit's focus ring, drawn
+/// 3px outside a control, shows around full-width rows. A last row with a
+/// background rounds its bottom by [`CARD_INNER_RADIUS`] itself.
+pub fn open_card(cx: &App) -> Div {
     let p = palette(cx);
     div()
         .flex()
@@ -16,8 +23,10 @@ pub fn card(cx: &App) -> Div {
         .border_color(p.line)
         .rounded(px(12.))
         .bg(p.raised)
-        .overflow_hidden()
 }
+
+/// The card's radius inside its 1px border.
+pub const CARD_INNER_RADIUS: Pixels = px(11.);
 
 /// A 7px status dot.
 pub fn dot(colour: Hsla) -> Div {

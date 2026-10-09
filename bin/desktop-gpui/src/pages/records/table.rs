@@ -322,14 +322,23 @@ impl<K: RecordKind> RecordsPage<K> {
                     .opacity(0.)
                     .group_hover(group, |style| style.opacity(1.))
             })
+            // A dialog gives focus back to what had it when it opened. The
+            // menu is gone by the time the dialog closes, so the page takes
+            // focus first.
             .dropdown_menu_with_anchor(Anchor::TopRight, move |menu, _, _| {
                 let (edit, delete) = (view.clone(), view.clone());
                 let (edit_id, delete_id) = (id.clone(), id.clone());
                 menu.item(PopupMenuItem::new("Edit").on_click(move |_, window, cx| {
-                    let _ = edit.update(cx, |this, cx| this.edit(&edit_id, window, cx));
+                    let _ = edit.update(cx, |this, cx| {
+                        window.focus(&this.focus, cx);
+                        this.edit(&edit_id, window, cx);
+                    });
                 }))
                 .item(PopupMenuItem::new("Delete").on_click(move |_, window, cx| {
-                    let _ = delete.update(cx, |this, cx| this.delete_one(&delete_id, window, cx));
+                    let _ = delete.update(cx, |this, cx| {
+                        window.focus(&this.focus, cx);
+                        this.delete_one(&delete_id, window, cx);
+                    });
                 }))
             })
     }

@@ -1,6 +1,6 @@
 use super::copy::CopyButton;
 use crate::{
-    format::{DisplayText, EXTRA_DIGITS, THOUSANDS},
+    format::{DisplayText, EXTRA_DIGITS},
     theme::{palette, tabular_digits},
 };
 use gpui_kit::{
@@ -66,13 +66,13 @@ pub fn text(value: &DisplayText, slot: bool, unit: bool, cx: &App) -> StyledText
 }
 
 /// When the value hides digits, shows all of them in a tooltip and offers
-/// "Copy full value" on right click. The copy has no thousands separator.
+/// "Copy full value" on right click, which copies what a copy button would.
 pub fn reveal_full(element: Stateful<Div>, value: &DisplayText) -> AnyElement {
     if !value.more {
         return element.into_any_element();
     }
     let full = value.full.clone();
-    let copied = SharedString::from(full.replace(THOUSANDS, ""));
+    let copied = value.copy.clone();
     element
         .tooltip(move |window, cx| Tooltip::new(full.clone()).build(window, cx))
         .context_menu(move |menu, _, _| {

@@ -155,9 +155,14 @@ impl Desktop {
             .child(self.year_item(None, cx))
             .child(divider())
             .child(
+                // The kit draws a focus ring 3px outside a row. The padding
+                // leaves it room inside the scroll clip, and the negative
+                // margin keeps the rows where they were.
                 v_flex()
                     .id("year-menu-years")
-                    .max_h(px(224.))
+                    .m(-RING_ROOM)
+                    .p(RING_ROOM)
+                    .max_h(px(224.) + RING_ROOM * 2.)
                     .overflow_y_scroll()
                     .children(years.into_iter().map(|info| self.year_item(Some(info), cx))),
             )
@@ -300,3 +305,5 @@ impl Desktop {
 }
 
 const CONTROL_HEIGHT: Pixels = px(28.);
+/// The width of the kit's focus ring, drawn outside a control.
+const RING_ROOM: Pixels = px(3.);

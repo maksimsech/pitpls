@@ -140,9 +140,6 @@ fn day(date: NaiveDate) -> DisplayText {
     DisplayText::plain(date.format("%d.%m").to_string())
 }
 
-/// Every conversion failure in crates/core (`CalculateDividendTaxError`,
-/// `CalculateInterestTaxError`, `CalculateSellBuyValuesError`) starts like
-/// this. One missing NBP rate fails the whole calculation and blocks the page.
 /// Below this table width, Import in the header shows only its icon.
 const NARROW: f32 = 600.;
 
@@ -216,12 +213,15 @@ impl<K: RecordKind> RecordsPage<K> {
             }
         });
         let focus_subscription = cx.on_focus_lost(window, |this, window, cx| {
-            // When a focused virtual row scrolls out of view, keep focus on
-            // the page instead of dropping it.
-            if this.editor.is_none()
-                && this.pending_delete.is_none()
-                && this.nbp_year.is_none()
-                && window.focus_lost_restore_target(cx).as_ref() == Some(&this.focus)
+            // Runs after the shell's fallback. Focus that falls back to the
+            // page or above it stays on the page: when a focused virtual row
+            // scrolls out of view, or when a deleted record's Delete button,
+            // which its confirmation hands focus back to, is gone.
+            let fallback = window.focus_lost_restore_target(cx);
+            if !window.has_active_dialog(cx)
+                && fallback.is_none_or(|target| {
+                    target == this.focus || target.contains(&this.focus, window)
+                })
             {
                 window.focus(&this.focus, cx);
             }
