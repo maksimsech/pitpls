@@ -47,10 +47,10 @@ impl RecordKind for Dividends {
 
     fn columns() -> Vec<RecordColumn> {
         vec![
-            RecordColumn::new("Date", CellStyle::Muted, 64., 50.),
-            RecordColumn::new("Ticker", CellStyle::Strong, 76., 60.),
+            RecordColumn::new("Date", CellStyle::Muted, 64., 44.),
+            RecordColumn::new("Ticker", CellStyle::Strong, 76., 56.),
             RecordColumn::grow("Provider", CellStyle::Muted),
-            RecordColumn::new("Country", CellStyle::Muted, 64., 36.),
+            RecordColumn::new("Country", CellStyle::Muted, 64., 46.),
             RecordColumn::new("Value", CellStyle::Number, 150., 124.),
             RecordColumn::new("Tax paid", CellStyle::Number, 124., 104.),
         ]

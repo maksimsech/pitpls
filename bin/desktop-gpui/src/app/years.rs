@@ -290,6 +290,7 @@ impl Desktop {
                                 .child(Icon::new(IconName::X).size(px(13.)))
                                 .opacity(0.)
                                 .group_hover(group, |style| style.opacity(1.))
+                                .tab_stop(false)
                                 .accessibility_label(format!("Remove {year}"))
                                 .tooltip(format!("Remove {year} from the list"))
                                 .disabled(self.status.busy)
@@ -300,6 +301,20 @@ impl Desktop {
                         )
                     }),
             )
+            // The × shows only on hover, so it's no Tab stop. Backspace or
+            // Delete on the row removes the year instead.
+            .when_some(removable, |row, info| {
+                let year = info.year;
+                row.on_key_down(cx.listener(move |this, event: &KeyDownEvent, window, cx| {
+                    let key = &event.keystroke;
+                    if matches!(key.key.as_str(), "backspace" | "delete")
+                        && !key.modifiers.modified()
+                    {
+                        cx.stop_propagation();
+                        this.change_year(year, true, window, cx);
+                    }
+                }))
+            })
             .on_click(cx.listener(move |this, _, window, cx| this.select_year(year, window, cx)))
     }
 }

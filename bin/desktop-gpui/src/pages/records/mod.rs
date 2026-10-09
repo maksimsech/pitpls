@@ -10,8 +10,8 @@ use crate::{
     components::{
         Status, dialog, form, header, nbp, notice,
         records::{
-            Preview, RecordColumn, RecordTableState, RowDisplay, TableLayout, preview_band,
-            record_skeleton,
+            ItemKey, Preview, RecordColumn, RecordTableState, RowDisplay, TableLayout,
+            preview_band, record_skeleton,
         },
         value,
     },
@@ -41,7 +41,11 @@ use pitpls_app::use_case::{
 use pitpls_core::common::Amount;
 use pitpls_importers::{IMPORTERS, OutputType};
 use rust_decimal::Decimal;
-use std::{collections::HashSet, future::Future, sync::Arc};
+use std::{
+    collections::{HashMap, HashSet},
+    future::Future,
+    sync::Arc,
+};
 
 pub enum Submission<C, U> {
     Create(C),
@@ -180,6 +184,10 @@ pub struct RecordsPage<K: RecordKind> {
     table_scroll: ScrollHandle,
     page_scroll: ScrollHandle,
     table_state: RecordTableState,
+    /// Focus for each month header and row in the list, kept across rebuilds.
+    item_focus: HashMap<ItemKey, table::ItemFocus>,
+    /// The focus handle of each list item, by index; the end space has none.
+    item_handles: Vec<Option<FocusHandle>>,
     selected: HashSet<String>,
     expanded: HashSet<String>,
     editor: Option<Editor<K>>,
@@ -240,6 +248,8 @@ impl<K: RecordKind> RecordsPage<K> {
             table_scroll: ScrollHandle::default(),
             page_scroll: ScrollHandle::default(),
             table_state: RecordTableState::default(),
+            item_focus: HashMap::new(),
+            item_handles: Vec::new(),
             selected: HashSet::new(),
             expanded: HashSet::new(),
             editor: None,
@@ -857,6 +867,7 @@ impl<K: RecordKind> RecordsPage<K> {
         let visible = self.status.loading_visible;
         let layout = TableLayout::new(
             &self.columns,
+            &[],
             self.table_state.viewport_width.unwrap_or(px(900.)),
         );
         v_flex()

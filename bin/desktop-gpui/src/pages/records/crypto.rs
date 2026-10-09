@@ -43,15 +43,16 @@ impl RecordKind for Crypto {
         record.date
     }
 
+    /// The fees give way first in a narrow panel; the opened row shows them.
     fn columns() -> Vec<RecordColumn> {
         vec![
             RecordColumn::new("Date", CellStyle::Muted, 60., 50.),
             RecordColumn::new("Action", CellStyle::Tag, 64., 56.),
             RecordColumn::grow("Provider", CellStyle::Muted),
             RecordColumn::new("Value", CellStyle::Number, 150., 120.),
-            RecordColumn::new("Fee", CellStyle::Number, 104., 90.),
+            RecordColumn::new("Fee", CellStyle::Number, 104., 90.).optional(),
             RecordColumn::new("Calculated value", CellStyle::Number, 160., 124.),
-            RecordColumn::new("Calculated fee", CellStyle::Number, 120., 100.),
+            RecordColumn::new("Calculated fee", CellStyle::Number, 120., 100.).optional(),
         ]
     }
 

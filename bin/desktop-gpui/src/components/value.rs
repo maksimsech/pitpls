@@ -5,7 +5,7 @@ use crate::{
 };
 use gpui_kit::{
     component::{
-        StyledExt, h_flex,
+        ActiveTheme, StyledExt, h_flex,
         menu::{ContextMenuExt, PopupMenuItem},
         tooltip::Tooltip,
         v_flex,
@@ -13,22 +13,24 @@ use gpui_kit::{
     prelude::FluentBuilder,
     *,
 };
-use std::sync::Arc;
+use std::{ops::Range, sync::Arc};
 
 /// As wide as a tabular digit; fills the unused part of the decimals slot.
 const FIGURE_SPACE: char = '\u{2007}';
 const MORE: &str = "…";
 
-/// The value as one text element: `main` in the inherited colour, the extra
-/// decimals and "…" faint, and the unit muted when `unit` is set. With
-/// `slot`, the room for every extra decimal and the "…" is kept even when
-/// they are absent, so the decimal points of a column line up. Only use
-/// `slot` for numbers, inside an element with tabular digits.
-pub fn text(value: &DisplayText, slot: bool, unit: bool, cx: &App) -> StyledText {
-    let p = palette(cx);
-    let faint = HighlightStyle::color(p.faint);
+/// How a part of a value's text is drawn.
+enum Shade {
+    Faint,
+    /// Takes its room but isn't seen.
+    Hidden,
+    Muted,
+}
+
+/// The text [`text`] draws, and the parts it shades.
+fn compose(value: &DisplayText, slot: bool, unit: bool) -> (String, Vec<(Range<usize>, Shade)>) {
     let mut text = value.main.to_string();
-    let mut highlights = Vec::with_capacity(3);
+    let mut parts = Vec::with_capacity(3);
     let start = text.len();
     text.push_str(&value.extra);
     if slot {
@@ -39,30 +41,80 @@ pub fn text(value: &DisplayText, slot: bool, unit: bool, cx: &App) -> StyledText
         ));
     }
     if start < text.len() {
-        highlights.push((start..text.len(), faint));
+        parts.push((start..text.len(), Shade::Faint));
     }
     if value.more || slot {
         let start = text.len();
         text.push_str(MORE);
-        // Highlight colours blend over the text colour, so hide the
-        // placeholder by fading it out instead.
-        let style = if value.more {
-            faint
+        let shade = if value.more {
+            Shade::Faint
         } else {
-            HighlightStyle {
-                fade_out: Some(1.),
-                ..Default::default()
-            }
+            Shade::Hidden
         };
-        highlights.push((start..text.len(), style));
+        parts.push((start..text.len(), shade));
     }
     if unit && let Some(unit) = &value.unit {
         let start = text.len();
         text.push(' ');
         text.push_str(unit);
-        highlights.push((start..text.len(), HighlightStyle::color(p.muted)));
+        parts.push((start..text.len(), Shade::Muted));
     }
+    (text, parts)
+}
+
+/// The value as one text element: `main` in the inherited colour, the extra
+/// decimals and "…" faint, and the unit muted when `unit` is set. With
+/// `slot`, the room for every extra decimal and the "…" is kept even when
+/// they are absent, so the decimal points of a column line up. Only use
+/// `slot` for numbers, inside an element with tabular digits.
+pub fn text(value: &DisplayText, slot: bool, unit: bool, cx: &App) -> StyledText {
+    let p = palette(cx);
+    let (text, parts) = compose(value, slot, unit);
+    let highlights = parts
+        .into_iter()
+        .map(|(range, shade)| {
+            let style = match shade {
+                Shade::Faint => HighlightStyle::color(p.faint),
+                // Highlight colours blend over the text colour, so hide the
+                // placeholder by fading it out instead.
+                Shade::Hidden => HighlightStyle {
+                    fade_out: Some(1.),
+                    ..Default::default()
+                },
+                Shade::Muted => HighlightStyle::color(p.muted),
+            };
+            (range, style)
+        })
+        .collect::<Vec<_>>();
     StyledText::new(text).with_highlights(highlights)
+}
+
+/// How wide [`text`] draws the value at `size`, in the regular weight with
+/// tabular digits.
+pub fn text_width(
+    value: &DisplayText,
+    slot: bool,
+    unit: bool,
+    size: Pixels,
+    window: &Window,
+    cx: &App,
+) -> Pixels {
+    let (text, _) = compose(value, slot, unit);
+    let run = TextRun {
+        len: text.len(),
+        font: Font {
+            features: tabular_digits(),
+            ..font(cx.theme().font_family.clone())
+        },
+        color: Hsla::default(),
+        background_color: None,
+        underline: None,
+        strikethrough: None,
+    };
+    window
+        .text_system()
+        .shape_line(text.into(), size, &[run], None)
+        .width
 }
 
 /// When the value hides digits, shows all of them in a tooltip and offers
@@ -126,7 +178,9 @@ fn copy_button(id: &ElementId, value: &DisplayText) -> CopyButton {
     )
 }
 
-/// A total: the label above its value and copy button.
+/// A total: the label above its value and copy button. Totals sit side by
+/// side without a fixed column, so the copy button shows only a check, which
+/// doesn't move the next total.
 pub fn stat(
     id: impl Into<ElementId>,
     label: impl Into<SharedString>,
@@ -146,7 +200,7 @@ pub fn stat(
             h_flex()
                 .gap_1()
                 .child(form_value(id.clone(), value, px(18.), px(12.), false, cx))
-                .child(copy_button(&id, value)),
+                .child(copy_button(&id, value).check_only()),
         )
 }
 

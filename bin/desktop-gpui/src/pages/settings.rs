@@ -56,6 +56,9 @@ pub struct SettingsPage {
     /// The rounding chosen on the page. It differs from `saved` until it is
     /// saved or discarded.
     picked: Option<DividendRounding>,
+    /// The theme segments, in `THEMES` order, so the page can tell which one
+    /// has focus and draw its ring.
+    theme_focus: [FocusHandle; 3],
 }
 
 impl SettingsPage {
@@ -65,6 +68,7 @@ impl SettingsPage {
             status: Status::default(),
             saved: None,
             picked: None,
+            theme_focus: [cx.focus_handle(), cx.focus_handle(), cx.focus_handle()],
         };
         page.refresh(window, cx);
         page
@@ -118,22 +122,6 @@ impl SettingsPage {
         ));
         cx.notify();
     }
-
-    /// Applies the theme the clicked segment stands for. The group reports
-    /// every segment's next state, with the clicked one flipped.
-    fn pick_theme(&mut self, checks: &[bool], cx: &mut Context<Self>) {
-        let current = theme_choice(cx);
-        let clicked = THEMES
-            .iter()
-            .zip(checks)
-            .position(|((dark, _), checked)| *checked != (*dark == current));
-        if let Some(index) = clicked {
-            let dark = THEMES[index].0;
-            if dark != current {
-                self.context.set_theme(dark, cx);
-            }
-        }
-    }
 }
 
 impl PageView for SettingsPage {
@@ -175,7 +163,7 @@ impl Render for SettingsPage {
                         .pb(px(32.))
                         .gap(px(16.))
                         .child(self.rounding_card(cx))
-                        .child(self.theme_card(cx)),
+                        .child(self.theme_card(window, cx)),
                 ),
             ))
     }
@@ -322,9 +310,16 @@ impl SettingsPage {
     }
 
     /// "Theme" with System / Light / Dark, applied at once.
-    fn theme_card(&self, cx: &mut Context<Self>) -> Div {
+    ///
+    /// The kit's `ToggleGroup` drops clicks made with Enter or Space, so the
+    /// segments are the base `Toggle`, which takes them, each with its own
+    /// handler. The base toggle draws nothing, so the page draws the chosen
+    /// fill, a hover that only changes the text colour, as in the mockup, and
+    /// the kit's ring while a segment has keyboard focus.
+    fn theme_card(&self, window: &Window, cx: &mut Context<Self>) -> Div {
         let p = *palette(cx);
         let current = theme_choice(cx);
+        let chosen = cx.theme().tokens.accent;
         data::card(cx).child(
             h_flex()
                 .min_h(px(52.))
@@ -333,29 +328,45 @@ impl SettingsPage {
                 .pr(px(12.))
                 .child(div().flex_1().font_medium().child("Theme"))
                 .child(
-                    ToggleGroup::new("theme")
-                        .segmented()
+                    h_flex()
                         .gap(px(2.))
                         .p(px(3.))
                         .rounded(px(9.))
                         .bg(cx.theme().button)
                         .border_1()
                         .border_color(p.line)
-                        .children(THEMES.map(|(dark, label)| {
-                            let checked = dark == current;
-                            Toggle::new(label)
-                                .label(label)
-                                .checked(checked)
-                                .h(px(24.))
-                                .px(px(12.))
-                                .rounded(px(6.))
-                                .text_size(px(12.5))
-                                .font_medium()
-                                .text_color(if checked { p.text } else { p.muted })
-                        }))
-                        .on_click(cx.listener(|this, checks: &Vec<bool>, _, cx| {
-                            this.pick_theme(checks, cx)
-                        })),
+                        .children(THEMES.iter().zip(&self.theme_focus).map(
+                            |((dark, label), focus)| {
+                                let dark = *dark;
+                                let checked = dark == current;
+                                let context = self.context.clone();
+                                base::Toggle::new(*label)
+                                    .track_focus(focus)
+                                    .pressed(checked)
+                                    .accessibility_label(*label)
+                                    .h(px(24.))
+                                    .px(px(12.))
+                                    .rounded(px(6.))
+                                    .text_size(px(12.5))
+                                    .font_medium()
+                                    .text_color(if checked { p.text } else { p.muted })
+                                    .when(checked, |segment| segment.bg(chosen))
+                                    .when(!checked, |segment| {
+                                        segment.hover(|style| style.text_color(p.text))
+                                    })
+                                    .when(
+                                        window.last_input_was_keyboard()
+                                            && focus.is_focused(window),
+                                        |segment| segment.focus_ring_style(window, cx),
+                                    )
+                                    .on_change(move |_, _, _, cx| {
+                                        if theme_choice(cx) != dark {
+                                            context.set_theme(dark, cx);
+                                        }
+                                    })
+                                    .child(*label)
+                            },
+                        )),
                 ),
         )
     }

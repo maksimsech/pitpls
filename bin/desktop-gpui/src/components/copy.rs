@@ -10,8 +10,8 @@ use gpui_kit::{
 };
 use std::time::Duration;
 
-/// Copies `value` and then shows "✓ Copied" for a moment. The tooltip says
-/// exactly what is copied.
+/// Copies `value` and then shows "✓ Copied" for a moment, or only the check
+/// with `check_only`. The tooltip says exactly what is copied.
 ///
 /// The kit's `Clipboard` only swaps its icon for a check and has no way to
 /// add the "Copied" label or its colour, so this is a kit `Button` with the
@@ -20,6 +20,7 @@ use std::time::Duration;
 pub struct CopyButton {
     id: ElementId,
     value: SharedString,
+    check_only: bool,
 }
 
 impl CopyButton {
@@ -27,7 +28,15 @@ impl CopyButton {
         Self {
             id: id.into(),
             value: value.into(),
+            check_only: false,
         }
+    }
+
+    /// Shows only the check after a click, without "Copied", so the button
+    /// keeps its size and nothing next to it moves.
+    pub fn check_only(mut self) -> Self {
+        self.check_only = true;
+        self
     }
 }
 
@@ -59,7 +68,7 @@ impl RenderOnce for CopyButton {
             } else {
                 IconName::Copy
             })
-            .when(copied, |button| button.label("Copied"))
+            .when(copied && !self.check_only, |button| button.label("Copied"))
             .when(!copied, |button| button.text_color(faint))
             .tooltip(tooltip.clone())
             .accessibility_label(tooltip)

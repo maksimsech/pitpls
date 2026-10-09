@@ -20,6 +20,10 @@ const COMPACT_FRAME: [f32; 3] = [28., 18., 28.];
 /// The least width the growing column keeps, normal and compact.
 const GROW_MIN: f32 = 140.;
 const COMPACT_GROW_MIN: f32 = 60.;
+/// Space before a number, so it doesn't touch the column to its left.
+const NUMBER_INSET: f32 = 8.;
+/// The text size of a collapsed row.
+pub const ROW_TEXT: Pixels = px(13.);
 /// Below this table width, an opened row stacks its steps.
 const STACK_BELOW: f32 = 680.;
 /// Room under the last row, so the selection bar doesn't cover it.
@@ -39,13 +43,15 @@ pub enum CellStyle {
 }
 
 /// A column of a record table, with px widths at the normal and the minimum
-/// window size. The column that grows takes whatever width is left.
+/// window size. The column that grows takes whatever width is left. An
+/// `optional` column is left out when even the compact widths don't fit.
 pub struct RecordColumn {
     pub label: &'static str,
     pub style: CellStyle,
     pub width: f32,
     pub compact: f32,
     pub grow: bool,
+    pub optional: bool,
 }
 
 impl RecordColumn {
@@ -56,7 +62,15 @@ impl RecordColumn {
             width,
             compact,
             grow: false,
+            optional: false,
         }
+    }
+
+    /// Left out when even the compact widths don't fit, for a value the
+    /// opened row shows anyway.
+    pub const fn optional(mut self) -> Self {
+        self.optional = true;
+        self
     }
 
     pub const fn grow(label: &'static str, style: CellStyle) -> Self {
@@ -66,65 +80,93 @@ impl RecordColumn {
             width: 0.,
             compact: 0.,
             grow: true,
+            optional: false,
         }
     }
 }
 
-/// Column widths for a table viewport. The table fills the viewport and only
-/// gets wider, scrolling sideways, when even the compact widths don't fit.
+/// Column widths for a table viewport. The table fills the viewport. When
+/// the normal widths don't fit, it takes the compact ones, then leaves out
+/// the optional columns. Only when even that doesn't fit does it get wider
+/// and scroll sideways.
 #[derive(Clone, PartialEq)]
 pub struct TableLayout {
     pub width: Pixels,
     /// The checkbox, chevron and "⋯" columns.
     pub frame: [Pixels; 3],
-    pub columns: Vec<Pixels>,
+    /// Each column's width, or `None` when it's left out.
+    pub columns: Vec<Option<Pixels>>,
     pub compact: bool,
     /// Whether an opened row stacks its steps.
     pub stacked: bool,
 }
 
 impl TableLayout {
-    pub fn new(columns: &[RecordColumn], viewport: Pixels) -> Self {
+    /// `fit` holds each column's least width from [`fit_widths`], or nothing
+    /// before the records load. A column is never narrower than that.
+    pub fn new(columns: &[RecordColumn], fit: &[Pixels], viewport: Pixels) -> Self {
         let viewport = viewport / px(1.);
-        let fixed = |frame: [f32; 3], width: fn(&RecordColumn) -> f32| {
-            2. * PADDING
-                + frame.iter().sum::<f32>()
-                + columns
-                    .iter()
-                    .filter(|column| !column.grow)
-                    .map(width)
-                    .sum::<f32>()
+        let widths = |compact: bool, optional: bool| -> Vec<Option<f32>> {
+            columns
+                .iter()
+                .enumerate()
+                .map(|(index, column)| {
+                    if column.optional && !optional {
+                        None
+                    } else if column.grow {
+                        Some(0.)
+                    } else {
+                        let width = if compact {
+                            column.compact
+                        } else {
+                            column.width
+                        };
+                        let fit = fit.get(index).map_or(0., |fit| *fit / px(1.));
+                        Some(width.max(fit))
+                    }
+                })
+                .collect()
         };
-        let normal = fixed(FRAME, |column| column.width);
-        let compact = normal + GROW_MIN > viewport;
-        let (frame, used, grow_min) = if compact {
-            (
-                COMPACT_FRAME,
-                fixed(COMPACT_FRAME, |column| column.compact),
-                COMPACT_GROW_MIN,
-            )
+        let used = |frame: [f32; 3], widths: &[Option<f32>]| {
+            2. * PADDING + frame.iter().sum::<f32>() + widths.iter().flatten().sum::<f32>()
+        };
+        let mut shown = widths(false, true);
+        let compact = used(FRAME, &shown) + GROW_MIN > viewport;
+        let (frame, grow_min) = if compact {
+            shown = widths(true, true);
+            if used(COMPACT_FRAME, &shown) + COMPACT_GROW_MIN > viewport {
+                shown = widths(true, false);
+            }
+            (COMPACT_FRAME, COMPACT_GROW_MIN)
         } else {
-            (FRAME, normal, GROW_MIN)
+            (FRAME, GROW_MIN)
         };
+        let used = used(frame, &shown);
         let grow = (viewport - used).max(grow_min);
         Self {
             width: px(used + grow),
             frame: frame.map(px),
             columns: columns
                 .iter()
-                .map(|column| {
-                    px(if column.grow {
-                        grow
-                    } else if compact {
-                        column.compact
-                    } else {
-                        column.width
-                    })
+                .zip(shown)
+                .map(|(column, width)| {
+                    width.map(|width| px(if column.grow { grow } else { width }))
                 })
                 .collect(),
             compact,
             stacked: viewport < STACK_BELOW,
         }
+    }
+
+    /// Pairs `items`, one per column, with the widths of the columns shown.
+    pub fn shown<T>(
+        &self,
+        items: impl IntoIterator<Item = T>,
+    ) -> impl Iterator<Item = (T, Pixels)> {
+        items
+            .into_iter()
+            .zip(&self.columns)
+            .filter_map(|(item, width)| Some((item, (*width)?)))
     }
 
     /// Where an opened row's content starts: under the first data column, or
@@ -141,6 +183,17 @@ impl TableLayout {
 /// A table row's horizontal frame: full table width and the side padding.
 pub fn row(layout: &TableLayout) -> Div {
     h_flex().w(layout.width).flex_shrink_0().px(px(PADDING))
+}
+
+/// The keyboard focus ring of a row or month header. It sits inside the row,
+/// since the table's scroll container clips the kit's ring, which sits
+/// outside.
+pub fn focus_ring(cx: &App) -> Div {
+    div()
+        .absolute()
+        .inset_0()
+        .border_2()
+        .border_color(cx.theme().ring)
 }
 
 /// Keeps a press on a control inside a clickable row from also opening or
@@ -161,7 +214,7 @@ pub fn heading(column: &RecordColumn, width: Pixels) -> Div {
         .flex_shrink_0()
         .truncate()
         .when(column.style == CellStyle::Number, |cell| {
-            cell.pl(px(8.)).text_right()
+            cell.pl(px(NUMBER_INSET)).text_right()
         })
         .child(column.label)
 }
@@ -203,13 +256,48 @@ pub fn cell(
         CellStyle::Number => super::value::reveal_full(
             frame
                 .id(id)
-                .pl(px(8.))
+                .pl(px(NUMBER_INSET))
                 .text_right()
                 .font_features(tabular_digits())
                 .child(super::value::text(value, true, true, cx)),
             value,
         ),
     }
+}
+
+/// Each number column's least width: its widest cell, measured once per
+/// load, so a number is never cut. Other columns get nothing. With tabular
+/// digits, the longest value in each unit is the widest.
+pub fn fit_widths(
+    columns: &[RecordColumn],
+    rows: &[RowDisplay],
+    window: &Window,
+    cx: &App,
+) -> Vec<Pixels> {
+    columns
+        .iter()
+        .enumerate()
+        .map(|(index, column)| {
+            if column.style != CellStyle::Number {
+                return px(0.);
+            }
+            let mut longest: Vec<&DisplayText> = Vec::new();
+            for value in rows.iter().filter_map(|row| row.cells.get(index)) {
+                match longest.iter_mut().find(|known| known.unit == value.unit) {
+                    Some(known) if value.main.chars().count() > known.main.chars().count() => {
+                        *known = value
+                    }
+                    Some(_) => {}
+                    None => longest.push(value),
+                }
+            }
+            let widest = longest
+                .into_iter()
+                .map(|value| value::text_width(value, true, true, ROW_TEXT, window, cx))
+                .fold(px(0.), Pixels::max);
+            (px(NUMBER_INSET) + widest).ceil()
+        })
+        .collect()
 }
 
 /// A line of an opened row's step.
@@ -498,10 +586,9 @@ pub fn record_skeleton(
                 .text_color(p.faint)
                 .child(div().w(layout.frame[0] + layout.frame[1]).flex_shrink_0())
                 .children(
-                    columns
-                        .iter()
-                        .zip(&layout.columns)
-                        .map(|(column, width)| heading(column, *width)),
+                    layout
+                        .shown(columns)
+                        .map(|(column, width)| heading(column, width)),
                 ),
         )
         .children((0..5).map(|_| {
@@ -512,9 +599,8 @@ pub fn record_skeleton(
                 .child(div().w(layout.frame[0] + layout.frame[1]).flex_shrink_0())
                 .children(
                     layout
-                        .columns
-                        .iter()
-                        .map(|width| div().w(*width).flex_shrink_0().child(bar(*width))),
+                        .shown(columns)
+                        .map(|(_, width)| div().w(width).flex_shrink_0().child(bar(width))),
                 )
         }))
 }
@@ -528,8 +614,8 @@ pub enum Item {
     End,
 }
 
-/// Identifies an item across rebuilds, for scroll anchoring.
-#[derive(Clone, PartialEq)]
+/// Identifies an item across rebuilds, for scroll anchoring and focus.
+#[derive(Clone, PartialEq, Eq, Hash)]
 pub enum ItemKey {
     Month(i32, u32),
     Record(SharedString),
@@ -548,6 +634,8 @@ pub struct RecordTableState {
     pub expanded: Vec<Option<Size<Pixels>>>,
     pub scroll: VirtualListScrollHandle,
     pub viewport_width: Option<Pixels>,
+    /// Each column's least width for `rows`, from [`fit_widths`].
+    pub fit: Option<Vec<Pixels>>,
     pub layout: Option<TableLayout>,
     pub layout_key: Option<(TableLayout, Pixels, SharedString, SharedString)>,
     pub dirty: bool,
@@ -565,6 +653,7 @@ impl Default for RecordTableState {
             expanded: vec![],
             scroll: VirtualListScrollHandle::new(),
             viewport_width: None,
+            fit: None,
             layout: None,
             layout_key: None,
             dirty: true,
@@ -603,6 +692,7 @@ impl RecordTableState {
     /// first visible one keeps its place if it is still listed.
     pub fn reset(&mut self, rows: Vec<RowDisplay>) {
         self.rows = rows;
+        self.fit = None;
         self.invalidate_measurements();
     }
 
@@ -611,6 +701,30 @@ impl RecordTableState {
         self.month = None;
         self.expanded = vec![None; self.rows.len()];
         self.dirty = true;
+    }
+
+    /// Scrolls the item with `key` into view, with the items next to it, so
+    /// that Tab and Shift-Tab find them rendered.
+    pub fn reveal(&self, key: &ItemKey) {
+        let Some(index) = self.keys.iter().position(|item| item == key) else {
+            return;
+        };
+        let height = |index: usize| self.sizes.get(index).map_or(px(0.), |size| size.height);
+        let top = self.sizes[..index]
+            .iter()
+            .map(|size| size.height)
+            .sum::<Pixels>();
+        let start = top - index.checked_sub(1).map_or(px(0.), height);
+        let end = top + height(index) + height(index + 1);
+        let viewport = self.scroll.bounds().size.height;
+        let mut offset = self.scroll.offset();
+        if start < -offset.y {
+            offset.y = -start;
+        } else if end > viewport - offset.y {
+            offset.y = viewport - end;
+        }
+        // The list clamps it to its content.
+        self.scroll.set_offset(offset);
     }
 
     /// Scrolls to the top without anchoring, for a new filter.

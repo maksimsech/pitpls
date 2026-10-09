@@ -1,6 +1,6 @@
 use super::*;
 use crate::components::records::{
-    self, END_SPACE, Item, ItemKey, cell, control, details, heading, measure_width,
+    self, END_SPACE, Item, ItemKey, cell, control, details, focus_ring, heading, measure_width,
 };
 use gpui_kit::{
     Role,
@@ -11,7 +11,42 @@ use gpui_kit::{
     },
 };
 
+/// A month header's or row's focus handle. Keyboard focus entering the item
+/// scrolls it into view, so Tab walks on past the rows on screen.
+pub(super) struct ItemFocus {
+    handle: FocusHandle,
+    _reveal: Subscription,
+}
+
 impl<K: RecordKind> RecordsPage<K> {
+    /// The focus handle of the item with `key`, made on first use.
+    fn ensure_focus(
+        &mut self,
+        key: &ItemKey,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> FocusHandle {
+        if let Some(focus) = self.item_focus.get(key) {
+            return focus.handle.clone();
+        }
+        let handle = cx.focus_handle().tab_stop(true);
+        let reveal_key = key.clone();
+        let reveal = cx.on_focus_in(&handle, window, move |this, window, cx| {
+            if window.last_input_was_keyboard() {
+                this.table_state.reveal(&reveal_key);
+                cx.notify();
+            }
+        });
+        self.item_focus.insert(
+            key.clone(),
+            ItemFocus {
+                handle: handle.clone(),
+                _reveal: reveal,
+            },
+        );
+        handle
+    }
+
     fn toggle_expanded(&mut self, id: &str, cx: &mut Context<Self>) {
         if !self.expanded.remove(id) {
             self.expanded.insert(id.to_owned());
@@ -78,10 +113,9 @@ impl<K: RecordKind> RecordsPage<K> {
             )
             .child(div().w(layout.frame[1]).flex_shrink_0())
             .children(
-                self.columns
-                    .iter()
-                    .zip(&layout.columns)
-                    .map(|(column, width)| heading(column, *width)),
+                layout
+                    .shown(&self.columns)
+                    .map(|(column, width)| heading(column, width)),
             )
             .child(
                 div()
@@ -121,11 +155,14 @@ impl<K: RecordKind> RecordsPage<K> {
         .text_color(if open { p.text } else { p.faint })
     }
 
-    /// A month header: select the month, fold it, and its subtotal.
+    /// A month header: select the month, fold it, and its subtotal. With
+    /// compact columns there's no room for the record count, so it's left out.
     fn month_row(
         &self,
         group: usize,
         layout: &TableLayout,
+        focus: Option<&FocusHandle>,
+        window: &Window,
         cx: &mut Context<Self>,
     ) -> Stateful<Div> {
         let p = *palette(cx);
@@ -134,6 +171,7 @@ impl<K: RecordKind> RecordsPage<K> {
         let open = !self.folded.contains(&key);
         let indices = group.records.clone();
         let count = group.records.len();
+        let counted = !layout.compact;
         records::row(layout)
             .id(SharedString::from(format!("month-{}-{}", key.0, key.1)))
             .h(px(36.))
@@ -148,6 +186,7 @@ impl<K: RecordKind> RecordsPage<K> {
                 group.title
             ))
             .aria_expanded(open)
+            .when_some(focus, |row, focus| row.track_focus(focus))
             .on_click(cx.listener(move |this, _, _, cx| this.toggle_folded(key, cx)))
             .child(
                 control(layout.frame[0]).child(
@@ -181,10 +220,12 @@ impl<K: RecordKind> RecordsPage<K> {
                     .text_size(px(12.))
                     .text_color(p.muted)
                     .font_features(tabular_digits())
-                    .child(if count == 1 {
-                        "1 record".to_owned()
-                    } else {
-                        format!("{count} records")
+                    .when(counted, |summary| {
+                        summary.child(if count == 1 {
+                            "1 record".to_owned()
+                        } else {
+                            format!("{count} records")
+                        })
                     })
                     .children(
                         group
@@ -194,7 +235,7 @@ impl<K: RecordKind> RecordsPage<K> {
                             .map(|(index, (label, value))| {
                                 h_flex()
                                     .flex_shrink_0()
-                                    .child(" · ")
+                                    .when(counted || index > 0, |part| part.child(" · "))
                                     .when_some(*label, |part, label| {
                                         part.child(format!("{label} "))
                                     })
@@ -210,14 +251,19 @@ impl<K: RecordKind> RecordsPage<K> {
                             }),
                     ),
             )
+            .when(ring(focus, window), |row| {
+                row.relative().child(focus_ring(cx))
+            })
     }
 
-    /// A record's row: click anywhere to open it. The checkbox and "⋯" are
-    /// their own targets.
+    /// A record's row: click anywhere, or press Enter or Space on it, to open
+    /// it. The checkbox and "⋯" are their own targets.
     fn record_line(
         &self,
         index: usize,
         layout: &TableLayout,
+        focus: Option<&FocusHandle>,
+        window: &Window,
         cx: &mut Context<Self>,
     ) -> Stateful<Div> {
         let p = *palette(cx);
@@ -232,7 +278,7 @@ impl<K: RecordKind> RecordsPage<K> {
             .id(SharedString::from(format!("line-{id}")))
             .group(group.clone())
             .h(px(40.))
-            .text_size(px(13.))
+            .text_size(records::ROW_TEXT)
             .border_b_1()
             .border_color(p.line)
             .cursor_pointer()
@@ -245,6 +291,7 @@ impl<K: RecordKind> RecordsPage<K> {
                 display.label
             ))
             .aria_expanded(open)
+            .when_some(focus, |row, focus| row.track_focus(focus))
             .on_click(cx.listener(move |this, _, _, cx| this.toggle_expanded(&toggle_id, cx)))
             .child(
                 control(layout.frame[0]).child(
@@ -269,18 +316,14 @@ impl<K: RecordKind> RecordsPage<K> {
                     .child(Self::chevron(open, cx)),
             )
             .children(
-                display
-                    .cells
-                    .iter()
-                    .zip(&self.columns)
-                    .zip(&layout.columns)
-                    .enumerate()
-                    .map(|(column, ((value, kind), width))| {
+                layout
+                    .shown(display.cells.iter().zip(&self.columns).enumerate())
+                    .map(|((column, (value, kind)), width)| {
                         cell(
                             SharedString::from(format!("cell-{id}-{column}")),
                             value,
                             kind,
-                            *width,
+                            width,
                             cx,
                         )
                     }),
@@ -290,18 +333,26 @@ impl<K: RecordKind> RecordsPage<K> {
                 &display.label,
                 open,
                 group,
+                focus.cloned(),
                 disabled,
                 cx,
             )))
+            .when(ring(focus, window), |row| {
+                row.relative().child(focus_ring(cx))
+            })
     }
 
-    /// "⋯" with Edit and Delete. It shows on hover and on an opened row.
+    /// "⋯" with Edit and Delete. It shows on hover and on an opened row. On a
+    /// closed row it's no Tab stop, since it's hidden; opening the row shows
+    /// Edit and Delete.
+    #[allow(clippy::too_many_arguments)]
     fn more_menu(
         &self,
         id: &str,
         label: &SharedString,
         open: bool,
         group: SharedString,
+        row_focus: Option<FocusHandle>,
         disabled: bool,
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
@@ -321,22 +372,24 @@ impl<K: RecordKind> RecordsPage<K> {
                 button
                     .opacity(0.)
                     .group_hover(group, |style| style.opacity(1.))
+                    .tab_stop(false)
             })
             // A dialog gives focus back to what had it when it opened. The
-            // menu is gone by the time the dialog closes, so the page takes
-            // focus first.
+            // menu is gone by the time the dialog closes, so the row, or the
+            // page, takes focus first.
             .dropdown_menu_with_anchor(Anchor::TopRight, move |menu, _, _| {
                 let (edit, delete) = (view.clone(), view.clone());
                 let (edit_id, delete_id) = (id.clone(), id.clone());
+                let (edit_focus, delete_focus) = (row_focus.clone(), row_focus.clone());
                 menu.item(PopupMenuItem::new("Edit").on_click(move |_, window, cx| {
                     let _ = edit.update(cx, |this, cx| {
-                        window.focus(&this.focus, cx);
+                        window.focus(edit_focus.as_ref().unwrap_or(&this.focus), cx);
                         this.edit(&edit_id, window, cx);
                     });
                 }))
                 .item(PopupMenuItem::new("Delete").on_click(move |_, window, cx| {
                     let _ = delete.update(cx, |this, cx| {
-                        window.focus(&this.focus, cx);
+                        window.focus(delete_focus.as_ref().unwrap_or(&this.focus), cx);
                         this.delete_one(&delete_id, window, cx);
                     });
                 }))
@@ -348,9 +401,11 @@ impl<K: RecordKind> RecordsPage<K> {
         index: usize,
         open: bool,
         layout: &TableLayout,
+        focus: Option<&FocusHandle>,
+        window: &Window,
         cx: &mut Context<Self>,
     ) -> Div {
-        let row = v_flex().child(self.record_line(index, layout, cx));
+        let row = v_flex().child(self.record_line(index, layout, focus, window, cx));
         if !open {
             return row;
         }
@@ -397,15 +452,20 @@ impl<K: RecordKind> RecordsPage<K> {
         &self,
         index: usize,
         layout: &TableLayout,
+        window: &Window,
         cx: &mut Context<Self>,
     ) -> AnyElement {
+        let focus = self.item_handles.get(index).and_then(Option::as_ref);
         match self.table_state.items[index] {
-            Item::Month(group) => self.month_row(group, layout, cx).into_any_element(),
+            Item::Month(group) => self
+                .month_row(group, layout, focus, window, cx)
+                .into_any_element(),
             Item::Record(record) => {
                 let id = K::id(&self.records[record]);
+                let open = self.expanded.contains(id);
                 div()
                     .id(SharedString::from(id.to_owned()))
-                    .child(self.record_row(record, self.expanded.contains(id), layout, cx))
+                    .child(self.record_row(record, open, layout, focus, window, cx))
                     .into_any_element()
             }
             Item::End => div().id("records-end").h(END_SPACE).into_any_element(),
@@ -423,13 +483,16 @@ impl<K: RecordKind> RecordsPage<K> {
         let mut items = Vec::new();
         let mut keys = Vec::new();
         let mut sizes = Vec::new();
+        let mut handles = Vec::new();
         for group in 0..self.groups.len() {
             let key = self.groups[group].key;
+            let month_key = ItemKey::Month(key.0, key.1);
+            handles.push(Some(self.ensure_focus(&month_key, window, cx)));
             let month = match self.table_state.month {
                 Some(size) => size,
                 None => {
                     let size = self
-                        .month_row(group, layout, cx)
+                        .month_row(group, layout, None, window, cx)
                         .into_any_element()
                         .layout_as_root(available, window, cx);
                     self.table_state.month = Some(size);
@@ -437,7 +500,7 @@ impl<K: RecordKind> RecordsPage<K> {
                 }
             };
             items.push(Item::Month(group));
-            keys.push(ItemKey::Month(key.0, key.1));
+            keys.push(month_key);
             sizes.push(month);
             if self.folded.contains(&key) {
                 continue;
@@ -447,13 +510,14 @@ impl<K: RecordKind> RecordsPage<K> {
                 let id = K::id(&self.records[index]);
                 let open = self.expanded.contains(id);
                 let key = ItemKey::Record(SharedString::from(id.to_owned()));
+                handles.push(Some(self.ensure_focus(&key, window, cx)));
                 let cached = if open {
                     self.table_state.expanded[index]
                 } else {
                     self.table_state.collapsed
                 };
                 let measured = cached.unwrap_or_else(|| {
-                    self.record_row(index, open, layout, cx)
+                    self.record_row(index, open, layout, None, window, cx)
                         .into_any_element()
                         .layout_as_root(available, window, cx)
                 });
@@ -470,13 +534,22 @@ impl<K: RecordKind> RecordsPage<K> {
         items.push(Item::End);
         keys.push(ItemKey::End);
         sizes.push(size(layout.width, END_SPACE));
+        handles.push(None);
+        let shown = keys.iter().collect::<HashSet<_>>();
+        self.item_focus.retain(|key, _| shown.contains(key));
+        self.item_handles = handles;
         self.table_state.set_items(items, keys, sizes);
     }
 
     pub(super) fn table(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         let p = *palette(cx);
         let viewport = self.table_state.viewport_width.unwrap_or(px(900.));
-        let layout = TableLayout::new(&self.columns, viewport);
+        if self.table_state.fit.is_none() {
+            let fit = records::fit_widths(&self.columns, &self.table_state.rows, window, cx);
+            self.table_state.fit = Some(fit);
+        }
+        let fit = self.table_state.fit.as_deref().unwrap_or_default();
+        let layout = TableLayout::new(&self.columns, fit, viewport);
         let key = (
             layout.clone(),
             window.rem_size(),
@@ -504,12 +577,12 @@ impl<K: RecordKind> RecordsPage<K> {
                 cx.entity(),
                 "record-rows",
                 self.table_state.sizes.clone(),
-                move |this, range, _, cx| {
+                move |this, range, window, cx| {
                     let Some(layout) = this.table_state.layout.clone() else {
                         return vec![];
                     };
                     range
-                        .map(|index| this.render_item(index, &layout, cx))
+                        .map(|index| this.render_item(index, &layout, window, cx))
                         .collect()
                 },
             )
@@ -558,4 +631,10 @@ impl<K: RecordKind> RecordsPage<K> {
             .horizontal_scrollbar(&self.table_scroll)
             .into_any_element()
     }
+}
+
+/// Whether a row or month header shows its focus ring: focused from the
+/// keyboard, not by a click.
+fn ring(focus: Option<&FocusHandle>, window: &Window) -> bool {
+    window.last_input_was_keyboard() && focus.is_some_and(|focus| focus.is_focused(window))
 }
