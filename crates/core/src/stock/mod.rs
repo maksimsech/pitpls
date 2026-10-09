@@ -123,10 +123,12 @@ fn calculate_stock(
 
                             buy.1.number -= sold;
 
-                            let (buy_price, _) = rate_provider.convert(&buy.1.price, buy.0)?;
-                            let (buy_fee, _) = rate_provider.convert(&buy.1.fee, buy.0)?;
-                            let (sell_price, _) = rate_provider.convert(&s.price, &stock.date)?;
-                            let (sell_fee, _) = rate_provider.convert(&s.fee, &stock.date)?;
+                            let buy_price = rate_provider.convert(&buy.1.price, buy.0)?.pln;
+                            let buy_fee = rate_provider.convert(&buy.1.fee, buy.0)?.pln;
+                            let sell_price = rate_provider.convert(&s.price, &stock.date)?.pln;
+                            let sell_fee = rate_provider.convert(&s.fee, &stock.date)?.pln;
+
+                            // TODO: Bug there, review.
                             year_statistics.tax +=
                                 buy_price * sold - sell_price * sell_price - buy_fee - sell_fee;
 
@@ -148,8 +150,10 @@ fn calculate_stock(
                             let buy_price = Decimal::ZERO;
                             let buy_fee = Decimal::ZERO;
 
-                            let (sell_price, _) = rate_provider.convert(&s.price, &stock.date)?;
-                            let (sell_fee, _) = rate_provider.convert(&s.fee, &stock.date)?;
+                            let sell_price = rate_provider.convert(&s.price, &stock.date)?.pln;
+                            let sell_fee = rate_provider.convert(&s.fee, &stock.date)?.pln;
+
+                            // TODO: Bug there, review.
                             year_statistics.tax +=
                                 buy_price * sold - sell_price * sell_price - buy_fee - sell_fee;
 
