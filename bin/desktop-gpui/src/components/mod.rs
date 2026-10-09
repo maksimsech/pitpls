@@ -11,7 +11,7 @@ pub mod value;
 
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::{
-    component::{alert::Alert, *},
+    component::{alert::Alert, spinner::Spinner, *},
     *,
 };
 
@@ -32,8 +32,10 @@ pub struct Status {
 }
 
 impl Status {
+    /// Whether [`render`](Self::render) shows anything. A running operation
+    /// shows a spinner on whatever started it instead.
     pub fn is_visible(&self) -> bool {
-        self.busy || self.error.is_some() || self.message.is_some()
+        self.error.is_some() || self.message.is_some()
     }
 
     pub fn begin_load<V: 'static>(
@@ -101,13 +103,13 @@ impl Status {
             .when_some(self.message.clone(), |view, message| {
                 view.child(Alert::success("operation-success", message))
             })
-            .when_some(self.error.clone(), |view, error| {
-                view.child(
-                    Alert::error("operation-error", error)
-                        .title("Unable to complete the operation"),
-                )
-            })
-            .when(self.busy, |view| view.child("Working…"))
+            .children(self.error_alert())
+    }
+
+    pub fn error_alert(&self) -> Option<Alert> {
+        self.error.clone().map(|error| {
+            Alert::error("operation-error", error).title("Unable to complete the operation")
+        })
     }
 
     /// "Refreshing…" for the page header while loaded data reloads.
@@ -119,6 +121,12 @@ impl Status {
                 view.child("Refreshing…")
             })
     }
+}
+
+/// The 14px spinner on whatever started a running operation, in place of an
+/// icon or beside a field.
+pub fn spinner() -> Spinner {
+    Spinner::new().with_size(px(14.))
 }
 
 pub fn scroll(content: impl IntoElement) -> AnyElement {

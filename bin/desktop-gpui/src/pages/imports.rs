@@ -1,6 +1,6 @@
 use super::PageView;
 use crate::{
-    components::{self, Status, data, dialog, file_picker, header, nbp},
+    components::{self, Status, data, dialog, file_picker, header, nbp, spinner},
     navigation::{Page, PageContext},
     theme::{palette, tabular_digits},
 };
@@ -8,7 +8,7 @@ use chrono::{Datelike, Local};
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::{
     assets::IconName,
-    component::{alert::Alert, button::*, dialog::Dialog, input::InputState, spinner::Spinner, *},
+    component::{alert::Alert, button::*, dialog::Dialog, input::InputState, *},
     *,
 };
 use pitpls_app::use_case::{
@@ -329,7 +329,7 @@ impl ImportsPage {
                     .px(px(11.))
                     .rounded(px(8.))
                     .disabled(true)
-                    .child(Spinner::new().with_size(px(14.)))
+                    .child(spinner())
                     .child(div().text_size(px(13.)).font_medium().child(
                         if self.file_name.is_some() {
                             "Importing…"

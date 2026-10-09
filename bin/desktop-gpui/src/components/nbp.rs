@@ -1,7 +1,12 @@
-use super::{Status, dialog, form};
+use super::{Status, dialog, form, spinner};
+use crate::theme::palette;
 use chrono::Datelike;
+use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::{
-    component::{dialog::Dialog, input::InputState},
+    component::{
+        dialog::Dialog,
+        input::{Input, InputState},
+    },
     *,
 };
 
@@ -22,8 +27,9 @@ pub fn year(input: &Entity<InputState>, cx: &App) -> Result<i32, String> {
     })
 }
 
-/// The "Import from NBP" dialog: one year field. `submit` reads it with
-/// [`year`] and imports; the view closes the dialog once that succeeds.
+/// The "Import from NBP" dialog: one year field, with a spinner at its end
+/// while importing. `submit` reads it with [`year`] and imports; the view
+/// closes the dialog once that succeeds.
 pub fn dialog<V: 'static>(
     this: &V,
     dialog: Dialog,
@@ -37,6 +43,16 @@ pub fn dialog<V: 'static>(
     dialog::form(
         this,
         dialog,
+        form::field(
+            "Year",
+            Input::new(input)
+                .aria_label("Year")
+                .disabled(busy)
+                .when(busy, |input| {
+                    input.suffix(spinner().color(palette(cx).muted))
+                }),
+            cx,
+        ),
         if busy { "Importing…" } else { "Import" },
         status,
         submit,
@@ -44,5 +60,4 @@ pub fn dialog<V: 'static>(
         cx,
     )
     .title("Import from NBP")
-    .child(form::input_field("Year", input, busy, cx))
 }

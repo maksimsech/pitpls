@@ -69,8 +69,8 @@ impl RecordKind for Dividends {
             Step {
                 title: "Conversion",
                 lines: vec![
-                    StepLine::Formula(conversion(record.value, record.nbp_rate).into()),
-                    StepLine::Result(pln(record.calculated_value).full),
+                    StepLine::Formula(conversion(record.value, record.nbp_rate)),
+                    StepLine::Result(vec![pln(record.calculated_value)]),
                     StepLine::Caption(
                         format!("Calculated value · NBP date {}", date(record.nbp_date).main)
                             .into(),
@@ -80,15 +80,11 @@ impl RecordKind for Dividends {
             Step {
                 title: "Polish tax",
                 lines: vec![
-                    StepLine::Formula(
-                        format!(
-                            "{} × {}",
-                            percent(POLAND_TAX),
-                            money(record.calculated_value).full
-                        )
-                        .into(),
-                    ),
-                    StepLine::Result(pln(record.calculated_to_pay).full),
+                    StepLine::Formula(vec![
+                        DisplayText::plain(format!("{} ×", percent(POLAND_TAX))),
+                        money(record.calculated_value),
+                    ]),
+                    StepLine::Result(vec![pln(record.calculated_to_pay)]),
                     StepLine::Caption("Calculated to pay".into()),
                 ],
             },
@@ -96,25 +92,25 @@ impl RecordKind for Dividends {
                 title: "Foreign tax credit",
                 lines: vec![
                     StepLine::Formula(
-                        format!(
-                            "Tax paid {}",
-                            conversion(record.tax_paid, record.tax_paid_nbp_rate)
-                        )
-                        .into(),
+                        [
+                            vec![DisplayText::plain("Tax paid")],
+                            conversion(record.tax_paid, record.tax_paid_nbp_rate),
+                        ]
+                        .concat(),
                     ),
                     StepLine::Entry {
                         label: "Calculated tax paid",
-                        value: pln(record.calculated_tax_paid).full,
+                        value: pln(record.calculated_tax_paid),
                         strong: false,
                     },
                     StepLine::Entry {
                         label: "Max tax paid",
-                        value: pln(record.max_tax_paid).full,
+                        value: pln(record.max_tax_paid),
                         strong: false,
                     },
                     StepLine::Entry {
                         label: "Used tax paid",
-                        value: pln(record.used_tax_paid).full,
+                        value: pln(record.used_tax_paid),
                         strong: true,
                     },
                     StepLine::Caption(
@@ -196,7 +192,7 @@ impl RecordKind for Dividends {
     fn preview_display(record: &CalculatedDividend) -> Preview {
         Preview {
             nbp_date: record.nbp_date,
-            formula: conversion(record.value, record.nbp_rate).into(),
+            formula: conversion(record.value, record.nbp_rate),
             value: pln(record.calculated_value),
             results: vec![
                 ("Calculated to pay", pln(record.calculated_to_pay)),

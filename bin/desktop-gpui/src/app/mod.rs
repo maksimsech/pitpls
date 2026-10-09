@@ -2,7 +2,7 @@ mod sidebar;
 mod years;
 
 use crate::{
-    components::{Status, form, header},
+    components::{Status, form, header, spinner},
     config::{self, Config, Preferences},
     navigation::{Page, PageContext, PageEvent, PageEvents},
     pages::{self, PageHandle},
@@ -258,10 +258,21 @@ impl Desktop {
                         .px(px(20.))
                         .pb_5()
                         .gap_4()
-                        .child(div().text_color(cx.theme().muted_foreground).child(
-                            "Your records will appear when the database connection is available.",
-                        ))
-                        .child(self.status.render())
+                        .child(
+                            h_flex()
+                                .gap_2()
+                                .text_color(cx.theme().muted_foreground)
+                                .child(div().min_w_0().child(
+                                    "Your records will appear when the database connection is \
+                                     available.",
+                                ))
+                                .when(self.status.busy, |line| {
+                                    line.child(div().flex_shrink_0().child(spinner()))
+                                }),
+                        )
+                        .when(self.status.is_visible(), |view| {
+                            view.child(self.status.render())
+                        })
                         .when(!self.status.busy, |view| {
                             view.child(
                                 h_flex().child(

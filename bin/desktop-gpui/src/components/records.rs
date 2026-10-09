@@ -300,19 +300,20 @@ pub fn fit_widths(
         .collect()
 }
 
-/// A line of an opened row's step.
+/// A line of an opened row's step. Its values follow the gray-digit rule, as
+/// in the table, with every digit in the tooltip.
 #[derive(PartialEq)]
 pub enum StepLine {
-    /// The calculation, such as `8.352 USD × 3.6142`.
-    Formula(SharedString),
-    /// The step's result, with every digit.
-    Result(SharedString),
+    /// The calculation, such as `8.352 USD × 3.6142`, as text and values.
+    Formula(Vec<DisplayText>),
+    /// The step's result, as text and values.
+    Result(Vec<DisplayText>),
     /// What the result is.
     Caption(SharedString),
     /// A labelled value; `strong` marks the one that is used.
     Entry {
         label: &'static str,
-        value: SharedString,
+        value: DisplayText,
         strong: bool,
     },
 }
@@ -334,9 +335,24 @@ pub struct RowDisplay {
     pub label: SharedString,
 }
 
-fn step(index: usize, step: &Step, cx: &App) -> Div {
+/// Text and values side by side, each value drawn as in the table.
+fn parts(id: impl Into<ElementId>, parts: &[DisplayText], cx: &App) -> Stateful<Div> {
+    h_flex()
+        .id(id)
+        .flex_wrap()
+        .gap_x(px(4.))
+        .children(parts.iter().enumerate().map(|(index, part)| {
+            value::reveal_full(
+                div().id(index).child(value::text(part, false, true, cx)),
+                part,
+            )
+        }))
+}
+
+fn step(index: usize, step: &Step, cx: &App) -> Stateful<Div> {
     let p = *palette(cx);
     v_flex()
+        .id(("step", index))
         .min_w_0()
         .gap(px(3.))
         .pt(px(10.))
@@ -362,22 +378,24 @@ fn step(index: usize, step: &Step, cx: &App) -> Div {
                 )
                 .child(step.title),
         )
-        .children(step.lines.iter().map(|line| {
+        .children(step.lines.iter().enumerate().map(|(index, line)| {
+            let id = ("line", index);
             match line {
-                StepLine::Formula(text) => div()
+                StepLine::Formula(formula) => parts(id, formula, cx)
                     .text_color(p.muted)
                     .font_features(tabular_digits())
-                    .child(text.clone()),
-                StepLine::Result(text) => div()
+                    .into_any_element(),
+                StepLine::Result(result) => parts(id, result, cx)
                     .text_size(px(16.))
                     .font_medium()
                     .font_features(tabular_digits())
-                    .child(text.clone()),
+                    .into_any_element(),
                 StepLine::Caption(text) => div()
                     .mt(px(3.))
                     .text_size(px(12.))
                     .text_color(p.faint)
-                    .child(text.clone()),
+                    .child(text.clone())
+                    .into_any_element(),
                 StepLine::Entry {
                     label,
                     value,
@@ -393,12 +411,15 @@ fn step(index: usize, step: &Step, cx: &App) -> Div {
                             .text_color(if *strong { p.text } else { p.muted })
                             .child(*label),
                     )
-                    .child(
+                    .child(value::reveal_full(
                         div()
+                            .id(id)
                             .text_right()
                             .font_features(tabular_digits())
-                            .child(value.clone()),
-                    ),
+                            .child(value::text(value, false, true, cx)),
+                        value,
+                    ))
+                    .into_any_element(),
             }
         }))
 }
@@ -408,7 +429,7 @@ fn step(index: usize, step: &Step, cx: &App) -> Div {
 pub struct Preview {
     pub nbp_date: NaiveDate,
     /// `value × rate`, as in the opened row's first step.
-    pub formula: SharedString,
+    pub formula: Vec<DisplayText>,
     /// The calculated value in PLN.
     pub value: DisplayText,
     pub results: Vec<(&'static str, DisplayText)>,
@@ -442,7 +463,10 @@ pub fn preview_band(preview: &Result<Preview, SharedString>, cx: &App) -> Div {
                     .flex_wrap()
                     .gap_x(px(4.))
                     .text_color(p.muted)
-                    .child(format!("{} =", preview.formula))
+                    .children(preview.formula.iter().enumerate().map(|(index, part)| {
+                        preview_value(("preview-formula", index), part, div(), cx)
+                    }))
+                    .child("=")
                     .child(preview_value(
                         "preview-value",
                         &preview.value,

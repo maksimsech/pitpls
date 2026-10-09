@@ -351,8 +351,9 @@ impl HomePage {
             .pt(px(14.))
             .pb(px(32.))
             .gap(px(16.))
+            // The NBP dialog shows its own errors.
             .when(
-                self.status.error.is_some() || self.status.message.is_some(),
+                self.status.is_visible() && self.nbp_year.is_none(),
                 |column| column.child(self.status.render()),
             );
         let column = match &self.overview {

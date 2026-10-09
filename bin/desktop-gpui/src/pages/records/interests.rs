@@ -66,8 +66,8 @@ impl RecordKind for Interests {
             Step {
                 title: "Conversion",
                 lines: vec![
-                    StepLine::Formula(conversion(record.value, record.nbp_rate).into()),
-                    StepLine::Result(pln(record.calculated_value).full),
+                    StepLine::Formula(conversion(record.value, record.nbp_rate)),
+                    StepLine::Result(vec![pln(record.calculated_value)]),
                     StepLine::Caption(
                         format!("Calculated value · NBP date {}", date(record.nbp_date).main)
                             .into(),
@@ -77,15 +77,11 @@ impl RecordKind for Interests {
             Step {
                 title: "Polish tax",
                 lines: vec![
-                    StepLine::Formula(
-                        format!(
-                            "{} × {}",
-                            percent(POLAND_TAX),
-                            money(record.calculated_value).full
-                        )
-                        .into(),
-                    ),
-                    StepLine::Result(pln(record.to_pay).full),
+                    StepLine::Formula(vec![
+                        DisplayText::plain(format!("{} ×", percent(POLAND_TAX))),
+                        money(record.calculated_value),
+                    ]),
+                    StepLine::Result(vec![pln(record.to_pay)]),
                     StepLine::Caption("To pay".into()),
                 ],
             },
@@ -148,7 +144,7 @@ impl RecordKind for Interests {
     fn preview_display(record: &CalculatedInterest) -> Preview {
         Preview {
             nbp_date: record.nbp_date,
-            formula: conversion(record.value, record.nbp_rate).into(),
+            formula: conversion(record.value, record.nbp_rate),
             value: pln(record.calculated_value),
             results: vec![("To pay", pln(record.to_pay))],
         }

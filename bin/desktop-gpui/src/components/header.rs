@@ -107,15 +107,39 @@ pub fn button(
     icon: impl Into<Option<IconName>>,
     label: impl Into<SharedString>,
 ) -> Button {
+    let icon = icon
+        .into()
+        .map(|icon| Icon::new(icon).size(px(14.)).into_any_element());
+    labelled(id, icon, label)
+}
+
+/// A [`button`] that starts an operation, with a spinner in place of its icon
+/// while the operation runs.
+pub fn task_button(
+    id: impl Into<ElementId>,
+    icon: IconName,
+    label: impl Into<SharedString>,
+    running: bool,
+) -> Button {
+    if running {
+        labelled(id, Some(super::spinner().into_any_element()), label)
+    } else {
+        button(id, icon, label)
+    }
+}
+
+fn labelled(
+    id: impl Into<ElementId>,
+    icon: Option<AnyElement>,
+    label: impl Into<SharedString>,
+) -> Button {
     let label = label.into();
     Button::new(id)
         .h(px(28.))
         .px(px(11.))
         .rounded(px(8.))
         .accessibility_label(label.clone())
-        .when_some(icon.into(), |button, icon| {
-            button.child(Icon::new(icon).size(px(14.)))
-        })
+        .children(icon)
         .child(div().text_size(px(13.)).font_medium().child(label))
 }
 

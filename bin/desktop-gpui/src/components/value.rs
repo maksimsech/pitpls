@@ -167,8 +167,21 @@ pub fn reveal_full(element: Stateful<Div>, value: &DisplayText) -> AnyElement {
         .into_any_element()
 }
 
+/// How far the baseline of text in `size` sits below that of text in `unit`
+/// when both are centred on the same line.
+fn baseline_drop(size: Pixels, unit: Pixels, cx: &App) -> Pixels {
+    let system = cx.text_system();
+    let font = system.resolve_font(&font(cx.theme().font_family.clone()));
+    // A line centres its text by ascent and descent, so the baseline sits
+    // half their difference below the middle. Platforms disagree on the sign
+    // of the descent.
+    let below_middle =
+        |size| (system.ascent(font, size) - system.descent(font, size).abs()) / 2.;
+    below_middle(size) - below_middle(unit)
+}
+
 /// A form value: the number in `size`, medium weight unless `regular`, then
-/// its unit in a smaller muted type.
+/// its unit in a smaller muted type on the same baseline.
 fn form_value(
     id: ElementId,
     value: &DisplayText,
@@ -177,9 +190,11 @@ fn form_value(
     regular: bool,
     cx: &App,
 ) -> Div {
+    // Layout knows no text baselines, so `items_baseline` lines up the
+    // bottoms instead. Centre both and move the unit down to the number's.
     h_flex()
         .flex_shrink_0()
-        .items_baseline()
+        .items_center()
         .gap_1()
         .child(reveal_full(
             div()
@@ -193,6 +208,8 @@ fn form_value(
         .when_some(value.unit.clone(), |line, text| {
             line.child(
                 div()
+                    .relative()
+                    .top(baseline_drop(size, unit, cx))
                     .text_size(unit)
                     .text_color(palette(cx).muted)
                     .child(text),

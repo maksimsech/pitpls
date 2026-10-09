@@ -328,15 +328,28 @@ impl<K: RecordKind> RecordsPage<K> {
                         )
                     }),
             )
-            .child(control(layout.frame[2]).justify_end().child(self.more_menu(
-                id,
-                &display.label,
-                open,
-                group,
-                focus.cloned(),
-                disabled,
-                cx,
-            )))
+            .child(control(layout.frame[2]).justify_end().map(|slot| {
+                if self.deleting.contains(id) {
+                    slot.child(
+                        div()
+                            .size(px(24.))
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .child(spinner().color(p.muted)),
+                    )
+                } else {
+                    slot.child(self.more_menu(
+                        id,
+                        &display.label,
+                        open,
+                        group,
+                        focus.cloned(),
+                        disabled,
+                        cx,
+                    ))
+                }
+            }))
             .when(ring(focus, window), |row| {
                 row.relative().child(focus_ring(cx))
             })

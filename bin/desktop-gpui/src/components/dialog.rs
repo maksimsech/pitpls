@@ -1,6 +1,5 @@
 use super::Status;
 use crate::theme::palette;
-use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::{
     component::{
         button::{Button, ButtonVariants},
@@ -18,6 +17,10 @@ actions!(record_editor, [SaveRecord]);
 /// every dialog, but opens a focused select or date picker.
 const EDITOR_CONTEXT: &str = "RecordEditor";
 const SAVE_KEYS: &str = "secondary-enter";
+
+/// The kit's focus ring is painted outside a control, and a dialog's body
+/// clips its content, so the body leaves this much room below its last field.
+const FOCUS_RING_ROOM: Pixels = px(3.);
 
 pub fn bind_keys(cx: &mut App) {
     cx.bind_keys([KeyBinding::new(SAVE_KEYS, SaveRecord, Some(EDITOR_CONTEXT))]);
@@ -38,9 +41,13 @@ pub fn open<V: 'static>(
 
 /// A form that can't be dismissed while busy. Confirming runs `submit` and
 /// keeps the dialog open; the view closes it once the submission succeeds.
+/// Only errors show above `body`: `body` shows progress itself, and the page
+/// reports success.
+#[allow(clippy::too_many_arguments)]
 pub fn form<V: 'static>(
     this: &V,
     dialog: Dialog,
+    body: impl IntoElement,
     submit_label: &'static str,
     status: fn(&V) -> &Status,
     submit: fn(&mut V, &mut Window, &mut Context<V>),
@@ -49,9 +56,8 @@ pub fn form<V: 'static>(
 ) -> Dialog {
     let busy = status(this).busy;
     behaviour(this, dialog, status, submit, close, cx)
-        .when(status(this).is_visible(), |dialog| {
-            dialog.child(status(this).render())
-        })
+        .children(status(this).error_alert())
+        .child(div().pb(FOCUS_RING_ROOM).child(body))
         .footer(footer(
             None,
             Button::new("dialog-submit").label(submit_label).primary(),
@@ -90,6 +96,7 @@ pub fn editor<V: 'static>(
             div()
                 .key_context(EDITOR_CONTEXT)
                 .on_action(save(submit, cx))
+                .pb(FOCUS_RING_ROOM)
                 .child(body),
         )
         .footer(

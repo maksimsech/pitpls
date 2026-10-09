@@ -71,26 +71,27 @@ impl RecordKind for Crypto {
         // `calculate_sell_buy_values`; the sum is shown, never fed back.
         let adds_to = match record.action {
             Action::FiatBuy => vec![
-                StepLine::Formula("Buy · value + fee".into()),
-                StepLine::Result(
-                    format!(
-                        "Costs (E-37) +{}",
-                        pln(record.calculated_value + record.calculated_fee).full
-                    )
-                    .into(),
-                ),
+                StepLine::Formula(vec![DisplayText::plain("Buy · value + fee")]),
+                StepLine::Result(vec![
+                    DisplayText::plain("Costs (E-37)"),
+                    added(record.calculated_value + record.calculated_fee),
+                ]),
                 StepLine::Caption(
                     "A sale adds its value to Income (E-36) and its fee to Costs (E-37)".into(),
                 ),
             ],
             Action::FiatSell => vec![
-                StepLine::Formula("Sell · value to income, fee to costs".into()),
-                StepLine::Result(
-                    format!("Income (E-36) +{}", pln(record.calculated_value).full).into(),
-                ),
-                StepLine::Result(
-                    format!("Costs (E-37) +{}", pln(record.calculated_fee).full).into(),
-                ),
+                StepLine::Formula(vec![DisplayText::plain(
+                    "Sell · value to income, fee to costs",
+                )]),
+                StepLine::Result(vec![
+                    DisplayText::plain("Income (E-36)"),
+                    added(record.calculated_value),
+                ]),
+                StepLine::Result(vec![
+                    DisplayText::plain("Costs (E-37)"),
+                    added(record.calculated_fee),
+                ]),
                 StepLine::Caption("A purchase adds its value and fee to Costs (E-37)".into()),
             ],
         };
@@ -98,8 +99,8 @@ impl RecordKind for Crypto {
             Step {
                 title: "Value",
                 lines: vec![
-                    StepLine::Formula(conversion(record.value, record.nbp_rate).into()),
-                    StepLine::Result(pln(record.calculated_value).full),
+                    StepLine::Formula(conversion(record.value, record.nbp_rate)),
+                    StepLine::Result(vec![pln(record.calculated_value)]),
                     StepLine::Caption(
                         format!("Calculated value · NBP date {}", date(record.nbp_date).main)
                             .into(),
@@ -109,8 +110,8 @@ impl RecordKind for Crypto {
             Step {
                 title: "Fee",
                 lines: vec![
-                    StepLine::Formula(conversion(record.fee, record.fee_nbp_rate).into()),
-                    StepLine::Result(pln(record.calculated_fee).full),
+                    StepLine::Formula(conversion(record.fee, record.fee_nbp_rate)),
+                    StepLine::Result(vec![pln(record.calculated_fee)]),
                     StepLine::Caption("Calculated fee".into()),
                 ],
             },
@@ -221,7 +222,7 @@ impl RecordKind for Crypto {
         }
         Preview {
             nbp_date: record.nbp_date,
-            formula: conversion(record.value, record.nbp_rate).into(),
+            formula: conversion(record.value, record.nbp_rate),
             value: pln(record.calculated_value),
             results,
         }

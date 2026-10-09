@@ -1,6 +1,6 @@
 use super::PageView;
 use crate::{
-    components::{Status, dialog, file_picker, header, nbp, notice},
+    components::{Status, dialog, file_picker, header, nbp, notice, spinner},
     format,
     navigation::{Page, PageContext},
     theme::{palette, tabular_digits},
@@ -107,6 +107,14 @@ enum Change {
     Reset,
 }
 
+/// The operation the page is running, whose button shows a spinner.
+#[derive(Clone, Copy, PartialEq)]
+enum Running {
+    Csv,
+    Nbp,
+    Reset,
+}
+
 pub struct RatesPage {
     context: PageContext,
     status: Status,
@@ -114,6 +122,7 @@ pub struct RatesPage {
     columns: Columns,
     nbp_year: Option<Entity<InputState>>,
     confirm_reset: bool,
+    running: Option<Running>,
     rate_scroll: UniformListScrollHandle,
     horizontal_scroll: ScrollHandle,
 }
@@ -127,6 +136,7 @@ impl RatesPage {
             columns: Columns::default(),
             nbp_year: None,
             confirm_reset: false,
+            running: None,
             rate_scroll: UniformListScrollHandle::new(),
             horizontal_scroll: ScrollHandle::new(),
         };
@@ -153,6 +163,11 @@ impl RatesPage {
             return;
         }
         self.confirm_reset = false;
+        self.running = Some(match change {
+            Change::Csv(_) => Running::Csv,
+            Change::Nbp(_) => Running::Nbp,
+            Change::Reset => Running::Reset,
+        });
         self.status.begin_save();
         self.status.task = Some(self.context.services.run(
             window,
@@ -173,6 +188,7 @@ impl RatesPage {
                 }
             },
             |this, result, window, cx| {
+                this.running = None;
                 if this.status.saved(result) {
                     if this.nbp_year.is_some() {
                         window.close_dialog(cx);
@@ -190,12 +206,14 @@ impl RatesPage {
         if self.status.busy || self.status.loading {
             return;
         }
+        self.running = Some(Running::Csv);
         self.status.begin_save();
         self.status.task = Some(file_picker::pick(
             "csv",
             window,
             cx,
             |this, result, window, cx| {
+                this.running = None;
                 this.status.busy = false;
                 match result {
                     Ok(Some(file)) => this.change(Change::Csv(file), window, cx),
@@ -212,6 +230,7 @@ impl RatesPage {
         let year = nbp::year_input(chrono::Local::now().year(), window, cx);
         self.nbp_year = Some(year.clone());
         self.status.error = None;
+        self.status.message = None;
         dialog::open(window, cx, Self::nbp_dialog);
         window.focus(&year.focus_handle(cx), cx);
         self.notify(cx);
@@ -273,6 +292,7 @@ impl RatesPage {
     fn header(&self, window: &mut Window, cx: &mut Context<Self>) -> Stateful<Div> {
         let disabled = self.disabled();
         let reset_disabled = disabled || !self.status.ready || self.data.rows.is_empty();
+        let running = |operation| self.running == Some(operation);
         let range = match self.data.coverage {
             Some(RateCoverage { first, last }) => format!(
                 "NBP table A · {} – {}",
@@ -285,15 +305,25 @@ impl RatesPage {
             header::actions()
                 .child(self.status.refreshing(cx))
                 .child(
-                    header::button("rates-csv", IconName::Upload, "Upload CSV")
-                        .disabled(disabled)
-                        .on_click(cx.listener(|this, _, window, cx| this.pick_file(window, cx))),
+                    header::task_button(
+                        "rates-csv",
+                        IconName::Upload,
+                        "Upload CSV",
+                        running(Running::Csv),
+                    )
+                    .disabled(disabled)
+                    .on_click(cx.listener(|this, _, window, cx| this.pick_file(window, cx))),
                 )
                 .child(
-                    header::button("rates-nbp", IconName::Download, "Import from NBP")
-                        .primary()
-                        .disabled(disabled)
-                        .on_click(cx.listener(|this, _, window, cx| this.open_nbp(window, cx))),
+                    header::task_button(
+                        "rates-nbp",
+                        IconName::Download,
+                        "Import from NBP",
+                        running(Running::Nbp),
+                    )
+                    .primary()
+                    .disabled(disabled)
+                    .on_click(cx.listener(|this, _, window, cx| this.open_nbp(window, cx))),
                 )
                 .child(
                     // `header::button`'s frame with the colour on the label,
@@ -306,6 +336,7 @@ impl RatesPage {
                         .rounded(px(8.))
                         .accessibility_label("Reset")
                         .disabled(reset_disabled)
+                        .when(running(Running::Reset), |button| button.child(spinner()))
                         .child(
                             div()
                                 .text_size(px(13.))
@@ -320,18 +351,20 @@ impl RatesPage {
         )
     }
 
-    /// Operation results and, after a failed load, Retry.
+    /// Operation results and, after a failed load, Retry. The NBP dialog
+    /// shows its own errors, so nothing shows here while it's open.
     fn notices(&self, cx: &mut Context<Self>) -> Div {
         let disabled = self.disabled();
-        let retry = self.status.error.is_some() || (!self.status.ready && !self.status.loading);
+        let form_open = self.nbp_year.is_some();
+        let status = self.status.is_visible() && !form_open;
+        let retry = !form_open
+            && (self.status.error.is_some() || (!self.status.ready && !self.status.loading));
         v_flex()
             .flex_shrink_0()
             .gap_3()
             .px(px(20.))
-            .when(self.status.is_visible() || retry, |view| view.pb_3())
-            .when(self.status.is_visible(), |view| {
-                view.child(self.status.render())
-            })
+            .when(status || retry, |view| view.pb_3())
+            .when(status, |view| view.child(self.status.render()))
             .when(retry, |view| {
                 view.child(
                     h_flex().child(

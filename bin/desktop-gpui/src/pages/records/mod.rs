@@ -13,7 +13,7 @@ use crate::{
             ItemKey, Preview, RecordColumn, RecordTableState, RowDisplay, TableLayout,
             preview_band, record_skeleton,
         },
-        value,
+        spinner, value,
     },
     format::{DisplayText, pln},
     navigation::{Page, PageContext},
@@ -129,9 +129,12 @@ pub trait RecordKind: 'static {
     fn preview_display(record: &Self::Record) -> Preview;
 }
 
-/// `value × rate`, every digit, for an opened row's conversion step.
-fn conversion(value: Amount, rate: Decimal) -> String {
-    format!("{} × {rate}", crate::format::amount(value).full)
+/// `value × rate` for an opened row's conversion step and the preview.
+fn conversion(value: Amount, rate: Decimal) -> Vec<DisplayText> {
+    vec![
+        crate::format::amount(value),
+        DisplayText::plain(format!("× {rate}")),
+    ]
 }
 
 /// A rate such as 0.19 as `19%`.
@@ -192,6 +195,8 @@ pub struct RecordsPage<K: RecordKind> {
     expanded: HashSet<String>,
     editor: Option<Editor<K>>,
     pending_delete: Option<Vec<String>>,
+    /// The records being deleted, which show a spinner.
+    deleting: HashSet<String>,
     nbp_year: Option<Entity<InputState>>,
     /// The last load's conversion error, while a missing rate blocks the page.
     missing_rate: Option<SharedString>,
@@ -254,6 +259,7 @@ impl<K: RecordKind> RecordsPage<K> {
             expanded: HashSet::new(),
             editor: None,
             pending_delete: None,
+            deleting: HashSet::new(),
             nbp_year: None,
             missing_rate: None,
             other_year: None,
@@ -483,6 +489,7 @@ impl<K: RecordKind> RecordsPage<K> {
         let Some(ids) = self.pending_delete.take() else {
             return;
         };
+        self.deleting = ids.iter().cloned().collect();
         self.status.begin_save();
         self.status.task = Some(self.context.services.run(
             window,
@@ -492,6 +499,7 @@ impl<K: RecordKind> RecordsPage<K> {
                 Ok(format!("Deleted {count} record(s)."))
             },
             |this, result, window, cx| {
+                this.deleting.clear();
                 if this.status.saved(result) {
                     this.context.years_changed(cx);
                     window.focus(&this.focus, cx);
@@ -957,6 +965,7 @@ impl<K: RecordKind> RecordsPage<K> {
         let p = *palette(cx);
         let disabled = self.disabled();
         let danger = if disabled { p.muted } else { p.danger };
+        let removing = !self.deleting.is_empty() && self.deleting == self.selected;
         div()
             .absolute()
             .left_0()
@@ -993,7 +1002,15 @@ impl<K: RecordKind> RecordsPage<K> {
                             .disabled(disabled)
                             // On the children: the kit's hover colour replaces
                             // the button's own.
-                            .child(Icon::new(IconName::Trash).size(px(14.)).text_color(danger))
+                            .map(|button| {
+                                if removing {
+                                    button.child(spinner().color(danger))
+                                } else {
+                                    button.child(
+                                        Icon::new(IconName::Trash).size(px(14.)).text_color(danger),
+                                    )
+                                }
+                            })
                             .child(
                                 div()
                                     .text_size(px(13.))
@@ -1090,16 +1107,19 @@ impl<K: RecordKind> Render for RecordsPage<K> {
             .overflow_y_scroll()
             .lock_scroll_axis()
             .track_scroll(&self.page_scroll)
-            // The editor shows its own errors.
-            .when(self.status.is_visible() && self.editor.is_none(), |view| {
-                view.child(
-                    div()
-                        .flex_shrink_0()
-                        .px(px(20.))
-                        .pb_3()
-                        .child(self.status.render()),
-                )
-            });
+            // The editor and the NBP dialog show their own errors.
+            .when(
+                self.status.is_visible() && self.editor.is_none() && self.nbp_year.is_none(),
+                |view| {
+                    view.child(
+                        div()
+                            .flex_shrink_0()
+                            .px(px(20.))
+                            .pb_3()
+                            .child(self.status.render()),
+                    )
+                },
+            );
         if let Some(error) = self.missing_rate.clone() {
             body = body.child(self.missing_rate_state(&error, cx));
         } else if self.status.ready && self.records.is_empty() {
