@@ -1,6 +1,6 @@
-use std::{collections::BTreeSet, path::Path};
+use std::collections::BTreeSet;
 
-use chrono::{Datelike, NaiveDate, Utc};
+use chrono::{Datelike, NaiveDate};
 use pitpls_importers::{ImportError as ParseError, import, model::ImporterKind};
 
 use super::validation::validate_year;
@@ -14,8 +14,6 @@ pub enum Error {
     Parse(#[from] ParseError),
     Repository(#[from] RepositoryError),
 }
-
-pub use pitpls_db::repository::last_import::LastImport;
 
 pub struct ImportResult {
     pub dividends: u64,
@@ -37,31 +35,11 @@ pub async fn run_import(
     let interests = app.db.interest_repo().save(&data.interests).await?;
     add_years(app, data.interests.iter().map(|interest| interest.date)).await?;
 
-    let count = |rows: u64| u32::try_from(rows).unwrap_or(u32::MAX);
-    app.db
-        .last_import_repo()
-        .save(&LastImport {
-            provider: kind.provider().to_owned(),
-            file_name: Path::new(&file)
-                .file_name()
-                .map(|name| name.to_string_lossy().into_owned())
-                .unwrap_or_default(),
-            dividends: count(dividends),
-            interests: count(interests),
-            cryptos: count(cryptos),
-            imported_at: Utc::now(),
-        })
-        .await?;
-
     Ok(ImportResult {
         dividends,
         cryptos,
         interests,
     })
-}
-
-pub async fn load_last_import(app: &App) -> Result<Option<LastImport>, RepositoryError> {
-    app.db.last_import_repo().load().await
 }
 
 async fn add_years(

@@ -1,16 +1,69 @@
-use super::header;
+use super::{ButtonText, header};
 use crate::theme::palette;
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::{
     assets::IconName,
     component::{
         Disableable, Icon, StyledExt,
-        button::ButtonVariants,
+        button::{Button, ButtonVariants},
+        dialog::{Dialog, DialogAction, DialogFooter},
         empty::{Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle},
-        h_flex,
+        h_flex, v_flex,
     },
     *,
 };
+
+pub fn disclaimer(cx: &App) -> Div {
+    h_flex()
+        .items_start()
+        .gap(px(8.))
+        .px(px(16.))
+        .text_size(px(12.))
+        .line_height(relative(1.5))
+        .text_color(palette(cx).faint)
+        .child(
+            Icon::new(IconName::Info)
+                .size(px(14.))
+                .flex_shrink_0()
+                .mt(px(2.)),
+        )
+        .child(div().flex_1().min_w_0().child(
+            "For information only, not tax advice. You're responsible for checking every figure \
+             before you file.",
+        ))
+}
+
+pub fn first_launch(dialog: Dialog, cx: &App) -> Dialog {
+    dialog
+        .title("Before you start")
+        .close_button(false)
+        .overlay_closable(false)
+        .keyboard(false)
+        .child(
+            v_flex()
+                .gap(px(10.))
+                .child(
+                    "pitpls is for information only. It is not tax, financial or legal advice, \
+                     and not a guide to filing your return.",
+                )
+                .child(div().text_color(palette(cx).muted).child(
+                    "Results aren't guaranteed to be complete or correct. You are responsible \
+                     for your tax return: check every figure yourself, and ask a tax adviser if \
+                     you're unsure.",
+                )),
+        )
+        .footer(
+            DialogFooter::new().child(
+                div().child(
+                    DialogAction::new().child(
+                        Button::new("notice-accept")
+                            .text_label("I understand")
+                            .primary(),
+                    ),
+                ),
+            ),
+        )
+}
 
 pub fn notice(
     icon: IconName,

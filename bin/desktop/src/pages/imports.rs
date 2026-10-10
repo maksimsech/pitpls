@@ -1,9 +1,10 @@
 use crate::{
     components::{self, ButtonText, Status, data, file_picker, header, nbp},
+    config::LastImport,
     navigation::{Page, PageContext},
     theme::{palette, tabular_digits},
 };
-use chrono::{Datelike, Local};
+use chrono::{Datelike, Local, Utc};
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::{
     assets::IconName,
@@ -11,7 +12,7 @@ use gpui_kit::{
     *,
 };
 use pitpls_app::use_case::{
-    import::{self, LastImport},
+    import,
     rate::{self, RateCoverage},
 };
 use pitpls_importers::{IMPORTERS, InputType, OutputType, model::Importer};
@@ -25,12 +26,12 @@ enum Active {
 
 struct Data {
     coverage: Option<RateCoverage>,
-    last_import: Option<LastImport>,
 }
 
 pub struct ImportsPage {
     context: PageContext,
     year: Option<i32>,
+    last_import: Option<LastImport>,
     status: Status,
     /// Apart from `status`, so a reload keeps the last import's outcome.
     load: Status,
@@ -45,12 +46,14 @@ impl ImportsPage {
     pub fn new(
         context: PageContext,
         year: Option<i32>,
+        last_import: Option<LastImport>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
         let mut page = Self {
             context,
             year,
+            last_import,
             status: Status::default(),
             load: Status::default(),
             data: None,
@@ -116,11 +119,24 @@ impl ImportsPage {
             .file_name()
             .map(|name| name.to_string_lossy().into_owned().into());
         let kind = IMPORTERS[index].kind;
+        let file_name = self
+            .file_name
+            .as_ref()
+            .map(ToString::to_string)
+            .unwrap_or_default();
         self.status.task = Some(self.context.services.run(
             window,
             cx,
             move |app| async move {
                 let result = import::run_import(&app, kind, file).await?;
+                let last_import = LastImport {
+                    provider: kind.provider().to_owned(),
+                    file_name,
+                    dividends: result.dividends,
+                    interests: result.interests,
+                    cryptos: result.cryptos,
+                    imported_at: Utc::now(),
+                };
                 let counts = IMPORTERS[index]
                     .output
                     .iter()
@@ -131,9 +147,14 @@ impl ImportsPage {
                     })
                     .collect::<Vec<_>>()
                     .join(" and ");
-                Ok(format!("Imported {counts}."))
+                Ok((format!("Imported {counts}."), last_import))
             },
             |this, result, window, cx| {
+                let result = result.map(|(message, last_import)| {
+                    this.last_import = Some(last_import.clone());
+                    this.context.imported(last_import, cx);
+                    message
+                });
                 if this.status.saved(result) {
                     this.refresh(window, cx);
                 }
@@ -221,7 +242,6 @@ impl ImportsPage {
             |app| async move {
                 Ok(Data {
                     coverage: rate::rate_coverage(&app).await?,
-                    last_import: import::load_last_import(&app).await?,
                 })
             },
             |this, result, _, cx| {
@@ -400,7 +420,7 @@ impl ImportsPage {
         match &self.data {
             Some(data) => {
                 cards.push(self.rates_card(data, cx).into_any_element());
-                cards.push(self.import_card(data, cx).into_any_element());
+                cards.push(self.import_card(cx).into_any_element());
             }
             None if self.load.loading_visible => cards.extend(
                 ["Exchange rates", "Last import"]
@@ -432,9 +452,9 @@ impl ImportsPage {
             .children(outcome)
     }
 
-    fn import_card(&self, data: &Data, cx: &App) -> Div {
+    fn import_card(&self, cx: &App) -> Div {
         let p = palette(cx);
-        let import = data::import_status(data.last_import.as_ref(), cx);
+        let import = data::import_status(self.last_import.as_ref(), cx);
         data::card(cx).child(
             status_row(
                 import.dot,

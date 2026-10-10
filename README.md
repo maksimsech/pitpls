@@ -4,11 +4,11 @@
 
 ## Usage Notice
 
-This tool is created for informational purposes only.
+pitpls is for information only. It is not tax, financial or legal advice, and not a guide to filing your return.
 
-It is not designed for calculating tax and should not be treated as financial advice, tax advice, or a tax filing guide.
+Results aren't guaranteed to be complete or correct. You are responsible for your tax return: check every figure yourself, and ask a tax adviser if you're unsure.
 
-Always verify any data and calculations on your own before using them for real financial or tax decisions.
+The app shows this notice on first launch and keeps a short reminder on the Summary page.
 
 ## How to Use
 

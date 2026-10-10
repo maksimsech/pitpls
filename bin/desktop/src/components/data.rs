@@ -1,7 +1,7 @@
-use crate::{format::DATE_FORMAT, theme::palette};
+use crate::{config::LastImport, format::DATE_FORMAT, theme::palette};
 use chrono::{Datelike, Days, Local, NaiveDate, Weekday};
 use gpui_kit::*;
-use pitpls_app::use_case::{import::LastImport, rate::RateCoverage};
+use pitpls_app::use_case::rate::RateCoverage;
 
 pub fn card(cx: &App) -> Div {
     open_card(cx).overflow_hidden()

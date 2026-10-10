@@ -1,4 +1,5 @@
 use crate::services::Error as ServiceError;
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
@@ -35,7 +36,7 @@ impl Config {
                 .join("com.mngapp.pitpls")
                 .join(pitpls_db::DB_FILENAME),
         };
-        let preferences = database.with_extension("gpui.json");
+        let preferences = database.with_extension("json");
         Ok(Some(Self {
             database,
             preferences,
@@ -43,12 +44,25 @@ impl Config {
     }
 }
 
-#[derive(Clone, Copy, Default, Deserialize, Serialize)]
+#[derive(Clone, Default, Deserialize, Serialize)]
 pub struct Preferences {
     pub year: Option<i32>,
     pub dark: Option<bool>,
     #[serde(default)]
     pub sidebar_collapsed: bool,
+    #[serde(default)]
+    pub notice_accepted: bool,
+    pub last_import: Option<LastImport>,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+pub struct LastImport {
+    pub provider: String,
+    pub file_name: String,
+    pub dividends: u64,
+    pub interests: u64,
+    pub cryptos: u64,
+    pub imported_at: DateTime<Utc>,
 }
 
 pub async fn read_preferences(path: &std::path::Path) -> Result<Preferences, ServiceError> {

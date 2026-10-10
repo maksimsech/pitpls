@@ -3,7 +3,6 @@ use thiserror::Error;
 pub mod crypto;
 pub mod dividend;
 pub mod interest;
-pub mod last_import;
 pub mod rate;
 pub mod settings;
 pub mod year;

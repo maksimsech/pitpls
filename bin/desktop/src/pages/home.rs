@@ -1,5 +1,6 @@
 use crate::{
     components::{self, ButtonText, Status, data, header, nbp, notice, value},
+    config::LastImport,
     format::{DisplayText, pln, record_count},
     navigation::{Page, PageContext},
     services::Error as ServiceError,
@@ -13,7 +14,6 @@ use gpui_kit::{
     *,
 };
 use pitpls_app::use_case::{
-    import::{self, LastImport},
     rate::{self, RateCoverage},
     tax::{self, Error as TaxError},
     year::{self, YearInfo},
@@ -58,7 +58,6 @@ struct Overview {
     cryptos: u32,
     first_run: bool,
     coverage: Option<RateCoverage>,
-    last_import: Option<LastImport>,
     totals: Totals,
 }
 
@@ -67,7 +66,6 @@ impl Overview {
         year: Option<i32>,
         years: &[YearInfo],
         coverage: Option<RateCoverage>,
-        last_import: Option<LastImport>,
         summary: Result<TaxSummary, TaxError>,
     ) -> Self {
         let selected = years
@@ -100,7 +98,6 @@ impl Overview {
             cryptos,
             first_run: coverage.is_none() && years.iter().all(|info| info.records() == 0),
             coverage,
-            last_import,
             totals,
         }
     }
@@ -121,6 +118,7 @@ impl Overview {
 pub struct HomePage {
     context: PageContext,
     year: Option<i32>,
+    last_import: Option<LastImport>,
     status: Status,
     overview: Option<Overview>,
     nbp_year: Option<Entity<InputState>>,
@@ -132,12 +130,14 @@ impl HomePage {
     pub fn new(
         context: PageContext,
         year: Option<i32>,
+        last_import: Option<LastImport>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
         let mut page = Self {
             context,
             year,
+            last_import,
             status: Status::default(),
             overview: None,
             nbp_year: None,
@@ -251,9 +251,8 @@ impl HomePage {
             move |app| async move {
                 let years = year::list_year_info(&app).await?;
                 let coverage = rate::rate_coverage(&app).await?;
-                let last_import = import::load_last_import(&app).await?;
                 let summary = tax::load_tax_summary(&app, year).await;
-                Ok(Overview::new(year, &years, coverage, last_import, summary))
+                Ok(Overview::new(year, &years, coverage, summary))
             },
             |this, result, _, cx| {
                 if let Some(overview) = this.status.loaded(result) {
@@ -339,7 +338,8 @@ impl HomePage {
         let column = match &self.overview {
             Some(overview) => column
                 .child(self.totals(overview, cx))
-                .child(self.data_card(overview, cx)),
+                .child(self.data_card(overview, cx))
+                .child(notice::disclaimer(cx)),
             None if self.status.loading_visible => column.children(self.skeleton(cx)),
             None if !self.status.loading => column.child(
                 h_flex().child(
@@ -448,7 +448,7 @@ impl HomePage {
         });
         let rates = data_row(rates.dot, "Exchange rates", rates.detail, update, cx);
 
-        let import = data::import_status(overview.last_import.as_ref(), cx);
+        let import = data::import_status(self.last_import.as_ref(), cx);
         let last_import = data_row(
             import.dot,
             "Last import",
@@ -583,7 +583,8 @@ impl HomePage {
                             None,
                             cx,
                         )),
-                ),
+                )
+                .child(notice::disclaimer(cx)),
         )
     }
 }

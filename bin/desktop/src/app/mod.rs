@@ -2,7 +2,7 @@ mod sidebar;
 mod years;
 
 use crate::{
-    components::{ButtonText, Status, form, header, spinner},
+    components::{ButtonText, Status, form, header, notice, spinner},
     config::{self, Config, Preferences},
     navigation::{Page, PageContext, PageEvent, PageEvents},
     pages,
@@ -68,6 +68,10 @@ impl Desktop {
                 PageEvent::YearsChanged => this.load_years(window, cx),
                 PageEvent::SelectYear(year) => this.select_year(*year, window, cx),
                 PageEvent::SetTheme(dark) => this.set_theme(*dark, window, cx),
+                PageEvent::Imported(last_import) => {
+                    this.preferences.last_import = Some(last_import.clone());
+                    this.save_preferences(window, cx);
+                }
             }
             cx.notify();
         });
@@ -167,9 +171,12 @@ impl Desktop {
                         ));
                         this.preferences = preferences;
                         this.status.message = warning.map(Into::into);
-                        apply_theme(preferences.dark, window, cx);
+                        apply_theme(this.preferences.dark, window, cx);
                         this.mount_page(window, cx);
                         this.load_years(window, cx);
+                        if !this.preferences.notice_accepted {
+                            this.open_notice(window, cx);
+                        }
                     }
                     Err(error) => this.status.error = Some(error.into()),
                 }
@@ -187,7 +194,7 @@ impl Desktop {
         self.active = Some(pages::open(
             self.page,
             context,
-            self.preferences.year,
+            &self.preferences,
             window,
             cx,
         ));
@@ -205,6 +212,20 @@ impl Desktop {
         cx.notify();
     }
 
+    fn open_notice(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let view = cx.entity().downgrade();
+        window.open_dialog(cx, move |dialog, _, cx| {
+            let view = view.clone();
+            notice::first_launch(dialog, cx).on_ok(move |_, window, cx| {
+                view.update(cx, |this, cx| {
+                    this.preferences.notice_accepted = true;
+                    this.save_preferences(window, cx);
+                })
+                .is_ok()
+            })
+        });
+    }
+
     fn set_theme(&mut self, dark: Option<bool>, window: &mut Window, cx: &mut Context<Self>) {
         self.preferences.dark = dark;
         apply_theme(dark, window, cx);
@@ -216,7 +237,7 @@ impl Desktop {
         let previous = self.preference_task.take();
         let runtime = self.runtime.clone();
         let path = self.config.preferences.clone();
-        let preferences = self.preferences;
+        let preferences = self.preferences.clone();
         // Chain saves so that quick successive changes are written in order.
         self.preference_task = Some(cx.spawn_in(window, async move |this, cx| {
             if let Some(previous) = previous {

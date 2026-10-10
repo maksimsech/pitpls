@@ -1,3 +1,4 @@
+use crate::config::LastImport;
 use gpui_kit::{App, Entity, EventEmitter, assets::IconName};
 
 #[derive(Clone, Copy, Default, PartialEq, Eq)]
@@ -45,6 +46,7 @@ pub enum PageEvent {
     SelectYear(Option<i32>),
     /// `None` follows the system.
     SetTheme(Option<bool>),
+    Imported(LastImport),
 }
 
 pub struct PageEvents;
@@ -84,5 +86,10 @@ impl PageContext {
     pub fn set_theme(&self, dark: Option<bool>, cx: &mut App) {
         self.events
             .update(cx, |_, cx| cx.emit(PageEvent::SetTheme(dark)));
+    }
+
+    pub fn imported(&self, last_import: LastImport, cx: &mut App) {
+        self.events
+            .update(cx, |_, cx| cx.emit(PageEvent::Imported(last_import)));
     }
 }
