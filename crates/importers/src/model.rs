@@ -1,31 +1,37 @@
 use pitpls_core::{crypto::Crypto, dividend::Dividend, interest::Interest};
-use serde::{Deserialize, Serialize};
-use specta::Type;
 
-#[derive(Serialize, Deserialize, Type)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ImporterKind {
     T212,
     Revolut,
     Coinbase,
 }
 
-#[derive(Serialize, Type)]
+impl ImporterKind {
+    /// Stable provider values persisted with imported records. These are data,
+    /// not UI labels; changing them would change existing provider identities.
+    pub const fn provider(self) -> &'static str {
+        match self {
+            Self::T212 => "Trading 212",
+            Self::Revolut => "Revolut",
+            Self::Coinbase => "Coinbase",
+        }
+    }
+}
+
 pub enum InputType {
     Csv,
     Pdf,
 }
 
-#[derive(Serialize, Type)]
 pub enum OutputType {
     Dividend,
     Crypto,
     Interest,
 }
 
-#[derive(Serialize, Type)]
 pub struct Importer {
     pub kind: ImporterKind,
-    pub name: &'static str,
     pub input: &'static [InputType],
     pub output: &'static [OutputType],
 }

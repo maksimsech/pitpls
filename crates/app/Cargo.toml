@@ -1,0 +1,17 @@
+[package]
+name = "pitpls-app"
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+pitpls-core.workspace = true
+pitpls-db.workspace = true
+pitpls-importers.workspace = true
+pitpls-nbr.workspace = true
+
+thiserror.workspace = true
+chrono.workspace = true
+reqwest.workspace = true
+rust_decimal.workspace = true
+uuid.workspace = true

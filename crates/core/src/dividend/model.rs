@@ -1,7 +1,5 @@
 use chrono::NaiveDate;
 use rust_decimal::Decimal;
-use serde::Serialize;
-use specta::Type;
 
 use crate::common::{Amount, Country};
 
@@ -15,11 +13,14 @@ pub struct Dividend {
     pub provider: String,
 }
 
-#[derive(Serialize, Type)]
 pub struct CalculatedDividend {
     pub id: String,
     pub date: NaiveDate,
     pub nbp_date: NaiveDate,
+    // The NBP rate of `nbp_date` for the value's currency (1 for PLN).
+    pub nbp_rate: Decimal,
+    // The NBP rate for the tax paid, whose currency can differ (1 for PLN).
+    pub tax_paid_nbp_rate: Decimal,
     pub ticker: String,
     pub value: Amount,
     pub calculated_value: Decimal,
@@ -33,9 +34,12 @@ pub struct CalculatedDividend {
 }
 
 impl CalculatedDividend {
+    #[allow(clippy::too_many_arguments)]
     pub fn build(
         dividend: Dividend,
         nbp_date: NaiveDate,
+        nbp_rate: Decimal,
+        tax_paid_nbp_rate: Decimal,
         calculated_value: Decimal,
         calculated_to_pay: Decimal,
         calculated_tax_paid: Decimal,
@@ -46,6 +50,8 @@ impl CalculatedDividend {
             id: dividend.id,
             date: dividend.date,
             nbp_date,
+            nbp_rate,
+            tax_paid_nbp_rate,
             ticker: dividend.ticker,
             value: dividend.value,
             calculated_value,
@@ -60,7 +66,6 @@ impl CalculatedDividend {
     }
 }
 
-#[derive(Serialize, Type)]
 pub struct DividendTaxData {
     pub to_pay: Decimal,
     pub paid: Decimal,

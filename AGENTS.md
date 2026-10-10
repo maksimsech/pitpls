@@ -1,11 +1,11 @@
 ## Project Context
 
-pitpls is a Tauri desktop app with a React UI and SQLite storage for Polish PIT tax calculations and records.
+pitpls is a GPUI desktop app with SQLite storage for Polish PIT tax calculations and records.
 
-## Front-end contract
+## Visibility
 
-Use `just et` command to generate front-end contracts.
+Never use `pub(crate)`. Manage visibility through module declarations and re-exports in `mod.rs`.
 
 ## Test
 
-Do not add tests unless directly asked. Do not start the dev server. Let the user test locally.
+Do not add tests unless directly asked.

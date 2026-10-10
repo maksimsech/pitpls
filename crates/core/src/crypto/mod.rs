@@ -11,10 +11,9 @@ pub use model::{Action, CalculatedCrypto, Crypto, CryptoTaxData};
 mod model;
 
 #[derive(Debug, Error)]
+#[error("{self:?}")]
 pub enum CalculateSellBuyValuesError {
-    #[error("Failed to convert crypto value to PLN: {0}")]
     ValueConversion(#[source] RateConverterError),
-    #[error("Failed to convert crypto fee to PLN: {0}")]
     FeeConversion(#[source] RateConverterError),
 }
 
@@ -28,12 +27,13 @@ pub fn calculate_sell_buy_values(
     let mut calculated = Vec::with_capacity(cryptos.len());
 
     for crypto in cryptos {
-        let (value_pln, nbp_date) = rate_provider
+        let value = rate_provider
             .convert(&crypto.value, &crypto.date)
             .map_err(CalculateSellBuyValuesError::ValueConversion)?;
-        let (fee_pln, _) = rate_provider
+        let fee = rate_provider
             .convert(&crypto.fee, &crypto.date)
             .map_err(CalculateSellBuyValuesError::FeeConversion)?;
+        let (value_pln, fee_pln) = (value.pln, fee.pln);
 
         match crypto.action {
             Action::FiatBuy => {
@@ -46,7 +46,7 @@ pub fn calculate_sell_buy_values(
         }
 
         calculated.push(CalculatedCrypto::build(
-            crypto, value_pln, fee_pln, nbp_date,
+            crypto, value_pln, fee_pln, value.date, value.rate, fee.rate,
         ));
     }
 

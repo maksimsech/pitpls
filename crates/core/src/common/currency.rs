@@ -1,11 +1,16 @@
 use std::{fmt::Display, str::FromStr};
 
 use serde::{Deserialize, Serialize};
-use specta::Type;
+
+#[derive(Debug, thiserror::Error, PartialEq, Eq)]
+#[error("{self:?}")]
+pub enum CurrencyParseError {
+    UnknownCurrency { value: String },
+}
 
 macro_rules! currencies {
     ($($currency:ident),+ $(,)?) => {
-        #[derive(Clone, Copy, Ord, PartialEq, PartialOrd, Eq, Serialize, Deserialize, Type)]
+        #[derive(Clone, Copy, Debug, Ord, PartialEq, PartialOrd, Eq, Serialize, Deserialize)]
         pub enum Currency {
             $($currency),+
         }
@@ -25,7 +30,7 @@ macro_rules! currencies {
         }
 
         impl FromStr for Currency {
-            type Err = String;
+            type Err = CurrencyParseError;
 
             fn from_str(s: &str) -> Result<Self, Self::Err> {
                 let normalized = s.trim();
@@ -36,7 +41,7 @@ macro_rules! currencies {
                     }
                 )+
 
-                Err(format!("Unknown currency: {s}"))
+                Err(CurrencyParseError::UnknownCurrency { value: s.to_owned() })
             }
         }
     };

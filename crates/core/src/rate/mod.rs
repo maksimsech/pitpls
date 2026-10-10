@@ -8,18 +8,17 @@ use crate::common::{Amount, Currency};
 
 mod model;
 
-pub use model::Rate;
+pub use model::{Conversion, Rate};
 
 const MAX_LOOKUP_STEPS: u8 = 10;
 
 #[derive(Debug, Error, PartialEq, Eq)]
+#[error("{self:?}")]
 pub enum RateConverterError {
-    #[error("There is no rates available.")]
     NoRatesAvailable,
-    #[error("It took {steps} steps to get n-1 rate for {currency} on {date}.")]
     StepLimitReached {
         steps: u8,
-        currency: String,
+        currency: Currency,
         date: NaiveDate,
     },
 }
@@ -42,6 +41,13 @@ impl NbpRateProvider {
         Self { rates_by_date }
     }
 
+    pub fn lookup_window(at: NaiveDate) -> (NaiveDate, NaiveDate) {
+        (
+            at - chrono::Days::new(MAX_LOOKUP_STEPS.into()),
+            at - chrono::Days::new(1),
+        )
+    }
+
     pub fn export(&self) -> impl Iterator<Item = Rate> {
         self.rates_by_date.iter().flat_map(|(date, rates)| {
             rates.iter().map(|(currency, rate)| Rate {
@@ -56,14 +62,22 @@ impl NbpRateProvider {
         &self,
         amount: &Amount,
         at: &NaiveDate,
-    ) -> std::result::Result<(Decimal, NaiveDate), RateConverterError> {
+    ) -> Result<Conversion, RateConverterError> {
         if matches!(amount.currency, Currency::PLN) {
-            return Ok((amount.value, *at));
+            return Ok(Conversion {
+                pln: amount.value,
+                rate: Decimal::ONE,
+                date: *at,
+            });
         }
 
         let (rate, rate_date) = self.get(at, &amount.currency)?;
 
-        Ok((rate * amount.value, rate_date))
+        Ok(Conversion {
+            pln: rate * amount.value,
+            rate,
+            date: rate_date,
+        })
     }
 
     fn get(
@@ -91,7 +105,7 @@ impl NbpRateProvider {
 
         Err(RateConverterError::StepLimitReached {
             steps: MAX_LOOKUP_STEPS,
-            currency: currency.to_string(),
+            currency: *currency,
             date: *date,
         })
     }
@@ -149,11 +163,11 @@ mod tests {
             rate: Decimal::ONE,
         }]);
 
-        let (value, rate_date) = provider
+        let conversion = provider
             .convert(&usd_amount(2), &date(2024, 1, 11))
             .unwrap();
 
-        assert_eq!(value, Decimal::from(2));
-        assert_eq!(rate_date, date(2024, 1, 1));
+        assert_eq!(conversion.pln, Decimal::from(2));
+        assert_eq!(conversion.date, date(2024, 1, 1));
     }
 }

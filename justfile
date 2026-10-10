@@ -1,5 +1,7 @@
-et:
-    cd src-tauri && cargo test --lib export_bindings
+[positional-arguments]
+d *args:
+    cargo run --locked -p desktop -- "$@"
 
-d:
-    cargo tauri dev
+r:
+    cd bin/desktop && cargo bundle --release --format osx
+    open target/release/bundle/osx/pitpls.app

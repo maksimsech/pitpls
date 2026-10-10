@@ -2,6 +2,13 @@ use std::{fmt::Display, str::FromStr};
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer, de::Error};
 
+#[derive(Debug, thiserror::Error, PartialEq, Eq)]
+#[error("{self:?}")]
+pub enum CountryParseError {
+    InvalidIsin { value: String },
+    InvalidCode { value: String },
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Country {
     Japan,
@@ -16,7 +23,7 @@ impl Display for Country {
 }
 
 impl FromStr for Country {
-    type Err = String;
+    type Err = CountryParseError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         IsinCountryCode::from_str(s).map(Self::from)
@@ -34,7 +41,7 @@ impl From<IsinCountryCode> for Country {
 }
 
 impl Country {
-    pub fn from_isin(isin: &str) -> Result<Self, String> {
+    pub fn from_isin(isin: &str) -> Result<Self, CountryParseError> {
         IsinCountryCode::from_isin(isin).map(Self::from)
     }
 
@@ -66,15 +73,6 @@ impl<'de> Deserialize<'de> for Country {
     }
 }
 
-impl specta::Type for Country {
-    fn inline(
-        type_map: &mut specta::TypeCollection,
-        generics: specta::Generics,
-    ) -> specta::datatype::DataType {
-        <String as specta::Type>::inline(type_map, generics)
-    }
-}
-
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct IsinCountryCode([u8; 2]);
 
@@ -82,11 +80,13 @@ impl IsinCountryCode {
     pub const JP: Self = Self(*b"JP");
     pub const US: Self = Self(*b"US");
 
-    pub fn from_isin(isin: &str) -> Result<Self, String> {
+    pub fn from_isin(isin: &str) -> Result<Self, CountryParseError> {
         let trimmed = isin.trim();
         let bytes = trimmed.as_bytes();
         if bytes.len() < 2 {
-            return Err(format!("Invalid ISIN: {isin}"));
+            return Err(CountryParseError::InvalidIsin {
+                value: isin.to_owned(),
+            });
         }
         Self::from_bytes([bytes[0], bytes[1]])
     }
@@ -95,12 +95,11 @@ impl IsinCountryCode {
         std::str::from_utf8(&self.0).expect("ISIN country code is valid ASCII")
     }
 
-    fn from_bytes(bytes: [u8; 2]) -> Result<Self, String> {
+    fn from_bytes(bytes: [u8; 2]) -> Result<Self, CountryParseError> {
         if !bytes.iter().all(u8::is_ascii_alphabetic) {
-            return Err(format!(
-                "Invalid ISIN country code: {}{}",
-                bytes[0] as char, bytes[1] as char
-            ));
+            return Err(CountryParseError::InvalidCode {
+                value: String::from_utf8_lossy(&bytes).into_owned(),
+            });
         }
 
         Ok(Self([
@@ -117,13 +116,15 @@ impl Display for IsinCountryCode {
 }
 
 impl FromStr for IsinCountryCode {
-    type Err = String;
+    type Err = CountryParseError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let trimmed = s.trim();
         let bytes = trimmed.as_bytes();
         if bytes.len() != 2 {
-            return Err(format!("Invalid ISIN country code: {s}"));
+            return Err(CountryParseError::InvalidCode {
+                value: s.to_owned(),
+            });
         }
         Self::from_bytes([bytes[0], bytes[1]])
     }

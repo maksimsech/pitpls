@@ -9,9 +9,9 @@ use pitpls_core::{
     interest::Interest,
 };
 
-use crate::{ImportError, Result};
+use crate::{ImportContext, ImportError, ImportField, Result};
 
-const PROVIDER: &str = "Trading 212";
+const PROVIDER: &str = crate::ImporterKind::T212.provider();
 
 struct ColumnMap {
     common: CommonColumns,
@@ -176,9 +176,15 @@ fn parse_dividend_row(fields: &[String], columns: &ColumnMap, row: &str) -> Resu
     let tax_currency = parse_currency(tax_currency)?;
 
     if value_currency != tax_currency {
-        return Err(ImportError::other(format!(
-            "price and tax currency mismatch: {price_currency} vs {tax_currency}"
-        )));
+        return Err(ImportError::CurrencyMismatch {
+            field: ImportField::WithholdingTax,
+            context: ImportContext::T212Dividend {
+                ticker: ticker.to_owned(),
+                date,
+            },
+            expected: value_currency,
+            actual: tax_currency,
+        });
     }
 
     let tax_value = parse_decimal(tax)?;

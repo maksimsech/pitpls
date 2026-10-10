@@ -1,7 +1,5 @@
 use chrono::NaiveDate;
 use rust_decimal::Decimal;
-use serde::Serialize;
-use specta::Type;
 
 use crate::common::Amount;
 
@@ -12,11 +10,12 @@ pub struct Interest {
     pub provider: String,
 }
 
-#[derive(Serialize, Type)]
 pub struct CalculatedInterest {
     pub id: String,
     pub date: NaiveDate,
     pub nbp_date: NaiveDate,
+    // The NBP rate of `nbp_date` for the value's currency (1 for PLN).
+    pub nbp_rate: Decimal,
     pub value: Amount,
     pub calculated_value: Decimal,
     pub to_pay: Decimal,
@@ -27,6 +26,7 @@ impl CalculatedInterest {
     pub fn build(
         interest: Interest,
         nbp_date: NaiveDate,
+        nbp_rate: Decimal,
         calculated_value: Decimal,
         to_pay: Decimal,
     ) -> Self {
@@ -34,6 +34,7 @@ impl CalculatedInterest {
             id: interest.id,
             date: interest.date,
             nbp_date,
+            nbp_rate,
             value: interest.value,
             calculated_value,
             to_pay,
@@ -42,7 +43,6 @@ impl CalculatedInterest {
     }
 }
 
-#[derive(Serialize, Type)]
 pub struct InterestTaxData {
     pub to_pay: Decimal,
     pub income: Decimal,

@@ -4,34 +4,25 @@
 
 ## Usage Notice
 
-This tool is created for informational purposes only.
+pitpls is for information only. It is not tax, financial or legal advice, and not a guide to filing your return.
 
-It is not designed for calculating tax and should not be treated as financial advice, tax advice, or a tax filing guide.
+Results aren't guaranteed to be complete or correct. You are responsible for your tax return: check every figure yourself, and ask a tax adviser if you're unsure.
 
-Always verify any data and calculations on your own before using them for real financial or tax decisions.
+The app shows this notice on first launch and keeps a short reminder on the Summary page.
 
 ## How to Use
 
-The project must be installed before use.
-
-1. Install JavaScript dependencies:
-
-```sh
-npm install
-```
-
-2. Make sure Rust and the Tauri development prerequisites are available on your machine.
-
-3. Run the project locally in development mode:
-
-```sh
-cargo tauri dev
-```
-
-You can also use the shortcut from the `justfile`:
+Make sure Rust is available on your machine, then run the app in development
+mode:
 
 ```sh
 just d
+```
+
+For a separate database during local testing:
+
+```sh
+just d --database /tmp/pitpls/pitpls.db
 ```
 
 No builds are provided. At the moment, the project is intended to be run in development mode only.
@@ -40,10 +31,12 @@ No builds are provided. At the moment, the project is intended to be run in deve
 
 The repository is split into a small set of focused parts:
 
-- `src/` - React frontend pages, components, hooks, and generated bindings.
-- `src-tauri/` - Tauri desktop shell and Rust commands exposed to the frontend.
+- `bin/desktop/` - native GPUI desktop application using the shared Rust services.
+- `crates/app/` - application use cases, input validation, and orchestration.
 - `crates/core/` - shared financial domain types used across the app.
+- `crates/db/` - SQLite schema and repositories.
 - `crates/importers/` - importer registry and source-specific parsers.
+- `crates/nbr/` - NBP exchange-rate clients and parsers.
 
 The importer crate is organized like this:
 

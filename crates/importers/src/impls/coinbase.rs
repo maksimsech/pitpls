@@ -10,7 +10,7 @@ use pitpls_core::{
 
 use crate::{ImportError, Result};
 
-const PROVIDER: &str = "Coinbase";
+const PROVIDER: &str = crate::ImporterKind::Coinbase.provider();
 
 struct ColumnMap {
     id: usize,

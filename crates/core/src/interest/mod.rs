@@ -12,8 +12,8 @@ use crate::{
 };
 
 #[derive(Debug, Error)]
+#[error("{self:?}")]
 pub enum CalculateInterestTaxError {
-    #[error("Failed to convert interest value to PLN: {0}")]
     InterestConversion(#[source] RateConverterError),
 }
 
@@ -26,9 +26,10 @@ pub fn calculate(
     let mut calculated = Vec::with_capacity(interests.len());
 
     for interest in interests {
-        let (interest_pln, nbp_date) = rate_provider
+        let conversion = rate_provider
             .convert(&interest.value, &interest.date)
             .map_err(CalculateInterestTaxError::InterestConversion)?;
+        let interest_pln = conversion.pln;
         let to_pay = interest_pln * POLAND_TAX;
 
         profit += interest_pln;
@@ -36,7 +37,8 @@ pub fn calculate(
 
         calculated.push(CalculatedInterest::build(
             interest,
-            nbp_date,
+            conversion.date,
+            conversion.rate,
             interest_pln,
             to_pay,
         ));

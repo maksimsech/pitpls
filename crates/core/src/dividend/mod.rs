@@ -13,10 +13,9 @@ mod model;
 pub use model::{CalculatedDividend, Dividend, DividendTaxData};
 
 #[derive(Debug, Error)]
+#[error("{self:?}")]
 pub enum CalculateDividendTaxError {
-    #[error("Failed to convert dividend value to PLN: {0}")]
     DividendConversion(#[source] RateConverterError),
-    #[error("Failed to convert paid dividend tax to PLN: {0}")]
     PaidTaxConversion(#[source] RateConverterError),
 }
 
@@ -31,11 +30,10 @@ pub fn calculate(
     let mut calculated = Vec::with_capacity(dividends.len());
 
     for dividend in dividends {
-        let (mut dividend_pln, nbp_date) =
-            rate_provider
-                .convert(&dividend.value, &dividend.date)
-                .map_err(CalculateDividendTaxError::DividendConversion)?;
-        dividend_pln = dividend_pln.maybe_round_dividend(rounding);
+        let conversion = rate_provider
+            .convert(&dividend.value, &dividend.date)
+            .map_err(CalculateDividendTaxError::DividendConversion)?;
+        let dividend_pln = conversion.pln.maybe_round_dividend(rounding);
 
         let mut to_pay = dividend_pln * POLAND_TAX;
         to_pay = to_pay.maybe_round_dividend(rounding);
@@ -44,6 +42,7 @@ pub fn calculate(
         to_pay_total += to_pay;
 
         let AlreadyPaidData {
+            nbp_rate: tax_paid_nbp_rate,
             calculated_tax_paid,
             max_tax_paid,
             used_tax_paid,
@@ -52,7 +51,9 @@ pub fn calculate(
 
         calculated.push(CalculatedDividend::build(
             dividend,
-            nbp_date,
+            conversion.date,
+            conversion.rate,
+            tax_paid_nbp_rate,
             dividend_pln,
             to_pay,
             calculated_tax_paid,
@@ -86,10 +87,10 @@ fn calculate_already_paid(
     rate_provider: &NbpRateProvider,
     rounding: DividendRounding,
 ) -> Result<AlreadyPaidData, CalculateDividendTaxError> {
-    let (mut paid_pln, _) = rate_provider
+    let conversion = rate_provider
         .convert(&dividend.tax_paid, &dividend.date)
         .map_err(CalculateDividendTaxError::PaidTaxConversion)?;
-    paid_pln = paid_pln.maybe_round_dividend(rounding);
+    let paid_pln = conversion.pln.maybe_round_dividend(rounding);
 
     let mut max_paid_pln = get_treaty_tax(&dividend.country) * dividend_pln;
     max_paid_pln = max_paid_pln.maybe_round_dividend(rounding);
@@ -101,6 +102,7 @@ fn calculate_already_paid(
     };
 
     Ok(AlreadyPaidData {
+        nbp_rate: conversion.rate,
         calculated_tax_paid: paid_pln,
         max_tax_paid: max_paid_pln,
         used_tax_paid,
@@ -108,6 +110,7 @@ fn calculate_already_paid(
 }
 
 struct AlreadyPaidData {
+    pub nbp_rate: Decimal,
     pub calculated_tax_paid: Decimal,
     pub max_tax_paid: Decimal,
     pub used_tax_paid: Decimal,
