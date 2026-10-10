@@ -1,5 +1,5 @@
 use crate::config::LastImport;
-use gpui_kit::{App, Entity, EventEmitter, assets::IconName};
+use gpui_kit::{App, Context, Entity, EntityId, EventEmitter, assets::IconName};
 
 #[derive(Clone, Copy, Default, PartialEq, Eq)]
 pub enum Page {
@@ -47,6 +47,7 @@ pub enum PageEvent {
     /// `None` follows the system.
     SetTheme(Option<bool>),
     Imported(LastImport),
+    Loaded(EntityId),
 }
 
 pub struct PageEvents;
@@ -91,5 +92,11 @@ impl PageContext {
     pub fn imported(&self, last_import: LastImport, cx: &mut App) {
         self.events
             .update(cx, |_, cx| cx.emit(PageEvent::Imported(last_import)));
+    }
+
+    pub fn loaded<V: 'static>(&self, cx: &mut Context<V>) {
+        let page = cx.entity_id();
+        self.events
+            .update(cx, |_, cx| cx.emit(PageEvent::Loaded(page)));
     }
 }

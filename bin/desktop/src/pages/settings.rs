@@ -178,6 +178,7 @@ impl SettingsPage {
                     this.saved = Some(settings.dividend_rounding);
                     this.picked = Some(settings.dividend_rounding);
                 }
+                this.context.loaded(cx);
                 cx.notify();
             },
         ));

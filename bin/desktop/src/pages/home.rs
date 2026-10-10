@@ -258,6 +258,7 @@ impl HomePage {
                 if let Some(overview) = this.status.loaded(result) {
                     this.overview = Some(overview);
                 }
+                this.context.loaded(cx);
                 cx.notify();
             },
         ));

@@ -15,6 +15,7 @@ pub fn open(
     page: Page,
     context: PageContext,
     preferences: &Preferences,
+    width: Option<Pixels>,
     window: &mut Window,
     cx: &mut App,
 ) -> AnyView {
@@ -28,13 +29,13 @@ pub fn open(
             .new(|cx| imports::ImportsPage::new(context, year, last_import, window, cx))
             .into(),
         Page::Dividends => cx
-            .new(|cx| RecordsPage::<Dividends>::new(context, year, window, cx))
+            .new(|cx| RecordsPage::<Dividends>::new(context, year, width, window, cx))
             .into(),
         Page::Interests => cx
-            .new(|cx| RecordsPage::<Interests>::new(context, year, window, cx))
+            .new(|cx| RecordsPage::<Interests>::new(context, year, width, window, cx))
             .into(),
         Page::Crypto => cx
-            .new(|cx| RecordsPage::<Crypto>::new(context, year, window, cx))
+            .new(|cx| RecordsPage::<Crypto>::new(context, year, width, window, cx))
             .into(),
         Page::Rates => cx
             .new(|cx| rates::RatesPage::new(context, window, cx))

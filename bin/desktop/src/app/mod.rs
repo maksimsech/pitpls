@@ -2,7 +2,9 @@ mod sidebar;
 mod years;
 
 use crate::{
-    components::{ButtonText, Status, form, header, notice, spinner},
+    components::{
+        ButtonText, SKELETON_DELAY, Status, form, header, measure_width, notice, spinner,
+    },
     config::{self, Config, Preferences},
     navigation::{Page, PageContext, PageEvent, PageEvents},
     pages,
@@ -31,6 +33,10 @@ pub struct Desktop {
     events: Entity<PageEvents>,
     page: Page,
     active: Option<AnyView>,
+    /// Off screen until its first load ends or its skeleton would show, so a
+    /// switch doesn't flash it half built.
+    incoming: Option<(AnyView, Task<()>)>,
+    page_width: Option<Pixels>,
     page_locked: bool,
     preferences: Preferences,
     preference_task: Option<Task<()>>,
@@ -71,6 +77,15 @@ impl Desktop {
                 PageEvent::Imported(last_import) => {
                     this.preferences.last_import = Some(last_import.clone());
                     this.save_preferences(window, cx);
+                }
+                PageEvent::Loaded(page) => {
+                    if this
+                        .incoming
+                        .as_ref()
+                        .is_some_and(|(incoming, _)| incoming.entity_id() == *page)
+                    {
+                        this.show_incoming();
+                    }
                 }
             }
             cx.notify();
@@ -113,6 +128,8 @@ impl Desktop {
             events,
             page: Page::Home,
             active: None,
+            incoming: None,
+            page_width: None,
             page_locked: false,
             preferences: Preferences::default(),
             preference_task: None,
@@ -190,15 +207,30 @@ impl Desktop {
         let Some(context) = self.context.clone() else {
             return;
         };
-        self.page_locked = false;
-        self.active = Some(pages::open(
+        let page = pages::open(
             self.page,
             context,
             &self.preferences,
+            self.page_width,
             window,
             cx,
-        ));
+        );
+        let timeout = cx.spawn_in(window, async move |this, cx| {
+            cx.background_executor().timer(SKELETON_DELAY).await;
+            let _ = this.update(cx, |this, cx| {
+                this.show_incoming();
+                cx.notify();
+            });
+        });
+        self.incoming = Some((page, timeout));
         cx.notify();
+    }
+
+    fn show_incoming(&mut self) {
+        if let Some((page, _)) = self.incoming.take() {
+            self.page_locked = false;
+            self.active = Some(page);
+        }
     }
 
     fn navigate(&mut self, page: Page, window: &mut Window, cx: &mut Context<Self>) {
@@ -305,7 +337,22 @@ impl Desktop {
         }
         panel
             .when_some(self.active.clone(), |panel, page| {
-                panel.child(v_flex().flex_1().min_h_0().min_w_0().child(page))
+                panel.child(
+                    v_flex()
+                        .relative()
+                        .flex_1()
+                        .min_h_0()
+                        .min_w_0()
+                        .child(page)
+                        .child(measure_width(
+                            self.page_width,
+                            |this: &mut Self| &mut this.page_width,
+                            cx,
+                        ))
+                        .when(self.incoming.is_some(), |slot| {
+                            slot.child(div().absolute().inset_0().occlude())
+                        }),
+                )
             })
             .when(self.status.is_visible(), |panel| {
                 panel.child(

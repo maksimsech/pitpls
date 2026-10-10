@@ -629,32 +629,6 @@ impl Default for RecordTableState {
     }
 }
 
-/// Measures the stationary viewport, not the sideways-scrolling table, and
-/// reports it after layout.
-pub fn measure_width<V: 'static>(
-    current: Option<Pixels>,
-    state: fn(&mut V) -> &mut RecordTableState,
-    cx: &Context<V>,
-) -> impl IntoElement {
-    let view = cx.entity().downgrade();
-    canvas(
-        move |bounds, _, cx| {
-            let width = bounds.size.width;
-            if width > px(0.) && current != Some(width) {
-                cx.defer(move |cx| {
-                    let _ = view.update(cx, |view, cx| {
-                        state(view).viewport_width = Some(width);
-                        cx.notify();
-                    });
-                });
-            }
-        },
-        |_, _, _, _| {},
-    )
-    .absolute()
-    .size_full()
-}
-
 impl RecordTableState {
     /// The items stay until the next rebuild, so the first visible one keeps
     /// its place if it's still listed.

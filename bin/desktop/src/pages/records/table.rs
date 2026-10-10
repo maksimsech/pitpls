@@ -1,7 +1,8 @@
 use super::*;
 use crate::{
-    components::records::{
-        self, END_SPACE, Item, ItemKey, cell, control, details, focus_ring, heading, measure_width,
+    components::{
+        measure_width,
+        records::{self, END_SPACE, Item, ItemKey, cell, control, details, focus_ring, heading},
     },
     format::record_count,
 };
@@ -608,7 +609,7 @@ impl<K: RecordKind> RecordsPage<K> {
             .overflow_hidden()
             .child(measure_width(
                 self.table_state.viewport_width,
-                |page: &mut Self| &mut page.table_state,
+                |page: &mut Self| &mut page.table_state.viewport_width,
                 cx,
             ))
             .child(

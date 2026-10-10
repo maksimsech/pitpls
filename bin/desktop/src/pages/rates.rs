@@ -410,6 +410,7 @@ impl RatesPage {
                     this.data = data;
                     this.rate_scroll = UniformListScrollHandle::new();
                 }
+                this.context.loaded(cx);
                 cx.notify();
             },
         ));

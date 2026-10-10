@@ -15,6 +15,9 @@ use gpui_kit::{
     component::{alert::Alert, spinner::Spinner, *},
     *,
 };
+use std::time::Duration;
+
+pub const SKELETON_DELAY: Duration = Duration::from_millis(180);
 
 #[derive(Default)]
 pub struct Status {
@@ -46,9 +49,7 @@ impl Status {
         self.loading = true;
         self.loading_visible = false;
         self.error = None;
-        let timer = cx
-            .background_executor()
-            .timer(std::time::Duration::from_millis(180));
+        let timer = cx.background_executor().timer(SKELETON_DELAY);
         self.loading_delay = Some(cx.spawn_in(window, async move |view, cx| {
             timer.await;
             let _ = view.update_in(cx, |view, _, cx| {
@@ -123,6 +124,30 @@ impl Status {
 
 /// How far the kit's focus ring reaches outside a control.
 pub const FOCUS_RING: Pixels = px(3.);
+
+pub fn measure_width<V: 'static>(
+    current: Option<Pixels>,
+    width: fn(&mut V) -> &mut Option<Pixels>,
+    cx: &Context<V>,
+) -> impl IntoElement {
+    let view = cx.entity().downgrade();
+    canvas(
+        move |bounds, _, cx| {
+            let measured = bounds.size.width;
+            if measured > px(0.) && current != Some(measured) {
+                cx.defer(move |cx| {
+                    let _ = view.update(cx, |view, cx| {
+                        *width(view) = Some(measured);
+                        cx.notify();
+                    });
+                });
+            }
+        },
+        |_, _, _, _| {},
+    )
+    .absolute()
+    .size_full()
+}
 
 pub fn spinner() -> Spinner {
     Spinner::new().with_size(px(14.))

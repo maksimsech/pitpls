@@ -248,6 +248,7 @@ impl ImportsPage {
                 if let Some(data) = this.load.loaded(result) {
                     this.data = Some(data);
                 }
+                this.context.loaded(cx);
                 cx.notify();
             },
         ));

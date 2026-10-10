@@ -180,6 +180,7 @@ impl<K: RecordKind> RecordsPage<K> {
     pub fn new(
         context: PageContext,
         year: Option<i32>,
+        width: Option<Pixels>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
@@ -236,6 +237,8 @@ impl<K: RecordKind> RecordsPage<K> {
             focus: cx.focus_handle(),
             _subscriptions: [filter_subscription, focus_subscription],
         };
+        // So the first frame doesn't lay the table out at a guessed width.
+        view.table_state.viewport_width = width;
         view.refresh(window, cx);
         view
     }
@@ -1045,6 +1048,7 @@ impl<K: RecordKind> RecordsPage<K> {
                 if let Some((totals, records, other_year)) = loaded {
                     this.apply(totals, records, other_year);
                 }
+                this.context.loaded(cx);
                 cx.notify();
             },
         ));
