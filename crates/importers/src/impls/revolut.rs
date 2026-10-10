@@ -6,6 +6,7 @@ use rust_decimal::Decimal;
 use pitpls_core::{
     common::{Amount, Country, Currency},
     dividend::Dividend,
+    time::start_of_day,
 };
 
 use crate::{ImportAmounts, ImportContext, ImportError, ImportField, ImporterKind, Result};
@@ -85,7 +86,9 @@ fn parse_other_income_table(lines: &[&str], start_idx: usize) -> Result<(Vec<Div
     while i < lines.len() {
         let line = lines[i].trim();
 
-        if line.is_empty() || is_table_header(line) {
+        // A row split across pages leaves its rate after the repeated header.
+        // The rate isn't used.
+        if line.is_empty() || is_table_header(line) || is_rate_line(line) {
             i += 1;
             continue;
         }
@@ -221,9 +224,19 @@ fn parse_table_row(lines: &[&str]) -> Result<Option<ParsedRow>> {
         ));
     }
 
+    let time = start_of_day(date).ok_or_else(|| {
+        ImportError::invalid_field(
+            ImportField::Line,
+            row.clone(),
+            ImportContext::RevolutRow {
+                ticker: Some(ticker.to_owned()),
+                date,
+            },
+        )
+    })?;
     let dividend = is_dividend.then(|| Dividend {
         id: uuid::Uuid::new_v4().to_string(),
-        date,
+        time,
         ticker: ticker.to_string(),
         value: Amount {
             value: amounts.gross,
@@ -470,6 +483,13 @@ fn is_table_header(line: &str) -> bool {
 
 fn is_total_line(line: &str) -> bool {
     line.split_whitespace().next() == Some("Total")
+}
+
+fn is_rate_line(line: &str) -> bool {
+    matches!(
+        line.split_whitespace().collect::<Vec<_>>().as_slice(),
+        ["Rate:", rate] if parse_decimal_token(rate).is_ok()
+    )
 }
 
 fn starts_with_date(line: &str) -> bool {

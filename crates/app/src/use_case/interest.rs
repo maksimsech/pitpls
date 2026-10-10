@@ -4,11 +4,12 @@ use pitpls_core::{
         CalculateInterestTaxError, CalculatedInterest, Interest, InterestTaxData, calculate,
     },
     rate::NbpRateProvider,
+    time::tax_date,
 };
 
 use super::rates_for;
 use super::validation::{
-    AmountField, Error as ValidationError, parse_amount, parse_date, validate_optional_year,
+    AmountField, Error as ValidationError, parse_amount, parse_time, validate_optional_year,
 };
 use crate::App;
 use pitpls_db::RepositoryError;
@@ -27,7 +28,7 @@ pub enum Error {
 
 pub struct CreateInterestInput {
     pub id: Option<String>,
-    pub date: String,
+    pub time: String,
     pub value: String,
     pub value_currency: Currency,
     pub provider: String,
@@ -35,7 +36,7 @@ pub struct CreateInterestInput {
 
 pub struct UpdateInterestInput {
     pub id: String,
-    pub date: String,
+    pub time: String,
     pub value: String,
     pub value_currency: Currency,
     pub provider: String,
@@ -43,17 +44,17 @@ pub struct UpdateInterestInput {
 
 fn build_interest(
     id: String,
-    date: &str,
+    time: &str,
     value: &str,
     value_currency: Currency,
     provider: String,
 ) -> Result<Interest, ValidationError> {
-    let date = parse_date(date)?;
+    let time = parse_time(time)?;
     let value_dec = parse_amount(value, AmountField::Value)?;
 
     Ok(Interest {
         id,
-        date,
+        time,
         value: Amount {
             value: value_dec,
             currency: value_currency,
@@ -70,7 +71,7 @@ pub async fn create_interest(app: &App, input: CreateInterestInput) -> Result<St
 
     let interest = build_interest(
         id.clone(),
-        &input.date,
+        &input.time,
         &input.value,
         input.value_currency,
         input.provider,
@@ -99,7 +100,7 @@ pub async fn update_interest(app: &App, input: UpdateInterestInput) -> Result<()
     let id = input.id.clone();
     let interest = build_interest(
         id.clone(),
-        &input.date,
+        &input.time,
         &input.value,
         input.value_currency,
         input.provider,
@@ -120,7 +121,7 @@ pub async fn load_interests(app: &App, year: Option<i32>) -> Result<InterestTaxD
     validate_optional_year(year)?;
     let mut interests = app.db.interest_repo().get_by_year(year).await?;
 
-    interests.sort_unstable_by_key(|a| a.date);
+    interests.sort_unstable_by_key(|a| a.time);
 
     let rates = app.db.rate_repo().load_all().await?;
     let rate_provider = NbpRateProvider::new(rates);
@@ -129,7 +130,7 @@ pub async fn load_interests(app: &App, year: Option<i32>) -> Result<InterestTaxD
 }
 
 pub async fn preview_interest(app: &App, interest: Interest) -> Result<CalculatedInterest, Error> {
-    let rate_provider = rates_for(app, interest.date).await?;
+    let rate_provider = rates_for(app, tax_date(interest.time)).await?;
 
     calculate(vec![interest], &rate_provider)?
         .calculated

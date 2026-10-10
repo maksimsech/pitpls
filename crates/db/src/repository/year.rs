@@ -24,6 +24,8 @@ impl YearRepository {
     /// Years from the record dates merged with the `years` table, newest
     /// first, with the number of records in each.
     pub async fn list_with_records(&self) -> Result<Vec<YearRecords>> {
+        // Poland is on UTC+1 at every New Year, so one hour added to the UTC
+        // time gives the Polish year.
         let rows = sqlx::query(
             r"
                 SELECT year,
@@ -32,14 +34,14 @@ impl YearRepository {
                        SUM(cryptos) AS cryptos,
                        MAX(custom) AS custom
                 FROM (
-                    SELECT CAST(strftime('%Y', date) AS INTEGER) AS year,
+                    SELECT CAST(strftime('%Y', time, '+1 hour') AS INTEGER) AS year,
                            COUNT(*) AS dividends, 0 AS interests, 0 AS cryptos, 0 AS custom
                     FROM dividends GROUP BY 1
                     UNION ALL
-                    SELECT CAST(strftime('%Y', date) AS INTEGER), 0, COUNT(*), 0, 0
+                    SELECT CAST(strftime('%Y', time, '+1 hour') AS INTEGER), 0, COUNT(*), 0, 0
                     FROM interests GROUP BY 1
                     UNION ALL
-                    SELECT CAST(strftime('%Y', date) AS INTEGER), 0, 0, COUNT(*), 0
+                    SELECT CAST(strftime('%Y', time, '+1 hour') AS INTEGER), 0, 0, COUNT(*), 0
                     FROM cryptos GROUP BY 1
                     UNION ALL
                     SELECT year, 0, 0, 0, 1 FROM years

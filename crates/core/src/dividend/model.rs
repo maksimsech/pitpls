@@ -1,11 +1,11 @@
-use chrono::NaiveDate;
+use chrono::{DateTime, NaiveDate, Utc};
 use rust_decimal::Decimal;
 
 use crate::common::{Amount, Country};
 
 pub struct Dividend {
     pub id: String,
-    pub date: NaiveDate,
+    pub time: DateTime<Utc>,
     pub ticker: String,
     pub value: Amount,
     pub tax_paid: Amount,
@@ -15,7 +15,7 @@ pub struct Dividend {
 
 pub struct CalculatedDividend {
     pub id: String,
-    pub date: NaiveDate,
+    pub time: DateTime<Utc>,
     pub nbp_date: NaiveDate,
     // The NBP rate of `nbp_date` for the value's currency (1 for PLN).
     pub nbp_rate: Decimal,
@@ -48,7 +48,7 @@ impl CalculatedDividend {
     ) -> Self {
         CalculatedDividend {
             id: dividend.id,
-            date: dividend.date,
+            time: dividend.time,
             nbp_date,
             nbp_rate,
             tax_paid_nbp_rate,

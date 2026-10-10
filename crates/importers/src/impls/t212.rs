@@ -1,6 +1,6 @@
 use std::str::FromStr;
 
-use chrono::NaiveDate;
+use chrono::{DateTime, NaiveDateTime, Utc};
 use rust_decimal::Decimal;
 
 use pitpls_core::{
@@ -143,7 +143,7 @@ fn parse_interest_row(fields: &[String], columns: &ColumnMap, row: &str) -> Resu
 
     Ok(Interest {
         id: row_id(fields, columns.common.id),
-        date: parse_date(timestamp)?,
+        time: parse_time(timestamp)?,
         value: parse_amount(total, total_currency)?,
         provider: PROVIDER.to_string(),
     })
@@ -169,7 +169,7 @@ fn parse_dividend_row(fields: &[String], columns: &ColumnMap, row: &str) -> Resu
         row,
     )?;
 
-    let date = parse_date(timestamp)?;
+    let time = parse_time(timestamp)?;
     let country =
         Country::from_isin(isin).map_err(|source| ImportError::invalid_isin(isin, source))?;
     let value_currency = parse_currency(price_currency)?;
@@ -180,7 +180,7 @@ fn parse_dividend_row(fields: &[String], columns: &ColumnMap, row: &str) -> Resu
             field: ImportField::WithholdingTax,
             context: ImportContext::T212Dividend {
                 ticker: ticker.to_owned(),
-                date,
+                time,
             },
             expected: value_currency,
             actual: tax_currency,
@@ -201,7 +201,7 @@ fn parse_dividend_row(fields: &[String], columns: &ColumnMap, row: &str) -> Resu
 
     Ok(Dividend {
         id: row_id(fields, columns.common.id),
-        date,
+        time,
         ticker: ticker.to_owned(),
         value,
         tax_paid,
@@ -235,8 +235,10 @@ fn row_id(fields: &[String], id: Option<usize>) -> String {
         .unwrap_or_else(|| uuid::Uuid::new_v4().to_string())
 }
 
-fn parse_date(timestamp: &str) -> Result<NaiveDate> {
-    NaiveDate::parse_from_str(timestamp.get(..10).unwrap_or(""), "%Y-%m-%d")
+// Trading 212 writes UTC times without a zone.
+fn parse_time(timestamp: &str) -> Result<DateTime<Utc>> {
+    NaiveDateTime::parse_from_str(timestamp, "%Y-%m-%d %H:%M:%S")
+        .map(|time| time.and_utc())
         .map_err(|source| ImportError::invalid_timestamp(timestamp, source))
 }
 
@@ -285,7 +287,7 @@ fn split_row(line: &str) -> Vec<String> {
 
 #[cfg(test)]
 mod tests {
-    use chrono::NaiveDate;
+    use chrono::TimeZone;
     use pitpls_core::common::Country;
 
     use super::*;
@@ -345,7 +347,10 @@ mod tests {
             * Decimal::from_str("0.204000").unwrap()
             + Decimal::from_str("1.25").unwrap();
 
-        assert_eq!(dividend.date, NaiveDate::from_ymd_opt(2026, 1, 15).unwrap());
+        assert_eq!(
+            dividend.time,
+            Utc.with_ymd_and_hms(2026, 1, 15, 14, 17, 43).unwrap()
+        );
         assert_eq!(dividend.ticker, "st1");
         assert_eq!(dividend.value.value, expected_value);
         assert_eq!(dividend.value.currency.as_str(), "USD");
@@ -357,7 +362,10 @@ mod tests {
 
     fn assert_first_interest(interest: &Interest) {
         assert_eq!(interest.id, "interest-1");
-        assert_eq!(interest.date, NaiveDate::from_ymd_opt(2026, 1, 1).unwrap());
+        assert_eq!(
+            interest.time,
+            Utc.with_ymd_and_hms(2026, 1, 1, 2, 5, 40).unwrap()
+        );
         assert_eq!(interest.value.value, Decimal::from_str("0.02").unwrap());
         assert_eq!(interest.value.currency.as_str(), "EUR");
         assert_eq!(interest.provider, PROVIDER);

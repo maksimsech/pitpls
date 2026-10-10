@@ -306,6 +306,7 @@ impl<K: RecordKind> RecordsPage<K> {
                             value,
                             kind,
                             width,
+                            layout.compact,
                             cx,
                         )
                     }),
@@ -435,6 +436,7 @@ impl<K: RecordKind> RecordsPage<K> {
         );
         row.child(details(
             &id,
+            K::time(&self.records[index]),
             &self.table_state.rows[index].steps,
             layout,
             [edit.into_any_element(), delete.into_any_element()],

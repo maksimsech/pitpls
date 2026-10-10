@@ -9,6 +9,7 @@ use crate::{
     DecimalExt,
     rate::{NbpRateProvider, RateConverterError},
     tax::POLAND_TAX,
+    time::tax_date,
 };
 
 #[derive(Debug, Error)]
@@ -27,7 +28,7 @@ pub fn calculate(
 
     for interest in interests {
         let conversion = rate_provider
-            .convert(&interest.value, &interest.date)
+            .convert(&interest.value, &tax_date(interest.time))
             .map_err(CalculateInterestTaxError::InterestConversion)?;
         let interest_pln = conversion.pln;
         let to_pay = interest_pln * POLAND_TAX;

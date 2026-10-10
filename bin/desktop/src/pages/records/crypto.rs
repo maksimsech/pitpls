@@ -1,4 +1,4 @@
-use super::{RecordForm, RecordKind, Submission, conversion, day};
+use super::{RecordForm, RecordKind, Submission, conversion, date_label, day};
 use crate::{
     components::{
         form::{self, Choice, ChoiceState},
@@ -8,7 +8,7 @@ use crate::{
     navigation::Page,
     services::Error as ServiceError,
 };
-use chrono::NaiveDate;
+use chrono::{DateTime, Utc};
 use gpui_kit::{
     component::{date_picker::DatePickerState, input::InputState},
     *,
@@ -40,13 +40,13 @@ impl RecordKind for Crypto {
         &record.id
     }
 
-    fn date(record: &CalculatedCrypto) -> NaiveDate {
-        record.date
+    fn time(record: &CalculatedCrypto) -> DateTime<Utc> {
+        record.time
     }
 
     fn columns() -> Vec<RecordColumn> {
         vec![
-            RecordColumn::new("Date", CellStyle::Muted, 60., 50.),
+            RecordColumn::new("Date", CellStyle::Time, 100., 50.),
             RecordColumn::new("Action", CellStyle::Tag, 64., 56.),
             RecordColumn::grow("Provider", CellStyle::Muted),
             RecordColumn::new("Value", CellStyle::Number, 150., 120.),
@@ -59,7 +59,7 @@ impl RecordKind for Crypto {
     fn display(record: &CalculatedCrypto) -> RowDisplay {
         let action = action_title(record.action);
         let cells = vec![
-            day(record.date),
+            day(record.time),
             DisplayText::plain(action),
             DisplayText::plain(record.provider.clone()),
             amount(record.value),
@@ -124,7 +124,7 @@ impl RecordKind for Crypto {
             cells,
             steps,
             search: format!("{}\n{action}", record.provider).to_lowercase(),
-            label: format!("{action} {}", date(record.date).main).into(),
+            label: format!("{action} {}", date_label(record.time)).into(),
         }
     }
 
@@ -205,7 +205,7 @@ impl RecordKind for Crypto {
                 currency: fee_currency,
             },
             action: draft.action,
-            date: draft.date,
+            time: draft.time,
             provider: String::new(),
         };
         crypto::preview_crypto(&app, record)
@@ -244,7 +244,7 @@ fn added(value: Decimal) -> DisplayText {
 
 #[derive(Clone, PartialEq)]
 pub struct CryptoDraft {
-    date: NaiveDate,
+    time: DateTime<Utc>,
     action: Action,
     value: (Decimal, Currency),
     fee: (Decimal, Currency),
@@ -281,11 +281,7 @@ impl RecordForm for CryptoForm {
         Self {
             existing_id: record.map(|record| record.id.clone()),
             id: form::optional_id(text(|record| record.id.clone()), window, cx),
-            date: form::date_picker(
-                record.map_or_else(|| chrono::Local::now().date_naive(), |record| record.date),
-                window,
-                cx,
-            ),
+            date: form::date_picker(record.map(|record| record.time), window, cx),
             action: form::select(
                 [Action::FiatBuy, Action::FiatSell]
                     .into_iter()
@@ -336,7 +332,7 @@ impl RecordForm for CryptoForm {
     }
 
     fn submission(&self, cx: &App) -> Result<CryptoSubmission, String> {
-        let date = form::selected_date(&self.date, "Date", cx)?;
+        let time = form::selected_time(&self.date, "Date", cx)?;
         let action = form::selected(&self.action, "Action", cx)?;
         let value = form::amount(&self.value, "Value", cx)?;
         let value_currency = form::selected(&self.value_currency, "Value currency", cx)?;
@@ -344,7 +340,7 @@ impl RecordForm for CryptoForm {
         let fee_currency = form::selected(&self.fee_currency, "Fee currency", cx)?;
         let provider = form::required(&self.provider, "Provider", cx)?;
         let fields = CryptoFields {
-            date,
+            time,
             action,
             value,
             value_currency,
@@ -363,7 +359,7 @@ impl RecordForm for CryptoForm {
 
     fn draft(&self, cx: &App) -> Option<CryptoDraft> {
         Some(CryptoDraft {
-            date: form::picked_date(&self.date, cx)?,
+            time: form::picked_time(&self.date, cx)?,
             action: self.action.read(cx).selected_value().copied()?,
             value: form::parsed_amount(&self.value, &self.value_currency, cx)?,
             fee: form::parsed_amount(&self.fee, &self.fee_currency, cx)?,

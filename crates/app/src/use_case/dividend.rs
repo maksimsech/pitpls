@@ -4,11 +4,12 @@ use pitpls_core::{
         CalculateDividendTaxError, CalculatedDividend, Dividend, DividendTaxData, calculate,
     },
     rate::NbpRateProvider,
+    time::tax_date,
 };
 
 use super::rates_for;
 use super::validation::{
-    AmountField, Error as ValidationError, parse_amount, parse_date, validate_optional_year,
+    AmountField, Error as ValidationError, parse_amount, parse_time, validate_optional_year,
 };
 use crate::App;
 use pitpls_db::RepositoryError;
@@ -26,7 +27,7 @@ pub enum Error {
 }
 
 pub struct DividendFields {
-    pub date: String,
+    pub time: String,
     pub ticker: String,
     pub value: String,
     pub value_currency: Currency,
@@ -47,13 +48,13 @@ pub struct UpdateDividendInput {
 }
 
 fn build_dividend(id: String, fields: DividendFields) -> Result<Dividend, ValidationError> {
-    let date = parse_date(&fields.date)?;
+    let time = parse_time(&fields.time)?;
     let value_dec = parse_amount(&fields.value, AmountField::Value)?;
     let tax_paid_dec = parse_amount(&fields.tax_paid, AmountField::TaxPaid)?;
 
     Ok(Dividend {
         id,
-        date,
+        time,
         ticker: fields.ticker,
         value: Amount {
             value: value_dec,
@@ -114,7 +115,7 @@ pub async fn load_dividends(app: &App, year: Option<i32>) -> Result<DividendTaxD
     validate_optional_year(year)?;
     let mut dividends = app.db.dividend_repo().get_by_year(year).await?;
 
-    dividends.sort_unstable_by_key(|a| a.date);
+    dividends.sort_unstable_by_key(|a| a.time);
 
     let rates = app.db.rate_repo().load_all().await?;
     let rate_provider = NbpRateProvider::new(rates);
@@ -124,7 +125,7 @@ pub async fn load_dividends(app: &App, year: Option<i32>) -> Result<DividendTaxD
 }
 
 pub async fn preview_dividend(app: &App, dividend: Dividend) -> Result<CalculatedDividend, Error> {
-    let rate_provider = rates_for(app, dividend.date).await?;
+    let rate_provider = rates_for(app, tax_date(dividend.time)).await?;
     let dividend_rounding = app.db.settings_repo().load_dividend_rounding().await?;
 
     calculate(vec![dividend], &rate_provider, dividend_rounding)?

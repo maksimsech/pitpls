@@ -1,7 +1,11 @@
 use std::str::FromStr;
 
-use chrono::{Datelike, NaiveDate};
-use pitpls_core::{common::Amount, interest::Interest};
+use chrono::{DateTime, Datelike, Utc};
+use pitpls_core::{
+    common::Amount,
+    interest::Interest,
+    time::{tax_date, year_range},
+};
 use rust_decimal::Decimal;
 use sqlx::{Row, SqlitePool};
 
@@ -38,12 +42,12 @@ impl InterestRepository {
 
         sqlx::query(
             r"
-                INSERT INTO interests(id, date, value, value_currency, provider)
+                INSERT INTO interests(id, time, value, value_currency, provider)
                 VALUES (?, ?, ?, ?, ?)
             ",
         )
         .bind(interest.id.to_string())
-        .bind(interest.date)
+        .bind(interest.time)
         .bind(interest.value.value.to_string())
         .bind(serde_plain::to_string(&interest.value.currency)?)
         .bind(interest.provider.to_string())
@@ -51,7 +55,7 @@ impl InterestRepository {
         .await?;
 
         sqlx::query("INSERT OR IGNORE INTO years(year) VALUES (?)")
-            .bind(interest.date.year())
+            .bind(tax_date(interest.time).year())
             .execute(&mut *tx)
             .await?;
 
@@ -66,10 +70,10 @@ impl InterestRepository {
         for interest in interests {
             let result = sqlx::query(
                 r"
-                    INSERT INTO interests(id, date, value, value_currency, provider)
+                    INSERT INTO interests(id, time, value, value_currency, provider)
                     VALUES (?, ?, ?, ?, ?)
                     ON CONFLICT(id) DO UPDATE SET
-                        date = excluded.date,
+                        time = excluded.time,
                         value = excluded.value,
                         value_currency = excluded.value_currency,
                         provider = excluded.provider
@@ -77,7 +81,7 @@ impl InterestRepository {
                 ",
             )
             .bind(interest.id.to_string())
-            .bind(interest.date)
+            .bind(interest.time)
             .bind(interest.value.value.to_string())
             .bind(serde_plain::to_string(&interest.value.currency)?)
             .bind(interest.provider.to_string())
@@ -89,7 +93,7 @@ impl InterestRepository {
 
             if affected > 0 {
                 sqlx::query("INSERT OR IGNORE INTO years(year) VALUES (?)")
-                    .bind(interest.date.year())
+                    .bind(tax_date(interest.time).year())
                     .execute(&mut *tx)
                     .await?;
             }
@@ -105,11 +109,11 @@ impl InterestRepository {
         let result = sqlx::query(
             r"
                 UPDATE interests
-                SET date = ?, value = ?, value_currency = ?, provider = ?
+                SET time = ?, value = ?, value_currency = ?, provider = ?
                 WHERE id = ?
             ",
         )
-        .bind(i.date)
+        .bind(i.time)
         .bind(i.value.value.to_string())
         .bind(serde_plain::to_string(&i.value.currency)?)
         .bind(i.provider.to_string())
@@ -118,7 +122,7 @@ impl InterestRepository {
         .await?;
 
         sqlx::query("INSERT OR IGNORE INTO years(year) VALUES (?)")
-            .bind(i.date.year())
+            .bind(tax_date(i.time).year())
             .execute(&mut *tx)
             .await?;
 
@@ -127,15 +131,12 @@ impl InterestRepository {
     }
 
     pub async fn get_by_year(&self, year: Option<i32>) -> Result<Vec<Interest>> {
-        const BASE: &str = "SELECT id, date, value, value_currency, provider FROM interests";
+        const BASE: &str = "SELECT id, time, value, value_currency, provider FROM interests";
         let rows = match year {
             None => sqlx::query(BASE).fetch_all(&self.db).await?,
             Some(y) => {
-                let start =
-                    NaiveDate::from_ymd_opt(y, 1, 1).ok_or(RepositoryError::InvalidYear(y))?;
-                let end =
-                    NaiveDate::from_ymd_opt(y, 12, 31).ok_or(RepositoryError::InvalidYear(y))?;
-                sqlx::query(&format!("{BASE} WHERE date BETWEEN ? AND ?"))
+                let (start, end) = year_range(y).ok_or(RepositoryError::InvalidYear(y))?;
+                sqlx::query(&format!("{BASE} WHERE time >= ? AND time < ?"))
                     .bind(start)
                     .bind(end)
                     .fetch_all(&self.db)
@@ -146,14 +147,14 @@ impl InterestRepository {
         rows.into_iter()
             .map(|row| {
                 let id: String = row.try_get("id")?;
-                let date: NaiveDate = row.try_get("date")?;
+                let time: DateTime<Utc> = row.try_get("time")?;
                 let value: String = row.try_get("value")?;
                 let value_currency: String = row.try_get("value_currency")?;
                 let provider: String = row.try_get("provider")?;
 
                 Ok(Interest {
                     id,
-                    date,
+                    time,
                     value: Amount {
                         value: Decimal::from_str(&value)?,
                         currency: serde_plain::from_str(&value_currency)?,

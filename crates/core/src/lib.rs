@@ -7,5 +7,6 @@ pub mod rounding;
 pub mod settings;
 pub mod summary;
 pub mod tax;
+pub mod time;
 
 pub use rounding::DecimalExt;

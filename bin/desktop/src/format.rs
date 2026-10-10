@@ -5,6 +5,7 @@ use rust_decimal::Decimal;
 use std::fmt::Display;
 
 pub const DATE_FORMAT: &str = "%d.%m.%Y";
+pub const DATE_TIME_FORMAT: &str = "%d.%m.%Y %H:%M:%S";
 
 /// A narrow no-break space.
 pub const THOUSANDS: char = '\u{202f}';

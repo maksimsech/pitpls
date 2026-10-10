@@ -1,7 +1,11 @@
 use std::str::FromStr;
 
-use chrono::{Datelike, NaiveDate};
-use pitpls_core::{common::Amount, dividend::Dividend};
+use chrono::{DateTime, Datelike, Utc};
+use pitpls_core::{
+    common::Amount,
+    dividend::Dividend,
+    time::{tax_date, year_range},
+};
 use rust_decimal::Decimal;
 use sqlx::{Row, SqlitePool};
 
@@ -38,12 +42,12 @@ impl DividendRepository {
 
         sqlx::query(
             r"
-                INSERT INTO dividends(id, date, ticker, value, value_currency, tax_paid, tax_paid_currency, country, provider)
+                INSERT INTO dividends(id, time, ticker, value, value_currency, tax_paid, tax_paid_currency, country, provider)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             ",
         )
         .bind(dividend.id.to_string())
-        .bind(dividend.date)
+        .bind(dividend.time)
         .bind(dividend.ticker.to_string())
         .bind(dividend.value.value.to_string())
         .bind(serde_plain::to_string(&dividend.value.currency)?)
@@ -55,7 +59,7 @@ impl DividendRepository {
         .await?;
 
         sqlx::query("INSERT OR IGNORE INTO years(year) VALUES (?)")
-            .bind(dividend.date.year())
+            .bind(tax_date(dividend.time).year())
             .execute(&mut *tx)
             .await?;
 
@@ -70,10 +74,10 @@ impl DividendRepository {
         for dividend in dividends {
             let result = sqlx::query(
                 r"
-                    INSERT INTO dividends(id, date, ticker, value, value_currency, tax_paid, tax_paid_currency, country, provider)
+                    INSERT INTO dividends(id, time, ticker, value, value_currency, tax_paid, tax_paid_currency, country, provider)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT(id) DO UPDATE SET
-                        date = excluded.date,
+                        time = excluded.time,
                         ticker = excluded.ticker,
                         value = excluded.value,
                         value_currency = excluded.value_currency,
@@ -85,7 +89,7 @@ impl DividendRepository {
                 ",
             )
             .bind(dividend.id.to_string())
-            .bind(dividend.date)
+            .bind(dividend.time)
             .bind(dividend.ticker.to_string())
             .bind(dividend.value.value.to_string())
             .bind(serde_plain::to_string(&dividend.value.currency)?)
@@ -101,7 +105,7 @@ impl DividendRepository {
 
             if affected > 0 {
                 sqlx::query("INSERT OR IGNORE INTO years(year) VALUES (?)")
-                    .bind(dividend.date.year())
+                    .bind(tax_date(dividend.time).year())
                     .execute(&mut *tx)
                     .await?;
             }
@@ -117,11 +121,11 @@ impl DividendRepository {
         let result = sqlx::query(
             r"
                 UPDATE dividends
-                SET date = ?, ticker = ?, value = ?, value_currency = ?, tax_paid = ?, tax_paid_currency = ?, country = ?, provider = ?
+                SET time = ?, ticker = ?, value = ?, value_currency = ?, tax_paid = ?, tax_paid_currency = ?, country = ?, provider = ?
                 WHERE id = ?
             ",
         )
-        .bind(d.date)
+        .bind(d.time)
         .bind(d.ticker.to_string())
         .bind(d.value.value.to_string())
         .bind(serde_plain::to_string(&d.value.currency)?)
@@ -134,7 +138,7 @@ impl DividendRepository {
         .await?;
 
         sqlx::query("INSERT OR IGNORE INTO years(year) VALUES (?)")
-            .bind(d.date.year())
+            .bind(tax_date(d.time).year())
             .execute(&mut *tx)
             .await?;
 
@@ -143,15 +147,12 @@ impl DividendRepository {
     }
 
     pub async fn get_by_year(&self, year: Option<i32>) -> Result<Vec<Dividend>> {
-        const BASE: &str = "SELECT id, date, ticker, value, value_currency, tax_paid, tax_paid_currency, country, provider FROM dividends";
+        const BASE: &str = "SELECT id, time, ticker, value, value_currency, tax_paid, tax_paid_currency, country, provider FROM dividends";
         let rows = match year {
             None => sqlx::query(BASE).fetch_all(&self.db).await?,
             Some(y) => {
-                let start =
-                    NaiveDate::from_ymd_opt(y, 1, 1).ok_or(RepositoryError::InvalidYear(y))?;
-                let end =
-                    NaiveDate::from_ymd_opt(y, 12, 31).ok_or(RepositoryError::InvalidYear(y))?;
-                sqlx::query(&format!("{BASE} WHERE date BETWEEN ? AND ?"))
+                let (start, end) = year_range(y).ok_or(RepositoryError::InvalidYear(y))?;
+                sqlx::query(&format!("{BASE} WHERE time >= ? AND time < ?"))
                     .bind(start)
                     .bind(end)
                     .fetch_all(&self.db)
@@ -162,7 +163,7 @@ impl DividendRepository {
         rows.into_iter()
             .map(|row| {
                 let id: String = row.try_get("id")?;
-                let date: NaiveDate = row.try_get("date")?;
+                let time: DateTime<Utc> = row.try_get("time")?;
                 let ticker: String = row.try_get("ticker")?;
                 let value: String = row.try_get("value")?;
                 let value_currency: String = row.try_get("value_currency")?;
@@ -173,7 +174,7 @@ impl DividendRepository {
 
                 Ok(Dividend {
                     id,
-                    date,
+                    time,
                     ticker,
                     value: Amount {
                         value: Decimal::from_str(&value)?,

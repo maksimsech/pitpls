@@ -1,4 +1,4 @@
-use chrono::NaiveDate;
+use chrono::{DateTime, NaiveDate, Utc};
 use pitpls_core::common::{Country, CountryParseError, Currency, CurrencyParseError};
 use rust_decimal::Decimal;
 use thiserror::Error;
@@ -32,7 +32,7 @@ pub enum ImportContext {
     RevolutTotal,
     T212Dividend {
         ticker: String,
-        date: NaiveDate,
+        time: DateTime<Utc>,
     },
 }
 

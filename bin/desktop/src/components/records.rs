@@ -1,14 +1,15 @@
 use super::{copy::CopyButton, value};
 use crate::{
-    format::{DisplayText, date},
+    format::{DATE_TIME_FORMAT, DisplayText, date},
     theme::{palette, tabular_digits},
 };
-use chrono::NaiveDate;
+use chrono::{DateTime, NaiveDate, Utc};
 use gpui_kit::{
     component::{ActiveTheme, StyledExt, VirtualListScrollHandle, h_flex, tag::Tag, v_flex},
     prelude::FluentBuilder,
     *,
 };
+use pitpls_core::time;
 use std::rc::Rc;
 
 const PADDING: f32 = 12.;
@@ -26,6 +27,8 @@ pub const END_SPACE: Pixels = px(72.);
 #[derive(Clone, Copy, PartialEq)]
 pub enum CellStyle {
     Muted,
+    /// `extra` holds the time of day, left out when compact.
+    Time,
     Strong,
     Tag,
     Number,
@@ -195,6 +198,7 @@ pub fn cell(
     value: &DisplayText,
     column: &RecordColumn,
     width: Pixels,
+    compact: bool,
     cx: &App,
 ) -> AnyElement {
     let p = *palette(cx);
@@ -204,6 +208,22 @@ pub fn cell(
             .text_color(p.muted)
             .font_features(tabular_digits())
             .child(value.main.clone())
+            .into_any_element(),
+        CellStyle::Time => frame
+            .flex()
+            .items_baseline()
+            .gap(px(7.))
+            .text_color(p.muted)
+            .font_features(tabular_digits())
+            .child(value.main.clone())
+            .when(!compact && !value.extra.is_empty(), |cell| {
+                cell.child(
+                    div()
+                        .text_size(px(12.))
+                        .text_color(p.faint)
+                        .child(value.extra.clone()),
+                )
+            })
             .into_any_element(),
         CellStyle::Strong => frame
             .font_semibold()
@@ -464,6 +484,7 @@ fn preview_value(
 
 pub fn details(
     record_id: &str,
+    time: DateTime<Utc>,
     steps: &[Step],
     layout: &TableLayout,
     actions: impl IntoIterator<Item = AnyElement>,
@@ -523,9 +544,36 @@ pub fn details(
                     SharedString::from(format!("copy-id-{record_id}")),
                     record_id.to_owned(),
                 ))
+                .child(record_time(time, layout.stacked, cx))
                 .child(div().flex_1())
                 .children(actions),
         )
+}
+
+fn record_time(value: DateTime<Utc>, short: bool, cx: &App) -> Div {
+    let local = time::local(value);
+    let utc = value.naive_utc();
+    let utc_format = if utc.date() == local.date() {
+        "%H:%M:%S"
+    } else {
+        DATE_TIME_FORMAT
+    };
+    h_flex()
+        .flex_shrink_0()
+        .ml(px(14.))
+        .gap(px(6.))
+        .font_features(tabular_digits())
+        .child("Time")
+        .child(
+            div()
+                .text_color(palette(cx).muted)
+                .child(local.format(DATE_TIME_FORMAT).to_string()),
+        )
+        .child(if short {
+            "Warsaw".to_owned()
+        } else {
+            format!("Warsaw · {} UTC", utc.format(utc_format))
+        })
 }
 
 pub fn record_skeleton(

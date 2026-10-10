@@ -11,7 +11,7 @@ publish = false
 name = "pitpls"
 path = "src/main.rs"
 
-# Read by `cargo bundle`, which builds the macOS .app (`just r`).
+# Read by `cargo bundle`, which builds the macOS .app (`just rm`).
 [package.metadata.bundle]
 name = "pitpls"
 identifier = "com.mngapp.pitpls"
