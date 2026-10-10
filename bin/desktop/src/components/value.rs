@@ -18,6 +18,8 @@ use std::{ops::Range, sync::Arc};
 /// As wide as a tabular digit; fills the unused part of the decimals slot.
 const FIGURE_SPACE: char = '\u{2007}';
 const MORE: &str = "…";
+/// Keeps a total in the same place on every page; fits five-digit PLN values.
+const STAT_WIDTH: Pixels = px(140.);
 
 enum Shade {
     Faint,
@@ -209,8 +211,8 @@ fn copy_button(id: &ElementId, value: &DisplayText) -> CopyButton {
     )
 }
 
-/// Totals sit side by side without a fixed column, so the copy button shows
-/// only a check, which doesn't move the next total.
+/// A wide total outgrows its column, so the copy button shows only a check,
+/// which doesn't move the next total.
 pub fn stat(
     id: impl Into<ElementId>,
     label: impl Into<SharedString>,
@@ -219,6 +221,7 @@ pub fn stat(
 ) -> Div {
     let id = id.into();
     v_flex()
+        .min_w(STAT_WIDTH)
         .gap(px(2.))
         .child(
             div()
@@ -283,6 +286,7 @@ fn card_row_frame(cx: &App) -> Div {
 
 pub fn stat_skeleton(label: &'static str, visible: bool, cx: &App) -> Div {
     v_flex()
+        .min_w(STAT_WIDTH)
         .gap(px(2.))
         .child(
             div()

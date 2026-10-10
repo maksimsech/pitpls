@@ -1,3 +1,4 @@
+use crate::title_row::title_row;
 use gpui_kit::{
     component::{Theme, ThemeMode},
     *,
@@ -86,16 +87,17 @@ pub fn configure_theme(cx: &mut App) {
     } else {
         Palette::light()
     };
+    // Keep sheets below the traffic lights on macOS.
+    let sheet_top = if cfg!(target_os = "macos") {
+        title_row(cx).height
+    } else {
+        px(0.)
+    };
     Theme::update(cx, |theme| {
         theme.radius = px(10.);
         theme.radius_lg = px(12.);
         theme.font_size = px(14.);
-        // Keep sheets below the traffic lights on macOS.
-        theme.sheet.margin_top = if cfg!(target_os = "macos") {
-            crate::TITLE_ROW_HEIGHT
-        } else {
-            px(0.)
-        };
+        theme.sheet.margin_top = sheet_top;
         let dark = theme.is_dark();
         let c = &mut theme.colors;
         c.background = p.surface;

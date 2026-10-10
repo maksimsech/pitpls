@@ -7,12 +7,12 @@ mod navigation;
 mod pages;
 mod services;
 mod theme;
+mod title_row;
 
 use gpui_kit::*;
 use std::sync::Arc;
 
 const APP_NAME: &str = "pitpls";
-const TITLE_ROW_HEIGHT: Pixels = px(44.);
 
 actions!(desktop, [Quit]);
 #[cfg(target_os = "macos")]
@@ -77,11 +77,7 @@ fn run() -> Result<(), String> {
                     titlebar: Some(TitlebarOptions {
                         title: None,
                         appears_transparent: true,
-                        // Center the 14px traffic lights in the sidebar's top row.
-                        traffic_light_position: Some(point(
-                            px(16.),
-                            (TITLE_ROW_HEIGHT - px(14.)) / 2.,
-                        )),
+                        ..Default::default()
                     }),
                     #[cfg(target_os = "macos")]
                     app_owns_titlebar_drag: true,
@@ -94,6 +90,12 @@ fn run() -> Result<(), String> {
                 cx,
                 |window, cx| {
                     window.set_window_title(APP_NAME);
+                    #[cfg(target_os = "macos")]
+                    {
+                        title_row::measure(window, cx);
+                        // The sheet margin follows the measured row.
+                        theme::configure_theme(cx);
+                    }
                     cx.new(|cx| app::Desktop::new(Arc::new(config), runtime, window, cx))
                 },
             )

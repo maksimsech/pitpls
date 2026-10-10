@@ -811,23 +811,14 @@ impl<K: RecordKind> RecordsPage<K> {
     }
 
     fn totals(&self, compact: bool, cx: &App) -> Div {
-        h_flex()
-            .flex_shrink_0()
-            .flex_wrap()
-            .items_end()
-            .gap_x(px(if compact { 24. } else { 40. }))
-            .gap_y(px(8.))
-            .px(px(20.))
-            .pt(px(4.))
-            .pb(px(14.))
-            .children(self.totals.iter().map(|(label, value)| {
-                value::stat(
-                    SharedString::from(format!("total-{label}")),
-                    *label,
-                    value,
-                    cx,
-                )
-            }))
+        totals_row(compact).children(self.totals.iter().map(|(label, value)| {
+            value::stat(
+                SharedString::from(format!("total-{label}")),
+                *label,
+                value,
+                cx,
+            )
+        }))
     }
 
     fn loading(&self, cx: &App) -> Div {
@@ -841,17 +832,11 @@ impl<K: RecordKind> RecordsPage<K> {
             .flex_1()
             .min_h_0()
             .child(
-                h_flex()
-                    .flex_shrink_0()
-                    .gap_x(px(40.))
-                    .px(px(20.))
-                    .pt(px(4.))
-                    .pb(px(14.))
-                    .children(
-                        K::TOTAL_LABELS
-                            .iter()
-                            .map(|label| value::stat_skeleton(label, visible, cx)),
-                    ),
+                totals_row(layout.compact).children(
+                    K::TOTAL_LABELS
+                        .iter()
+                        .map(|label| value::stat_skeleton(label, visible, cx)),
+                ),
             )
             .child(record_skeleton(&self.columns, &layout, visible, cx))
     }
@@ -989,6 +974,18 @@ impl<K: RecordKind> RecordsPage<K> {
                     ),
             )
     }
+}
+
+fn totals_row(compact: bool) -> Div {
+    h_flex()
+        .flex_shrink_0()
+        .flex_wrap()
+        .items_end()
+        .gap_x(px(if compact { 24. } else { 40. }))
+        .gap_y(px(8.))
+        .px(px(20.))
+        .pt(px(4.))
+        .pb(px(14.))
 }
 
 fn month_title((year, month): (i32, u32), with_year: bool) -> SharedString {

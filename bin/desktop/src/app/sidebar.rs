@@ -2,6 +2,7 @@ use super::*;
 use crate::{
     components::{BUTTON_TEXT, header},
     theme::{palette, tabular_digits},
+    title_row::title_row,
 };
 use gpui_kit::{
     assets::IconName,
@@ -67,15 +68,9 @@ impl Expansion {
     }
 }
 
+/// Clears the traffic lights, which macOS 27 draws up to x = 69.
 pub fn width(expansion: Expansion) -> Pixels {
-    expansion.size(84., 220.)
-}
-
-/// The rail's content is 60px wide as in the mockup, but macOS draws the
-/// traffic lights about 60px wide from x = 16, so the rail pads 12px a side
-/// (84px) to keep 8px between them and the panel.
-fn padding(expansion: Expansion) -> Pixels {
-    expansion.size(12., 8.)
+    expansion.size(76., 220.)
 }
 
 impl Desktop {
@@ -86,7 +81,8 @@ impl Desktop {
         cx: &mut Context<Self>,
     ) -> Div {
         let collapsed = self.preferences.sidebar_collapsed;
-        let body_top = expansion.size(84., 52.);
+        let row = title_row(cx).height / px(1.);
+        let body_top = expansion.size(row + 40., row + 8.);
         let toggle_label = if collapsed {
             "Expand sidebar"
         } else {
@@ -114,7 +110,7 @@ impl Desktop {
                     .absolute()
                     .inset_0()
                     .pt(body_top)
-                    .px(padding(expansion))
+                    .px(px(8.))
                     .pb(px(10.))
                     .child(self.year_switcher(expansion, cx))
                     .child(self.pages(expansion, cx))
@@ -123,8 +119,8 @@ impl Desktop {
             .child(
                 header::no_drag()
                     .absolute()
-                    .left(expansion.size(28., 184.))
-                    .top(expansion.size(48., 8.))
+                    .left(expansion.size(24., 184.))
+                    .top(expansion.size(row + 4., (row - 28.) / 2.))
                     .child(
                         header::icon_button("sidebar-toggle", IconName::PanelLeft, toggle_label)
                             .text_color(palette(cx).muted)
@@ -420,11 +416,11 @@ impl Desktop {
     }
 }
 
-/// macOS draws the traffic lights about 60pt wide from x = 16, and none in full
-/// screen.
+/// macOS draws no traffic lights in full screen.
 fn wordmark(expansion: Expansion, window: &Window, cx: &App) -> Svg {
+    let row = title_row(cx);
     let left = if cfg!(target_os = "macos") && !window.is_fullscreen() {
-        px(92.)
+        row.lights_end + px(16.)
     } else {
         px(16.)
     };
@@ -432,7 +428,7 @@ fn wordmark(expansion: Expansion, window: &Window, cx: &App) -> Svg {
         .data(WORDMARK)
         .absolute()
         .left(left)
-        .top((crate::TITLE_ROW_HEIGHT - WORDMARK_HEIGHT) / 2.)
+        .top((row.height - WORDMARK_HEIGHT) / 2.)
         .w(WORDMARK_WIDTH)
         .h(WORDMARK_HEIGHT)
         .text_color(palette(cx).muted)
