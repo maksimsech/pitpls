@@ -1,9 +1,7 @@
-use std::collections::HashMap;
-
 use chrono::{DateTime, NaiveDate, Utc};
 use rust_decimal::Decimal;
 
-use crate::common::{Amount, Mic};
+use crate::common::{Amount, Country, Mic};
 
 #[derive(Clone)]
 pub struct Stock {
@@ -54,26 +52,124 @@ pub struct Instrument {
     pub isin: Option<String>,
 }
 
-pub struct StockTaxData {
-    pub stocks: Vec<CalculatedStock>,
-}
-
-pub struct CalculatedStock {
+pub struct InstrumentExchange {
     pub ticker: String,
     pub provider: String,
-    pub stats: YearStats,
-    pub history_by_year: HashMap<i32, YearStats>,
+    pub mic: Mic,
+    pub country: Country,
 }
 
-#[derive(Default)]
-pub struct YearStats {
-    pub bought: Decimal,
-    pub sold: Decimal,
-    pub tax: Decimal,
+pub struct Replay {
+    pub sales: Vec<CalculatedSale>,
+    pub open_lots: Vec<OpenLot>,
+    pub holdings: Vec<Holding>,
+}
+
+pub struct StockTaxData {
+    pub income: Decimal,
+    pub costs: Decimal,
+    pub tax_paid_abroad: Decimal,
+    pub sales: Vec<CalculatedSale>,
+    pub open_lots: Vec<OpenLot>,
+    pub countries: Vec<CountryTotal>,
     pub warnings: Vec<Warning>,
-    pub history: Vec<Stock>,
+}
+
+pub struct CalculatedSale {
+    pub id: String,
+    pub ticker: String,
+    pub provider: String,
+    pub time: DateTime<Utc>,
+    pub settlement_date: NaiveDate,
+    pub settlement_worked_out: bool,
+    pub shares: Decimal,
+    pub price: Amount,
+    pub nbp_date: NaiveDate,
+    pub nbp_rate: Decimal,
+    pub income: Decimal,
+    pub fee: Amount,
+    pub fee_pln: Decimal,
+    pub lots_cost: Decimal,
+    pub buy_fees: Decimal,
+    pub costs: Decimal,
+    pub profit: Decimal,
+    pub tax_paid: Option<Amount>,
+    pub tax_paid_pln: Decimal,
+    pub matches: Vec<LotMatch>,
+    pub uncovered: Decimal,
+    pub exchange: Option<Mic>,
+    pub country: Option<Country>,
+}
+
+pub struct LotMatch {
+    pub buy_id: String,
+    pub bought: DateTime<Utc>,
+    pub lot_shares: Decimal,
+    pub before: Decimal,
+    pub taken: Decimal,
+    pub after: Decimal,
+    pub price: Amount,
+    pub nbp_date: NaiveDate,
+    pub nbp_rate: Decimal,
+    pub cost: Decimal,
+    pub fee_part: Decimal,
+    pub splits: Vec<SplitStep>,
+}
+
+pub struct OpenLot {
+    pub buy_id: String,
+    pub ticker: String,
+    pub provider: String,
+    pub bought: DateTime<Utc>,
+    pub lot_shares: Decimal,
+    pub open: Decimal,
+    pub price: Amount,
+    pub nbp_date: NaiveDate,
+    pub nbp_rate: Decimal,
+    pub cost: Decimal,
+    pub fee_part: Decimal,
+    pub splits: Vec<SplitStep>,
+}
+
+#[derive(Clone)]
+pub struct SplitStep {
+    pub split_id: String,
+    pub time: DateTime<Utc>,
+    pub before: u32,
+    pub after: u32,
+    pub lot_shares_before: Decimal,
+    pub lot_shares_after: Decimal,
+}
+
+// Shares held by one provider after a record; a split gets one per provider of its ticker.
+pub struct Holding {
+    pub record_id: String,
+    pub provider: String,
+    pub shares: Decimal,
+    pub lots: usize,
+}
+
+pub struct CountryTotal {
+    pub country: Country,
+    pub exchanges: Vec<Mic>,
+    pub sales: usize,
+    pub profit: Decimal,
+    // PIT/ZG field 29, 0 for a loss.
+    pub income: Decimal,
+    // PIT/ZG field 30, without the D-34 limit.
+    pub tax_paid: Decimal,
+    pub limit: Decimal,
+    pub used: Decimal,
 }
 
 pub enum Warning {
-    SellWithoutBuy { sell_id: String },
+    SellWithoutBuy {
+        sell_id: String,
+        shares: Decimal,
+    },
+    MissingExchange {
+        ticker: String,
+        provider: String,
+        sales: usize,
+    },
 }

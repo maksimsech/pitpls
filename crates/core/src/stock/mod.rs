@@ -1,186 +1,164 @@
-use std::collections::{HashMap, HashSet, LinkedList};
+use std::collections::{BTreeMap, BTreeSet};
 
-use anyhow::Result;
 use chrono::Datelike;
 use rust_decimal::Decimal;
+use thiserror::Error;
 
 use crate::{
-    rate::NbpRateProvider,
-    stock::model::{CalculatedStock, StockTaxData, Warning, YearStats},
+    DecimalExt,
+    common::{Country, IsinCountryCode, Mic},
+    rate::{NbpRateProvider, RateConverterError},
+    tax::POLAND_TAX,
     time::tax_date,
 };
 
 mod model;
+mod replay;
 mod settlement;
+#[cfg(test)]
+mod tests;
 
-pub use model::{Instrument, Stock, StockAction, StockBuy, StockSell, StockSplit};
+pub use model::{
+    CalculatedSale, CountryTotal, Holding, Instrument, InstrumentExchange, LotMatch, OpenLot,
+    Replay, SplitStep, Stock, StockAction, StockBuy, StockSell, StockSplit, StockTaxData, Warning,
+};
+pub use replay::replay;
 pub use settlement::{Market, market, settlement_date};
 
-/*
- * For now just accept full stock data, later I could optimize it.
- * Method assumes that data as loaded for a >= year
- */
-pub fn calculate_sell_buy_values(
-    stocks: Vec<Stock>,
+#[derive(Debug, Error)]
+#[error("{self:?}")]
+pub enum CalculateStocksError {
+    PriceConversion(#[source] RateConverterError),
+    FeeConversion(#[source] RateConverterError),
+    TaxPaidConversion(#[source] RateConverterError),
+}
+
+pub fn calculate_stocks(
+    records: &[Stock],
+    exchanges: &[InstrumentExchange],
     year: i32,
-    rate_provider: &NbpRateProvider,
-) -> Result<StockTaxData> {
-    debug_assert!(stocks.iter().all(|s| tax_date(s.time).year() <= year));
+    rates: &NbpRateProvider,
+) -> Result<StockTaxData, CalculateStocksError> {
+    // Later records can't settle a sale in this year, and open lots are wanted on 31.12.
+    let records = records
+        .iter()
+        .filter(|record| tax_date(record.time).year() <= year);
+    let Replay {
+        sales, open_lots, ..
+    } = replay(records, exchanges, rates)?;
 
-    let this_year_sells = stocks.iter().filter(|s| tax_date(s.time).year() == year);
-    let mut this_year_sells_set = HashSet::new();
-    for sell in this_year_sells {
-        if let StockAction::Sell(ref sell_action) = sell.action {
-            this_year_sells_set.insert((sell.ticker.as_str(), sell_action.provider.as_str()));
-        }
-    }
+    let sales = sales
+        .into_iter()
+        .filter(|sale| sale.settlement_date.year() == year)
+        .collect::<Vec<_>>();
 
-    let mut calculated_stocks = Vec::with_capacity(this_year_sells_set.len());
-    for stock in this_year_sells_set {
-        let ticker = stock.0.to_owned();
-        let provider = stock.1.to_owned();
-        let calculated_stock = calculate_stock(ticker, provider, year, &stocks, rate_provider)?;
-
-        calculated_stocks.push(calculated_stock);
-    }
+    let income = sales
+        .iter()
+        .map(|sale| sale.income)
+        .sum::<Decimal>()
+        .round_groszy();
+    let costs = sales
+        .iter()
+        .map(|sale| sale.costs)
+        .sum::<Decimal>()
+        .round_groszy();
+    let countries = country_totals(&sales, income - costs);
+    let tax_paid_abroad = countries
+        .iter()
+        .map(|country| country.used)
+        .sum::<Decimal>()
+        .round_groszy();
+    let warnings = warnings(&sales);
 
     Ok(StockTaxData {
-        stocks: calculated_stocks,
+        income,
+        costs,
+        tax_paid_abroad,
+        sales,
+        open_lots,
+        countries,
+        warnings,
     })
 }
 
-fn calculate_stock(
-    ticker: String,
-    provider: String,
-    year: i32,
-    all_stocks: &[Stock],
-    rate_provider: &NbpRateProvider,
-) -> Result<CalculatedStock> {
-    let mut stock_history = all_stocks
-        .iter()
-        .filter(|s| {
-            let same_ticker = s.ticker == ticker;
-            if !same_ticker {
-                return false;
-            }
+// TODO: Revisit D-34 (docs/stocks/12-investigations.md). The per-country limit (art. 30b ust. 5a)
+// is an assumption: each country gets its share of the Polish tax, capped at the whole tax, but the
+// sum over countries isn't capped yet. Tax paid on a sale without an exchange stays out of D-34.
+fn country_totals(sales: &[CalculatedSale], total_profit: Decimal) -> Vec<CountryTotal> {
+    struct Sum {
+        country: Country,
+        exchanges: BTreeSet<Mic>,
+        sales: usize,
+        profit: Decimal,
+        tax_paid: Decimal,
+    }
 
-            match s.action {
-                StockAction::Split(_) => true,
-                StockAction::Buy(ref b) if b.provider == provider => true,
-                StockAction::Sell(ref b) if b.provider == provider => true,
-                _ => false,
+    let mut sums: BTreeMap<IsinCountryCode, Sum> = BTreeMap::new();
+    for sale in sales {
+        let (Some(country), Some(exchange)) = (sale.country, sale.exchange) else {
+            continue;
+        };
+        let sum = sums.entry(country.code()).or_insert_with(|| Sum {
+            country,
+            exchanges: BTreeSet::new(),
+            sales: 0,
+            profit: Decimal::ZERO,
+            tax_paid: Decimal::ZERO,
+        });
+        sum.exchanges.insert(exchange);
+        sum.sales += 1;
+        sum.profit += sale.profit;
+        sum.tax_paid += sale.tax_paid_pln;
+    }
+
+    let polish_tax = if total_profit > Decimal::ZERO {
+        POLAND_TAX * total_profit.round_zloty()
+    } else {
+        Decimal::ZERO
+    };
+
+    sums.into_values()
+        .map(|sum| {
+            let limit = if sum.profit > Decimal::ZERO && total_profit > Decimal::ZERO {
+                polish_tax * sum.profit.min(total_profit) / total_profit
+            } else {
+                Decimal::ZERO
+            };
+            CountryTotal {
+                country: sum.country,
+                exchanges: sum.exchanges.into_iter().collect(),
+                sales: sum.sales,
+                profit: sum.profit,
+                income: sum.profit.max(Decimal::ZERO).round_groszy(),
+                tax_paid: sum.tax_paid.round_groszy(),
+                limit,
+                used: sum.tax_paid.min(limit),
             }
+        })
+        .collect()
+}
+
+fn warnings(sales: &[CalculatedSale]) -> Vec<Warning> {
+    let mut warnings = sales
+        .iter()
+        .filter(|sale| sale.uncovered > Decimal::ZERO)
+        .map(|sale| Warning::SellWithoutBuy {
+            sell_id: sale.id.clone(),
+            shares: sale.uncovered,
         })
         .collect::<Vec<_>>();
 
-    stock_history.sort_unstable_by_key(|s| s.time);
-
-    /*
-     * TODO: What I need to do there:
-     * Replay all the events from start. With calculating information on how much I sold. How much I have to pay.
-     * Year by year. I might have a cases when stock was sold but, where were not enough bought amount,
-     * this should not be an error, but a warning with detailed information on how it happen.
-     *
-     * For a specific year I have effectively two fazes:
-     * 1. Everything before current year: I need to replay it to get *current situation*: what I have and cost basis for this.
-     * 2. Current year: aside for replaying as usual I need to calculate taxes: all sells are as a side effect produce tax information.
-     *
-     * Generally speaking both steps are the same: only difference that I only care about taxes for specific year.
-     * As I simplification I can write method to always calculate taxes, and later optimize, or leave as is, bcs maybe this information will be usable.
-     */
-
-    let mut current_buys = LinkedList::new();
-    let mut statistics_by_year: HashMap<i32, YearStats> = HashMap::new();
-
-    for stock in stock_history {
-        let date = tax_date(stock.time);
-        let year = date.year();
-        let year_statistics = statistics_by_year.entry(year).or_default();
-        match stock.action {
-            StockAction::Buy(ref b) => {
-                // TODO: Check how to implement this without clone
-                current_buys.push_front((date, b.clone()));
-                year_statistics.bought += b.number;
-            }
-            StockAction::Split(ref s) => {
-                let ratio = Decimal::from(s.after) / Decimal::from(s.before);
-                for buy in current_buys.iter_mut() {
-                    buy.1.number *= ratio;
-                }
-                year_statistics.bought *= ratio;
-            }
-            StockAction::Sell(ref s) => {
-                year_statistics.sold += s.number;
-                let mut to_sell = s.number;
-
-                while to_sell > Decimal::ZERO {
-                    let buy_maybe = current_buys.front_mut();
-                    let mut pop_buy = false;
-                    match buy_maybe {
-                        // TODO: Simplify
-                        Some(buy) => {
-                            let left = buy.1.number - to_sell;
-                            let sold = if left < Decimal::ZERO {
-                                buy.1.number
-                            } else {
-                                to_sell
-                            };
-
-                            buy.1.number -= sold;
-
-                            let buy_price = rate_provider.convert(&buy.1.price, &buy.0)?.pln;
-                            let buy_fee = rate_provider.convert(&buy.1.fee, &buy.0)?.pln;
-                            let sell_price = rate_provider.convert(&s.price, &date)?.pln;
-                            let sell_fee = rate_provider.convert(&s.fee, &date)?.pln;
-
-                            // TODO: Bug there, review.
-                            year_statistics.tax +=
-                                buy_price * sold - sell_price * sell_price - buy_fee - sell_fee;
-
-                            if left <= Decimal::ZERO {
-                                pop_buy = true;
-                            }
-
-                            to_sell -= sold;
-                            debug_assert!(to_sell >= Decimal::ZERO);
-                        }
-                        // TODO: No buy left to cover. Show warning and calculate with cost basis as 0
-                        None => {
-                            year_statistics.warnings.push(Warning::SellWithoutBuy {
-                                sell_id: stock.id.clone(),
-                            });
-
-                            let sold = to_sell;
-
-                            let buy_price = Decimal::ZERO;
-                            let buy_fee = Decimal::ZERO;
-
-                            let sell_price = rate_provider.convert(&s.price, &date)?.pln;
-                            let sell_fee = rate_provider.convert(&s.fee, &date)?.pln;
-
-                            // TODO: Bug there, review.
-                            year_statistics.tax +=
-                                buy_price * sold - sell_price * sell_price - buy_fee - sell_fee;
-
-                            to_sell -= sold;
-                            debug_assert!(to_sell >= Decimal::ZERO);
-                        }
-                    };
-
-                    if pop_buy {
-                        current_buys.pop_front();
-                    }
-                }
-            }
-        }
+    let mut missing: BTreeMap<(&str, &str), usize> = BTreeMap::new();
+    for sale in sales.iter().filter(|sale| sale.exchange.is_none()) {
+        *missing.entry((&sale.ticker, &sale.provider)).or_default() += 1;
     }
+    warnings.extend(missing.into_iter().map(|((ticker, provider), sales)| {
+        Warning::MissingExchange {
+            ticker: ticker.to_owned(),
+            provider: provider.to_owned(),
+            sales,
+        }
+    }));
 
-    let calculated_stock = CalculatedStock {
-        ticker,
-        provider,
-        stats: statistics_by_year.remove(&year).unwrap_or_default(),
-        history_by_year: statistics_by_year,
-    };
-
-    Ok(calculated_stock)
+    warnings
 }
