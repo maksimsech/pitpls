@@ -9,6 +9,7 @@ use crate::{
                 InstrumentKey, lots_count, price_text, rate_cell, ratio, shares_count, shares_text,
                 trade_date,
             },
+            set_exchange::ExchangeRow,
         },
     },
 };
@@ -66,6 +67,7 @@ pub struct YearGroup {
 }
 
 pub struct HistoryDisplay {
+    pub instrument: ExchangeRow,
     pub facts: Vec<Fact>,
     pub lots_caption: SharedString,
     pub lots: Vec<LotBar>,
@@ -183,6 +185,16 @@ impl HistoryDisplay {
             .into_iter()
             .map(|currency| currency.to_string())
             .collect::<Vec<_>>();
+        let instrument = ExchangeRow {
+            ticker: key.ticker.clone(),
+            provider: key.provider.clone(),
+            detail: if currencies.is_empty() {
+                key.provider.clone()
+            } else {
+                format!("{} · {}", currencies.join(", "), key.provider).into()
+            },
+            exchange: history.listing.as_ref().map(|listing| listing.mic),
+        };
         let facts = vec![
             Fact {
                 label: "Exchange · PIT/ZG country".into(),
@@ -316,6 +328,7 @@ impl HistoryDisplay {
             .collect();
 
         Self {
+            instrument,
             facts,
             lots_caption: lots_caption.into(),
             lots: lot_bars(&records, &replayed, &shades, year),

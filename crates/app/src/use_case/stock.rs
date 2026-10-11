@@ -421,16 +421,19 @@ pub async fn set_exchanges(
     app: &App,
     inputs: Vec<SetExchangeInput>,
 ) -> Result<(), RepositoryError> {
-    app.db
-        .instrument_repo()
-        .set_exchanges(inputs.iter().map(|input| {
+    // Collected first: a mapping iterator held across the repository's awaits makes the future
+    // fail the `Send` check of the desktop's background runner.
+    let exchanges = inputs
+        .iter()
+        .map(|input| {
             (
                 input.ticker.as_str(),
                 input.provider.as_str(),
                 input.exchange,
             )
-        }))
-        .await
+        })
+        .collect::<Vec<_>>();
+    app.db.instrument_repo().set_exchanges(exchanges).await
 }
 
 pub async fn list_instruments(app: &App) -> Result<Vec<Instrument>, RepositoryError> {

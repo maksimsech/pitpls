@@ -3,6 +3,7 @@ mod editor;
 mod exchange;
 mod history;
 mod holdings;
+mod set_exchange;
 
 use crate::{
     components::{
@@ -18,8 +19,9 @@ use crate::{
     },
     theme::{palette, tabular_digits},
 };
-use display::{Action, InstrumentKey, StockDisplay, WarningCard};
+use display::{Action, InstrumentKey, StockDisplay, WarningAction, WarningCard};
 use editor::StockEditor;
+use exchange::Catalog;
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::{
     Role,
@@ -41,6 +43,7 @@ use pitpls_app::use_case::{
 };
 use pitpls_importers::{IMPORTERS, OutputType};
 use rust_decimal::Decimal;
+use set_exchange::{ExchangeDialog, ExchangeDialogEvent, ExchangeRow};
 use std::collections::HashSet;
 
 const NARROW: f32 = 600.;
@@ -71,6 +74,8 @@ pub struct StocksPage {
     query: String,
     page_scroll: ScrollHandle,
     editor: Option<StockEditor>,
+    catalog: Entity<Catalog>,
+    exchange_dialog: Option<(Entity<ExchangeDialog>, Subscription)>,
     pending_delete: Option<Vec<String>>,
     deleting: HashSet<String>,
     nbp_year: Option<Entity<InputState>>,
@@ -149,6 +154,7 @@ impl StocksPage {
                 window.focus(&this.focus, cx);
             }
         });
+        let catalog = cx.new(|_| Catalog::new(context.services.clone()));
         let mut view = Self {
             context,
             year,
@@ -162,6 +168,8 @@ impl StocksPage {
             query: String::new(),
             page_scroll: ScrollHandle::default(),
             editor: None,
+            catalog,
+            exchange_dialog: None,
             pending_delete: None,
             deleting: HashSet::new(),
             nbp_year: None,
@@ -178,6 +186,7 @@ impl StocksPage {
     fn locked(&self) -> bool {
         self.status.busy
             || self.editor.is_some()
+            || self.exchange_dialog.is_some()
             || self.pending_delete.is_some()
             || self.nbp_year.is_some()
     }
@@ -217,8 +226,8 @@ impl StocksPage {
         if self.disabled() {
             return;
         }
-        let (context, width) = (self.context.clone(), self.width());
-        let view = cx.new(|cx| HistoryView::new(context, key, year, width, window, cx));
+        let (context, catalog, width) = (self.context.clone(), self.catalog.clone(), self.width());
+        let view = cx.new(|cx| HistoryView::new(context, key, year, catalog, width, window, cx));
         let subscription =
             cx.subscribe_in(&view, window, |this, _, event, window, cx| match event {
                 HistoryEvent::Back => {
@@ -226,6 +235,8 @@ impl StocksPage {
                     window.focus(&this.focus, cx);
                     cx.notify();
                 }
+                // The page behind shows the instrument's exchange too.
+                HistoryEvent::Changed => this.refresh(window, cx),
             });
         let focus = view.read(cx).focus().clone();
         window.focus(&focus, cx);
@@ -495,25 +506,65 @@ impl StocksPage {
         }))
     }
 
+    fn open_set_exchange(
+        &mut self,
+        rows: Vec<ExchangeRow>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.disabled() || rows.is_empty() {
+            return;
+        }
+        let dialog = ExchangeDialog::open(
+            self.context.services.clone(),
+            self.catalog.clone(),
+            "Set exchange",
+            rows,
+            window,
+            cx,
+        );
+        let subscription =
+            cx.subscribe_in(&dialog, window, |this, _, event, window, cx| match event {
+                ExchangeDialogEvent::Saved(message) => {
+                    this.exchange_dialog = None;
+                    this.notify(cx);
+                    this.refresh(window, cx);
+                    this.status.message = Some(message.clone());
+                }
+                ExchangeDialogEvent::Closed => {
+                    this.exchange_dialog = None;
+                    this.notify(cx);
+                }
+            });
+        self.exchange_dialog = Some((dialog, subscription));
+        self.status.error = None;
+        self.status.message = None;
+        self.notify(cx);
+    }
+
     fn warning(&self, index: usize, card: &WarningCard, cx: &mut Context<Self>) -> Div {
         let p = *palette(cx);
-        let add_buy = card.add_buy.clone().map(|prefill| {
-            header::button(
-                SharedString::from(format!("warning-add-buy-{index}")),
-                None,
-                "Add buy",
-            )
-            .disabled(self.disabled())
-            .on_click(cx.listener(move |this, _, window, cx| {
-                this.open_editor(None, prefill.clone(), window, cx)
-            }))
-        });
+        let action = card.action.clone();
+        let label = match action {
+            WarningAction::AddBuy(_) => "Add buy",
+            WarningAction::SetExchange(_) => "Set exchange",
+        };
+        let button = header::button(
+            SharedString::from(format!("warning-action-{index}")),
+            None,
+            label,
+        )
+        .disabled(self.disabled())
+        .on_click(cx.listener(move |this, _, window, cx| match &action {
+            WarningAction::AddBuy(prefill) => this.open_editor(None, prefill.clone(), window, cx),
+            WarningAction::SetExchange(rows) => this.open_set_exchange(rows.clone(), window, cx),
+        }));
         h_flex()
             .flex_shrink_0()
             .mx(px(20.))
             .mb(px(8.))
             .pl(px(12.))
-            .pr(px(if add_buy.is_some() { 8. } else { 12. }))
+            .pr(px(8.))
             .py(px(8.))
             .gap(px(10.))
             .rounded(px(10.))
@@ -540,7 +591,7 @@ impl StocksPage {
                             .child(card.description.clone()),
                     ),
             )
-            .children(add_buy)
+            .child(button)
     }
 
     fn tabs(&self, cx: &mut Context<Self>) -> Div {

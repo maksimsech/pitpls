@@ -4,7 +4,7 @@ use super::{
         Action, BuyPrefill, conversion, fee_rate, lots_count, names, price_text, ratio,
         shares_count, shares_text, trade_date,
     },
-    exchange::{self, Catalog, CatalogStatus, ExchangeList, PickerState, RefreshFn},
+    exchange::{self, Catalog, ExchangeList, PickerState},
 };
 use crate::{
     components::{
@@ -32,12 +32,8 @@ use gpui_kit::{
     },
     *,
 };
-use pitpls_app::use_case::{
-    exchange as exchanges,
-    stock::{
-        self, CreateStockInput, Listings, StockActionFields, StockFields, TradeFields,
-        UpdateStockInput,
-    },
+use pitpls_app::use_case::stock::{
+    self, CreateStockInput, Listings, StockActionFields, StockFields, TradeFields, UpdateStockInput,
 };
 use pitpls_core::{
     common::{Amount, Currency, Mic},
@@ -48,7 +44,6 @@ use pitpls_core::{
     time,
 };
 use rust_decimal::Decimal;
-use std::rc::Rc;
 
 type StockSubmission = Submission<CreateStockInput, UpdateStockInput>;
 
@@ -88,14 +83,14 @@ pub struct StockEditor {
     after: Entity<InputState>,
     id_open: bool,
     known: Option<Known>,
-    catalog: Catalog,
+    filled: Option<usize>,
     draft: Option<Draft>,
     preview: Option<Result<PreviewView, SharedString>>,
     preview_task: Option<Task<()>>,
     settles_key: Option<SettlesKey>,
     settles: Option<NaiveDate>,
     settles_task: Option<Task<()>>,
-    catalog_task: Option<Task<()>>,
+    known_task: Option<Task<()>>,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -238,14 +233,14 @@ impl StockEditor {
             ),
             id_open: false,
             known: None,
-            catalog: Catalog::default(),
+            filled: None,
             draft: None,
             preview: None,
             preview_task: None,
             settles_key: None,
             settles: None,
             settles_task: None,
-            catalog_task: None,
+            known_task: None,
             _subscriptions: Vec::new(),
         }
     }
@@ -458,8 +453,8 @@ impl StockEditor {
         )
     }
 
-    fn exchange_hint(&self, cx: &App) -> (String, bool) {
-        if let Some(error) = &self.catalog.refresh_error {
+    fn exchange_hint(&self, catalog: &Catalog, cx: &App) -> (String, bool) {
+        if let Some(error) = &catalog.refresh_error {
             return (error.to_string(), true);
         }
         let ticker = self.ticker(cx);
@@ -850,13 +845,20 @@ impl StocksPage {
                 this.editor_changed(window, cx);
             },
         ));
+        subscriptions.push(cx.observe_in(&self.catalog, window, |this, _, window, cx| {
+            this.fill_editor_picker(window, cx);
+            this.editor_changed(window, cx);
+        }));
         editor._subscriptions = subscriptions;
         self.editor = Some(editor);
         self.status.error = None;
         self.status.message = None;
         dialog::open(window, cx, Self::render_editor);
         window.focus(&focus, cx);
-        self.load_editor_data(window, cx);
+        self.load_known(window, cx);
+        self.fill_editor_picker(window, cx);
+        self.catalog
+            .update(cx, |catalog, cx| catalog.load(window, cx));
         self.editor_changed(window, cx);
         self.notify(cx);
     }
@@ -868,9 +870,10 @@ impl StocksPage {
         // Follows the instrument until the user picks one, and only to a MIC the list has, so
         // setting it doesn't fail and notify again.
         if !editor.exchange_picked && editor.is_trade() && editor.known.is_some() {
+            let catalog = self.catalog.read(cx);
             let mic = editor
                 .known_exchange(cx)
-                .filter(|mic| editor.catalog.contains(*mic));
+                .filter(|mic| catalog.contains(*mic));
             exchange::select(&editor.exchange, mic, window, cx);
         }
         self.update_settles(window, cx);
@@ -951,107 +954,47 @@ impl StocksPage {
         }
     }
 
-    fn exchange_refresh(cx: &Context<Self>) -> RefreshFn {
-        let view = cx.entity().downgrade();
-        Rc::new(move |window, cx| {
-            let _ = view.update(cx, |this, cx| this.download_exchanges(window, cx));
-        })
-    }
-
-    fn fill_picker(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let refresh = Self::exchange_refresh(cx);
-        if let Some(editor) = &self.editor {
-            exchange::fill(&editor.exchange, &editor.catalog, Some(refresh), window, cx);
+    fn fill_editor_picker(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(editor) = &mut self.editor else {
+            return;
+        };
+        let catalog = self.catalog.read(cx);
+        let (empty, revision) = (catalog.is_empty(), catalog.revision);
+        if empty || editor.filled == Some(revision) {
+            return;
         }
+        editor.filled = Some(revision);
+        exchange::fill(&editor.exchange, &self.catalog, window, cx);
     }
 
-    fn load_editor_data(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    fn load_known(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let task = self.context.services.run(
             window,
             cx,
             |app| async move {
                 let instruments = stock::list_instruments(&app).await?;
                 let listings = stock::load_listings(&app).await?;
-                let list = exchanges::list_exchanges(&app).await?;
-                let downloaded = exchanges::exchanges_downloaded(&app).await?;
-                Ok((instruments, listings, list, downloaded))
+                Ok((instruments, listings))
             },
             |this, result, window, cx| {
                 let Some(editor) = &mut this.editor else {
                     return;
                 };
                 match result {
-                    Ok((instruments, listings, list, downloaded)) => {
+                    Ok((instruments, listings)) => {
                         editor.known = Some(Known {
                             instruments,
                             listings,
                         });
-                        if list.is_empty() {
-                            this.download_exchanges(window, cx);
-                        } else {
-                            editor.catalog.set(list, downloaded);
-                            this.fill_picker(window, cx);
-                        }
                     }
-                    Err(error) => editor.catalog.status = CatalogStatus::Failed(error.into()),
+                    Err(error) => this.status.error = Some(error.into()),
                 }
                 this.editor_changed(window, cx);
             },
         );
         if let Some(editor) = &mut self.editor {
-            editor.catalog_task = Some(task);
+            editor.known_task = Some(task);
         }
-    }
-
-    // A failed refresh keeps the list it had.
-    fn download_exchanges(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let Some(editor) = &mut self.editor else {
-            return;
-        };
-        let catalog = &mut editor.catalog;
-        if catalog.refreshing.get() || matches!(catalog.status, CatalogStatus::Downloading) {
-            return;
-        }
-        if catalog.is_empty() {
-            catalog.status = CatalogStatus::Downloading;
-        } else {
-            catalog.refreshing.set(true);
-        }
-        catalog.refresh_error = None;
-        let task = self.context.services.run(
-            window,
-            cx,
-            |app| async move {
-                exchanges::refresh_exchanges(&app).await?;
-                let list = exchanges::list_exchanges(&app).await?;
-                let downloaded = exchanges::exchanges_downloaded(&app).await?;
-                Ok((list, downloaded))
-            },
-            |this, result, window, cx| {
-                let Some(editor) = &mut this.editor else {
-                    return;
-                };
-                let catalog = &mut editor.catalog;
-                catalog.refreshing.set(false);
-                match result {
-                    Ok((list, downloaded)) => {
-                        catalog.set(list, downloaded);
-                        this.fill_picker(window, cx);
-                    }
-                    Err(error) => {
-                        let error = SharedString::from(error);
-                        if catalog.is_empty() {
-                            catalog.status = CatalogStatus::Failed(error);
-                        } else {
-                            catalog.refresh_error = Some(error);
-                        }
-                    }
-                }
-                this.editor_changed(window, cx);
-            },
-        );
-        editor.catalog_task = Some(task);
-        cx.notify();
     }
 
     fn pick_action(&mut self, action: Action, window: &mut Window, cx: &mut Context<Self>) {
@@ -1140,21 +1083,7 @@ impl StocksPage {
             .child(fields.mt(px(14.)))
             .child(self.id_field(editor, busy, cx).mt(px(14.)))
             .when_some(self.status.error.clone(), |body, error| {
-                body.child(
-                    h_flex()
-                        .mt(px(12.))
-                        .items_start()
-                        .gap(px(6.))
-                        .text_size(px(12.))
-                        .text_color(p.danger)
-                        .child(
-                            Icon::new(IconName::CircleX)
-                                .size(px(14.))
-                                .flex_shrink_0()
-                                .mt(px(1.)),
-                        )
-                        .child(div().min_w_0().child(error)),
-                )
+                body.child(form::error(error, cx).mt(px(12.)))
             })
             .when_some(editor.preview.as_ref(), |body, preview| {
                 body.child(Self::preview_band(editor, preview, cx).mt(px(16.)))
@@ -1223,15 +1152,13 @@ impl StocksPage {
 
     fn trade_fields(&self, editor: &StockEditor, busy: bool, cx: &mut Context<Self>) -> Div {
         let p = *palette(cx);
-        let (exchange_hint, exchange_warning) = editor.exchange_hint(cx);
-        let refresh = Self::exchange_refresh(cx);
+        let (exchange_hint, exchange_warning) = editor.exchange_hint(self.catalog.read(cx), cx);
         let exchange = form::field(
             "Exchange",
             div().w_full().h_8().flex_shrink_0().child(exchange::picker(
                 &editor.exchange,
-                &editor.catalog,
+                &self.catalog,
                 "Exchange",
-                Some(refresh),
                 busy,
                 cx,
             )),

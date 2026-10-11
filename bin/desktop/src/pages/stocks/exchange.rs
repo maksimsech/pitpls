@@ -1,6 +1,7 @@
 use crate::{
     components::{ButtonText, spinner},
     format::{date, shares},
+    services::Services,
     theme::palette,
 };
 use chrono::NaiveDate;
@@ -15,6 +16,7 @@ use gpui_kit::{
     },
     *,
 };
+use pitpls_app::use_case::exchange as exchanges;
 use pitpls_core::{common::Mic, exchange::Exchange};
 use rust_decimal::Decimal;
 use std::{cell::Cell, rc::Rc};
@@ -24,12 +26,14 @@ pub struct ExchangeChoice {
     mic: Mic,
     name: SharedString,
     detail: SharedString,
+    picked: SharedString,
     search: String,
     faint: Hsla,
 }
 
 impl ExchangeChoice {
     fn new(exchange: &Exchange, faint: Hsla) -> Self {
+        let picked = format!("· {} · {}", exchange.mic, exchange.country);
         let mut detail = format!("{} · {}", exchange.mic, exchange.country);
         if let Some(city) = exchange.display_city() {
             detail.push_str(" · ");
@@ -48,6 +52,7 @@ impl ExchangeChoice {
             mic: exchange.mic,
             name: exchange.display_name().into(),
             detail: detail.into(),
+            picked: picked.into(),
             search,
             faint,
         }
@@ -72,7 +77,7 @@ impl SelectItem for ExchangeChoice {
                         .min_w_0()
                         .truncate()
                         .text_color(self.faint)
-                        .child(format!("· {}", self.detail)),
+                        .child(self.picked.clone()),
                 )
                 .into_any_element(),
         )
@@ -221,26 +226,33 @@ fn count(value: usize) -> SharedString {
 }
 
 pub struct Catalog {
+    services: Services,
     exchanges: Vec<Exchange>,
     downloaded: Option<NaiveDate>,
     pub status: CatalogStatus,
-    pub refreshing: Rc<Cell<bool>>,
+    refreshing: Rc<Cell<bool>>,
     pub refresh_error: Option<SharedString>,
+    // Goes up whenever the list changes, so pickers know when to refill.
+    pub revision: usize,
+    running: bool,
+    _task: Option<Task<()>>,
 }
 
-impl Default for Catalog {
-    fn default() -> Self {
+impl Catalog {
+    pub fn new(services: Services) -> Self {
         Self {
+            services,
             exchanges: Vec::new(),
             downloaded: None,
             status: CatalogStatus::Loading,
             refreshing: Rc::default(),
             refresh_error: None,
+            revision: 0,
+            running: false,
+            _task: None,
         }
     }
-}
 
-impl Catalog {
     pub fn is_empty(&self) -> bool {
         self.exchanges.is_empty()
     }
@@ -249,10 +261,85 @@ impl Catalog {
         self.exchanges.iter().any(|exchange| exchange.mic == mic)
     }
 
-    pub fn set(&mut self, exchanges: Vec<Exchange>, downloaded: Option<NaiveDate>) {
+    fn set(&mut self, exchanges: Vec<Exchange>, downloaded: Option<NaiveDate>) {
         self.exchanges = exchanges;
         self.downloaded = downloaded;
         self.status = CatalogStatus::Ready;
+        self.revision += 1;
+    }
+
+    // Reloads on every open, so exchanges an instrument started using since move to the top.
+    // An empty table downloads the list first.
+    pub fn load(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.running {
+            return;
+        }
+        if self.is_empty() {
+            self.status = CatalogStatus::Loading;
+        }
+        self.refresh_error = None;
+        self.running = true;
+        self._task = Some(self.services.run(
+            window,
+            cx,
+            |app| async move {
+                let list = exchanges::list_exchanges(&app).await?;
+                let downloaded = exchanges::exchanges_downloaded(&app).await?;
+                Ok((list, downloaded))
+            },
+            |this, result, window, cx| {
+                this.running = false;
+                match result {
+                    Ok((list, _)) if list.is_empty() => this.download(window, cx),
+                    Ok((list, downloaded)) => this.set(list, downloaded),
+                    Err(error) => this.failed(error.into()),
+                }
+                cx.notify();
+            },
+        ));
+        cx.notify();
+    }
+
+    // A failed refresh keeps the list it had.
+    pub fn download(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.running {
+            return;
+        }
+        if self.is_empty() {
+            self.status = CatalogStatus::Downloading;
+        } else {
+            self.refreshing.set(true);
+        }
+        self.refresh_error = None;
+        self.running = true;
+        self._task = Some(self.services.run(
+            window,
+            cx,
+            |app| async move {
+                exchanges::refresh_exchanges(&app).await?;
+                let list = exchanges::list_exchanges(&app).await?;
+                let downloaded = exchanges::exchanges_downloaded(&app).await?;
+                Ok((list, downloaded))
+            },
+            |this, result, _, cx| {
+                this.running = false;
+                this.refreshing.set(false);
+                match result {
+                    Ok((list, downloaded)) => this.set(list, downloaded),
+                    Err(error) => this.failed(error.into()),
+                }
+                cx.notify();
+            },
+        ));
+        cx.notify();
+    }
+
+    fn failed(&mut self, error: SharedString) {
+        if self.is_empty() {
+            self.status = CatalogStatus::Failed(error);
+        } else {
+            self.refresh_error = Some(error);
+        }
     }
 
     fn list(&self, refresh: Option<RefreshFn>, cx: &App) -> ExchangeList {
@@ -270,6 +357,16 @@ impl Catalog {
             refresh,
         }
     }
+}
+
+fn catalog_action(
+    catalog: &Entity<Catalog>,
+    action: fn(&mut Catalog, &mut Window, &mut Context<Catalog>),
+) -> RefreshFn {
+    let catalog = catalog.downgrade();
+    Rc::new(move |window, cx| {
+        let _ = catalog.update(cx, |catalog, cx| action(catalog, window, cx));
+    })
 }
 
 pub type PickerState = SelectState<ExchangeList>;
@@ -296,13 +393,13 @@ pub fn select(state: &Entity<PickerState>, mic: Option<Mic>, window: &mut Window
 // stays picked only while it's in the list.
 pub fn fill(
     state: &Entity<PickerState>,
-    catalog: &Catalog,
-    refresh: Option<RefreshFn>,
+    catalog: &Entity<Catalog>,
     window: &mut Window,
     cx: &mut App,
 ) {
     let selected = picked(state, cx);
-    let list = catalog.list(refresh, cx);
+    let refresh = catalog_action(catalog, Catalog::download);
+    let list = catalog.read(cx).list(Some(refresh), cx);
     state.update(cx, |state, cx| {
         state.set_items(list, window, cx);
         state.set_selected_index(None, window, cx);
@@ -314,13 +411,14 @@ pub fn fill(
 
 pub fn picker(
     state: &Entity<PickerState>,
-    catalog: &Catalog,
-    label: &'static str,
-    retry: Option<RefreshFn>,
+    catalog: &Entity<Catalog>,
+    label: impl Into<SharedString>,
     disabled: bool,
     cx: &App,
 ) -> Select<ExchangeList> {
     let p = *palette(cx);
+    let retry = catalog_action(catalog, Catalog::load);
+    let catalog = catalog.read(cx);
     let empty: SharedString = match &catalog.status {
         CatalogStatus::Loading => "Loading the exchange list…".into(),
         CatalogStatus::Downloading => "Downloading the ISO 10383 exchange list…".into(),
@@ -354,7 +452,8 @@ pub fn picker(
                         .when(busy, |row| row.child(spinner()))
                         .child(div().min_w_0().child(empty.clone())),
                 )
-                .when_some(retry.clone().filter(|_| failed), |state, retry| {
+                .when(failed, |state| {
+                    let retry = retry.clone();
                     state.child(
                         Button::new("exchanges-retry")
                             .outline()

@@ -4,6 +4,7 @@ use crate::{
 };
 use chrono::{DateTime, NaiveDate, NaiveDateTime, NaiveTime, Utc, Weekday};
 use gpui_kit::{
+    assets::IconName,
     component::{
         date_picker::{DatePicker, DatePickerState},
         input::*,
@@ -367,4 +368,19 @@ pub fn hint(text: impl Into<SharedString>, cx: &App) -> Div {
         .text_size(px(11.5))
         .text_color(palette(cx).faint)
         .child(text.into())
+}
+
+pub fn error(text: impl Into<SharedString>, cx: &App) -> Div {
+    h_flex()
+        .items_start()
+        .gap(px(6.))
+        .text_size(px(12.))
+        .text_color(palette(cx).danger)
+        .child(
+            Icon::new(IconName::CircleX)
+                .size(px(14.))
+                .flex_shrink_0()
+                .mt(px(1.)),
+        )
+        .child(div().min_w_0().child(text.into()))
 }

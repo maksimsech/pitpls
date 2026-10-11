@@ -1,3 +1,4 @@
+use super::{counted, set_exchange::ExchangeRow};
 use crate::{
     components::records::{EntryStyle, LotRow, LotTable, RowDisplay, Step, StepLine},
     format::{DisplayText, amount, date, money, pln, shares},
@@ -38,7 +39,13 @@ pub struct WarningCard {
     pub icon: IconName,
     pub title: SharedString,
     pub description: SharedString,
-    pub add_buy: Option<Option<BuyPrefill>>,
+    pub action: WarningAction,
+}
+
+#[derive(Clone)]
+pub enum WarningAction {
+    AddBuy(Option<BuyPrefill>),
+    SetExchange(Vec<ExchangeRow>),
 }
 
 #[derive(Clone)]
@@ -126,7 +133,7 @@ impl StockDisplay {
                 ("Costs (C-23)", pln(tax.costs)),
                 ("Tax paid abroad (D-34)", pln(tax.tax_paid_abroad)),
             ],
-            warnings: warnings(tax),
+            warnings: warnings(tax, year),
             sales,
             profits: tax.sales.iter().map(|sale| sale.profit).collect(),
             records,
@@ -909,9 +916,10 @@ pub fn names(names: &[&str]) -> String {
     }
 }
 
-fn warnings(tax: &StockTaxData) -> Vec<WarningCard> {
+fn warnings(tax: &StockTaxData, year: i32) -> Vec<WarningCard> {
     let mut uncovered: Vec<(&str, &str, Currency, Decimal)> = Vec::new();
     let mut missing: Vec<&str> = Vec::new();
+    let mut rows = Vec::new();
     for warning in &tax.warnings {
         match warning {
             Warning::SellWithoutBuy { sell_id, shares } => {
@@ -927,10 +935,15 @@ fn warnings(tax: &StockTaxData) -> Vec<WarningCard> {
                     }
                 }
             }
-            Warning::MissingExchange { ticker, .. } => {
+            Warning::MissingExchange {
+                ticker,
+                provider,
+                sales,
+            } => {
                 if !missing.contains(&ticker.as_str()) {
                     missing.push(ticker);
                 }
+                rows.push(missing_row(tax, ticker, provider, *sales, year));
             }
         }
     }
@@ -945,7 +958,7 @@ fn warnings(tax: &StockTaxData) -> Vec<WarningCard> {
                  {provider} statement or add the buy."
             )
             .into(),
-            add_buy: Some(Some(BuyPrefill {
+            action: WarningAction::AddBuy(Some(BuyPrefill {
                 ticker: ticker.to_owned(),
                 provider: provider.to_owned(),
                 currency,
@@ -962,7 +975,7 @@ fn warnings(tax: &StockTaxData) -> Vec<WarningCard> {
             description: "They count with cost 0.00, so Costs (C-23) are too low. Import the \
                           earlier statements or add the buys."
                 .into(),
-            add_buy: Some(None),
+            action: WarningAction::AddBuy(None),
         });
     }
     if !missing.is_empty() {
@@ -975,8 +988,36 @@ fn warnings(tax: &StockTaxData) -> Vec<WarningCard> {
             icon: IconName::MapPin,
             title: format!("{} {verb} no exchange", names(&missing)).into(),
             description: format!("PIT/ZG can't put {pronoun} in a country.").into(),
-            add_buy: None,
+            action: WarningAction::SetExchange(rows),
         });
     }
     cards
+}
+
+fn missing_row(
+    tax: &StockTaxData,
+    ticker: &str,
+    provider: &str,
+    sales: usize,
+    year: i32,
+) -> ExchangeRow {
+    let mut currencies = tax
+        .sales
+        .iter()
+        .filter(|sale| sale.ticker == ticker && sale.provider == provider)
+        .map(|sale| sale.price.currency.to_string())
+        .collect::<Vec<_>>();
+    currencies.sort();
+    currencies.dedup();
+    ExchangeRow {
+        ticker: ticker.to_owned().into(),
+        provider: provider.to_owned().into(),
+        detail: format!(
+            "{} · {provider} · {} in {year}",
+            currencies.join(", "),
+            counted(sales, "sale", "sales")
+        )
+        .into(),
+        exchange: None,
+    }
 }

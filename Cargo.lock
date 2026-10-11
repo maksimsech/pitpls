@@ -1585,6 +1585,7 @@ dependencies = [
  "pitpls-core",
  "pitpls-db",
  "pitpls-importers",
+ "pitpls-mic",
  "pitpls-nbr",
  "raw-window-handle",
  "rfd",

@@ -1,6 +1,10 @@
 mod display;
 
-use super::display::InstrumentKey;
+use super::{
+    display::InstrumentKey,
+    exchange::Catalog,
+    set_exchange::{ExchangeDialog, ExchangeDialogEvent},
+};
 use crate::{
     components::{
         ButtonText, Status, header, measure_width,
@@ -20,6 +24,7 @@ use pitpls_app::use_case::stock;
 
 pub enum HistoryEvent {
     Back,
+    Changed,
 }
 
 pub struct HistoryView {
@@ -28,6 +33,8 @@ pub struct HistoryView {
     year: i32,
     status: Status,
     display: Option<HistoryDisplay>,
+    catalog: Entity<Catalog>,
+    dialog: Option<(Entity<ExchangeDialog>, Subscription)>,
     columns: Vec<RecordColumn>,
     fit: Option<Vec<Pixels>>,
     width: Option<Pixels>,
@@ -43,6 +50,7 @@ impl HistoryView {
         context: PageContext,
         key: InstrumentKey,
         year: i32,
+        catalog: Entity<Catalog>,
         width: Option<Pixels>,
         window: &mut Window,
         cx: &mut Context<Self>,
@@ -53,6 +61,8 @@ impl HistoryView {
             year,
             status: Status::default(),
             display: None,
+            catalog,
+            dialog: None,
             columns: vec![
                 RecordColumn::new("Date", CellStyle::Time, 96., 50.),
                 RecordColumn::grow("Event", CellStyle::Tag),
@@ -75,6 +85,48 @@ impl HistoryView {
 
     pub fn focus(&self) -> &FocusHandle {
         &self.focus
+    }
+
+    fn editable(&self) -> bool {
+        self.display.is_some() && !self.status.loading && self.dialog.is_none()
+    }
+
+    fn edit_instrument(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(display) = &self.display else {
+            return;
+        };
+        if !self.editable() {
+            return;
+        }
+        let dialog = ExchangeDialog::open(
+            self.context.services.clone(),
+            self.catalog.clone(),
+            "Edit instrument",
+            vec![display.instrument.clone()],
+            window,
+            cx,
+        );
+        let subscription =
+            cx.subscribe_in(&dialog, window, |this, _, event, window, cx| match event {
+                ExchangeDialogEvent::Saved(message) => {
+                    this.close_dialog(cx);
+                    this.refresh(window, cx);
+                    this.status.message = Some(message.clone());
+                    cx.emit(HistoryEvent::Changed);
+                }
+                ExchangeDialogEvent::Closed => this.close_dialog(cx),
+            });
+        self.dialog = Some((dialog, subscription));
+        self.status.error = None;
+        self.status.message = None;
+        self.context.set_locked(true, cx);
+        cx.notify();
+    }
+
+    fn close_dialog(&mut self, cx: &mut Context<Self>) {
+        self.dialog = None;
+        self.context.set_locked(false, cx);
+        cx.notify();
     }
 
     fn refresh(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -499,22 +551,32 @@ impl Render for HistoryView {
             );
         }
 
-        // Edit instrument comes with the exchange picker
-        // (docs/stocks/10-set-exchange.md).
+        let editable = self.editable();
         v_flex()
             .id("stock-history")
             .track_focus(&self.focus)
             .tab_index(-1)
             .size_full()
             .min_h_0()
-            .child(header::breadcrumb(
-                Page::Stocks.title(),
-                self.key.ticker.clone(),
-                self.key.provider.clone(),
-                cx.listener(|_, _, _, cx| cx.emit(HistoryEvent::Back)),
-                window,
-                cx,
-            ))
+            .child(
+                header::breadcrumb(
+                    Page::Stocks.title(),
+                    self.key.ticker.clone(),
+                    self.key.provider.clone(),
+                    cx.listener(|_, _, _, cx| cx.emit(HistoryEvent::Back)),
+                    window,
+                    cx,
+                )
+                .child(
+                    header::actions().child(
+                        header::button("edit-instrument", None, "Edit instrument")
+                            .disabled(!editable)
+                            .on_click(
+                                cx.listener(|this, _, window, cx| this.edit_instrument(window, cx)),
+                            ),
+                    ),
+                ),
+            )
             .child(
                 v_flex()
                     .relative()
