@@ -192,10 +192,13 @@ pub struct CountryTotal {
     pub income: Decimal,
     // PIT/ZG field 30, without the D-34 limit.
     pub tax_paid: Decimal,
+    // Field 30 before rounding.
+    pub withheld: Decimal,
     pub limit: Decimal,
     pub used: Decimal,
 }
 
+#[derive(Debug)]
 pub enum Warning {
     SellWithoutBuy {
         sell_id: String,

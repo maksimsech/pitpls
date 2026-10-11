@@ -147,8 +147,13 @@ impl ImportsPage {
                         OutputType::Interest => count(result.interests, "interest record"),
                         OutputType::Stock => count(result.stocks, "stock record"),
                     })
-                    .collect::<Vec<_>>()
-                    .join(" and ");
+                    .collect::<Vec<_>>();
+                let counts = match counts.split_last() {
+                    Some((last, rest)) if !rest.is_empty() => {
+                        format!("{} and {last}", rest.join(", "))
+                    }
+                    _ => counts.concat(),
+                };
                 Ok((format!("Imported {counts}."), last_import))
             },
             |this, result, window, cx| {

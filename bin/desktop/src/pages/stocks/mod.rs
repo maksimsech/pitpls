@@ -46,6 +46,8 @@ use rust_decimal::Decimal;
 use set_exchange::{ExchangeDialog, ExchangeDialogEvent, ExchangeRow};
 use std::collections::HashSet;
 
+pub use display::names;
+
 const NARROW: f32 = 600.;
 
 #[derive(Clone, Copy, PartialEq)]
@@ -113,7 +115,7 @@ fn record_columns() -> Vec<RecordColumn> {
     ]
 }
 
-fn counted(count: usize, one: &str, many: &str) -> String {
+pub fn counted(count: usize, one: &str, many: &str) -> String {
     if count == 1 {
         format!("1 {one}")
     } else {

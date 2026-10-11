@@ -3,7 +3,7 @@ use pitpls_core::{
     summary::{CalculateTaxSummaryError, TaxSummary, calculate},
 };
 
-use super::stock::load_listings;
+use super::stock::{Listings, load_listings};
 use super::validation::{Error as ValidationError, validate_year};
 use crate::App;
 use pitpls_db::RepositoryError;
@@ -17,7 +17,12 @@ pub enum Error {
     Calculation(#[from] CalculateTaxSummaryError),
 }
 
-pub async fn load_tax_summary(app: &App, year: i32) -> Result<TaxSummary, Error> {
+pub struct TaxSummaryData {
+    pub summary: TaxSummary,
+    pub listings: Listings,
+}
+
+pub async fn load_tax_summary(app: &App, year: i32) -> Result<TaxSummaryData, Error> {
     validate_year(year)?;
     let rates = app.db.rate_repo().load_all().await?;
     let rate_provider = NbpRateProvider::new(rates);
@@ -30,7 +35,7 @@ pub async fn load_tax_summary(app: &App, year: i32) -> Result<TaxSummary, Error>
     let listings = load_listings(app).await?;
     let dividend_rounding = app.db.settings_repo().load_dividend_rounding().await?;
 
-    calculate(
+    let summary = calculate(
         year,
         &rate_provider,
         cryptos,
@@ -39,6 +44,6 @@ pub async fn load_tax_summary(app: &App, year: i32) -> Result<TaxSummary, Error>
         &stocks,
         &listings.exchanges(),
         dividend_rounding,
-    )
-    .map_err(Error::from)
+    )?;
+    Ok(TaxSummaryData { summary, listings })
 }

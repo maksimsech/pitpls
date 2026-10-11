@@ -113,6 +113,7 @@ fn import_counts(last: &LastImport) -> String {
         (last.dividends, "dividend", "dividends"),
         (last.interests, "interest", "interest"),
         (last.cryptos, "crypto record", "crypto records"),
+        (last.stocks, "stock record", "stock records"),
     ]
     .into_iter()
     .filter(|(count, _, _)| *count > 0)

@@ -139,6 +139,7 @@ fn country_totals(sales: &[CalculatedSale], total_profit: Decimal) -> Vec<Countr
                 profit: sum.profit,
                 income: sum.profit.max(Decimal::ZERO).round_groszy(),
                 tax_paid: sum.tax_paid.round_groszy(),
+                withheld: sum.tax_paid,
                 limit,
                 used: sum.tax_paid.min(limit),
             }
