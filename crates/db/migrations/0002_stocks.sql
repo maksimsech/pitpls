@@ -70,3 +70,15 @@ CREATE TABLE stock_instruments(
     isin TEXT,
     PRIMARY KEY (ticker, provider)
 );
+
+CREATE TABLE exchanges(
+    mic TEXT PRIMARY KEY,
+    operating_mic TEXT NOT NULL,
+    kind TEXT NOT NULL CHECK (kind IN ('OPRT', 'SGMT')),
+    name TEXT NOT NULL,
+    acronym TEXT,
+    country TEXT NOT NULL,
+    city TEXT,
+    status TEXT NOT NULL CHECK (status IN ('ACTIVE', 'UPDATED', 'EXPIRED')),
+    last_update DATE
+);

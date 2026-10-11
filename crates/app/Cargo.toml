@@ -8,6 +8,7 @@ license.workspace = true
 pitpls-core.workspace = true
 pitpls-db.workspace = true
 pitpls-importers.workspace = true
+pitpls-mic.workspace = true
 pitpls-nbr.workspace = true
 
 thiserror.workspace = true

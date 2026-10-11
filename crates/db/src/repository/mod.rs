@@ -2,6 +2,7 @@ use thiserror::Error;
 
 pub mod crypto;
 pub mod dividend;
+pub mod exchange;
 pub mod instrument;
 pub mod interest;
 pub mod rate;
@@ -24,6 +25,9 @@ pub enum RepositoryError {
 
     #[error("Invalid stock record: {0}")]
     InvalidStockRecord(String),
+
+    #[error("Invalid exchange: {0}")]
+    InvalidExchange(String),
 }
 
 impl RepositoryError {

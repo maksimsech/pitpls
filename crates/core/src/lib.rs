@@ -1,6 +1,7 @@
 pub mod common;
 pub mod crypto;
 pub mod dividend;
+pub mod exchange;
 pub mod interest;
 pub mod rate;
 pub mod rounding;

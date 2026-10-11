@@ -6,6 +6,7 @@ use crate::App;
 
 pub mod crypto;
 pub mod dividend;
+pub mod exchange;
 pub mod import;
 pub mod interest;
 pub mod rate;

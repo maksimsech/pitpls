@@ -157,6 +157,7 @@ fn repository_error(error: &RepositoryError) -> String {
         RepositoryError::Decimal(_) => "A stored amount has an invalid format.".into(),
         RepositoryError::InvalidYear(year) => format!("Year {year} is out of range"),
         RepositoryError::InvalidStockRecord(reason) => format!("Invalid stock record: {reason}"),
+        RepositoryError::InvalidExchange(reason) => format!("Invalid exchange: {reason}"),
     }
 }
 
