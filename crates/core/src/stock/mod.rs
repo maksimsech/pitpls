@@ -11,8 +11,10 @@ use crate::{
 };
 
 mod model;
+mod settlement;
 
 pub use model::{Instrument, Stock, StockAction, StockBuy, StockSell, StockSplit};
+pub use settlement::{Market, market, settlement_date};
 
 /*
  * For now just accept full stock data, later I could optimize it.
