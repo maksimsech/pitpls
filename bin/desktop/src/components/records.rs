@@ -490,15 +490,9 @@ pub struct Preview {
     pub results: Vec<(&'static str, DisplayText)>,
 }
 
-pub fn preview_band(preview: &Result<Preview, SharedString>, cx: &App) -> Div {
+pub fn preview_frame(note: Option<SharedString>, cx: &App) -> Div {
     let p = *palette(cx);
-    let header = h_flex()
-        .justify_between()
-        .gap_2()
-        .text_size(px(12.))
-        .text_color(p.faint)
-        .child("Preview");
-    let band = v_flex()
+    v_flex()
         .gap(px(6.))
         .px(px(14.))
         .py(px(12.))
@@ -506,51 +500,68 @@ pub fn preview_band(preview: &Result<Preview, SharedString>, cx: &App) -> Div {
         .bg(p.hover)
         .border_1()
         .border_color(p.line)
-        .font_features(tabular_digits());
+        .font_features(tabular_digits())
+        .child(
+            h_flex()
+                .justify_between()
+                .gap_2()
+                .text_size(px(12.))
+                .text_color(p.faint)
+                .child("Preview")
+                .children(note),
+        )
+}
+
+pub fn preview_error(error: SharedString, cx: &App) -> Div {
+    preview_frame(None, cx).child(div().text_color(palette(cx).warning).child(error))
+}
+
+pub fn preview_band(preview: &Result<Preview, SharedString>, cx: &App) -> Div {
+    let p = *palette(cx);
     match preview {
-        Ok(preview) => band
-            .child(header.child(format!("NBP date {}", date(preview.nbp_date).main)))
-            .child(
+        Ok(preview) => preview_frame(
+            Some(format!("NBP date {}", date(preview.nbp_date).main).into()),
+            cx,
+        )
+        .child(
+            h_flex()
+                .flex_wrap()
+                .gap_x(px(4.))
+                .text_color(p.muted)
+                .children(preview.formula.iter().enumerate().map(|(index, part)| {
+                    preview_value(("preview-formula", index), part, div(), cx)
+                }))
+                .child("=")
+                .child(preview_value(
+                    "preview-value",
+                    &preview.value,
+                    div().font_semibold().text_color(p.text),
+                    cx,
+                )),
+        )
+        .when(!preview.results.is_empty(), |band| {
+            band.child(
                 h_flex()
                     .flex_wrap()
-                    .gap_x(px(4.))
+                    .gap_x(px(20.))
+                    .gap_y(px(4.))
+                    .text_size(px(12.))
                     .text_color(p.muted)
-                    .children(preview.formula.iter().enumerate().map(|(index, part)| {
-                        preview_value(("preview-formula", index), part, div(), cx)
-                    }))
-                    .child("=")
-                    .child(preview_value(
-                        "preview-value",
-                        &preview.value,
-                        div().font_semibold().text_color(p.text),
-                        cx,
-                    )),
+                    .children(preview.results.iter().map(|(label, result)| {
+                        h_flex().gap(px(4.)).child(*label).child(preview_value(
+                            *label,
+                            result,
+                            div().text_color(p.text),
+                            cx,
+                        ))
+                    })),
             )
-            .when(!preview.results.is_empty(), |band| {
-                band.child(
-                    h_flex()
-                        .flex_wrap()
-                        .gap_x(px(20.))
-                        .gap_y(px(4.))
-                        .text_size(px(12.))
-                        .text_color(p.muted)
-                        .children(preview.results.iter().map(|(label, result)| {
-                            h_flex().gap(px(4.)).child(*label).child(preview_value(
-                                *label,
-                                result,
-                                div().text_color(p.text),
-                                cx,
-                            ))
-                        })),
-                )
-            }),
-        Err(error) => band
-            .child(header)
-            .child(div().text_color(p.warning).child(error.clone())),
+        }),
+        Err(error) => preview_error(error.clone(), cx),
     }
 }
 
-fn preview_value(
+pub fn preview_value(
     id: impl Into<ElementId>,
     display: &DisplayText,
     style: Div,

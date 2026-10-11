@@ -48,6 +48,10 @@ impl Exchange {
             None => title_case(&self.name),
         }
     }
+
+    pub fn display_city(&self) -> Option<String> {
+        self.city.as_deref().map(title_case)
+    }
 }
 
 fn title_case(name: &str) -> String {

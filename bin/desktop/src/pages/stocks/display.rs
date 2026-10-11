@@ -25,7 +25,7 @@ pub enum Action {
 }
 
 impl Action {
-    fn title(self) -> &'static str {
+    pub fn title(self) -> &'static str {
         match self {
             Self::Buy => "Buy",
             Self::Sell => "Sell",
@@ -38,6 +38,14 @@ pub struct WarningCard {
     pub icon: IconName,
     pub title: SharedString,
     pub description: SharedString,
+    pub add_buy: Option<Option<BuyPrefill>>,
+}
+
+#[derive(Clone)]
+pub struct BuyPrefill {
+    pub ticker: String,
+    pub provider: String,
+    pub currency: Currency,
 }
 
 pub struct HoldingBlock {
@@ -76,6 +84,7 @@ pub struct StockDisplay {
     pub sales: Vec<RowDisplay>,
     pub profits: Vec<Decimal>,
     pub records: Vec<RowDisplay>,
+    pub stocks: Vec<Stock>,
     pub actions: Vec<Action>,
     pub holdings: Vec<HoldingBlock>,
     pub sold_out: Vec<SoldOut>,
@@ -121,6 +130,7 @@ impl StockDisplay {
             sales,
             profits: tax.sales.iter().map(|sale| sale.profit).collect(),
             records,
+            stocks: data.records.clone(),
             actions: data.records.iter().map(action).collect(),
             holdings,
             sold_out,
@@ -217,7 +227,7 @@ pub fn rate_cell(rate: Decimal, nbp_date: NaiveDate, currency: Currency) -> Disp
     }
 }
 
-fn conversion(shares_value: Decimal, price: Amount, rate: Decimal) -> Vec<DisplayText> {
+pub fn conversion(shares_value: Decimal, price: Amount, rate: Decimal) -> Vec<DisplayText> {
     let mut parts = vec![shares(shares_value), DisplayText::plain("×"), amount(price)];
     if price.currency != Currency::PLN {
         parts.push(DisplayText::plain(format!("× {rate}")));
@@ -885,7 +895,7 @@ fn holdings(tax: &StockTaxData, listings: &Listings) -> (Vec<HoldingBlock>, Vec<
     (blocks, sold_out)
 }
 
-fn names(names: &[&str]) -> String {
+pub fn names(names: &[&str]) -> String {
     const SHOWN: usize = 4;
     match names {
         [] => String::new(),
@@ -900,7 +910,7 @@ fn names(names: &[&str]) -> String {
 }
 
 fn warnings(tax: &StockTaxData) -> Vec<WarningCard> {
-    let mut uncovered: Vec<(&str, &str, Decimal)> = Vec::new();
+    let mut uncovered: Vec<(&str, &str, Currency, Decimal)> = Vec::new();
     let mut missing: Vec<&str> = Vec::new();
     for warning in &tax.warnings {
         match warning {
@@ -908,11 +918,13 @@ fn warnings(tax: &StockTaxData) -> Vec<WarningCard> {
                 let Some(sale) = tax.sales.iter().find(|sale| &sale.id == sell_id) else {
                     continue;
                 };
-                match uncovered.iter_mut().find(|(ticker, provider, _)| {
+                match uncovered.iter_mut().find(|(ticker, provider, _, _)| {
                     *ticker == sale.ticker && *provider == sale.provider
                 }) {
-                    Some((_, _, sum)) => *sum += shares,
-                    None => uncovered.push((&sale.ticker, &sale.provider, *shares)),
+                    Some((_, _, _, sum)) => *sum += shares,
+                    None => {
+                        uncovered.push((&sale.ticker, &sale.provider, sale.price.currency, *shares))
+                    }
                 }
             }
             Warning::MissingExchange { ticker, .. } => {
@@ -924,7 +936,7 @@ fn warnings(tax: &StockTaxData) -> Vec<WarningCard> {
     }
 
     let mut cards = Vec::new();
-    if let [(ticker, provider, shares)] = uncovered[..] {
+    if let [(ticker, provider, currency, shares)] = uncovered[..] {
         cards.push(WarningCard {
             icon: IconName::TriangleAlert,
             title: format!("{ticker} sold {} with no buy", shares_count(shares)).into(),
@@ -933,11 +945,16 @@ fn warnings(tax: &StockTaxData) -> Vec<WarningCard> {
                  {provider} statement or add the buy."
             )
             .into(),
+            add_buy: Some(Some(BuyPrefill {
+                ticker: ticker.to_owned(),
+                provider: provider.to_owned(),
+                currency,
+            })),
         });
     } else if !uncovered.is_empty() {
         let sold = uncovered
             .iter()
-            .map(|(ticker, _, shares)| format!("{ticker} {}", shares_text(*shares)))
+            .map(|(ticker, _, _, shares)| format!("{ticker} {}", shares_text(*shares)))
             .collect::<Vec<_>>();
         cards.push(WarningCard {
             icon: IconName::TriangleAlert,
@@ -945,6 +962,7 @@ fn warnings(tax: &StockTaxData) -> Vec<WarningCard> {
             description: "They count with cost 0.00, so Costs (C-23) are too low. Import the \
                           earlier statements or add the buys."
                 .into(),
+            add_buy: Some(None),
         });
     }
     if !missing.is_empty() {
@@ -957,6 +975,7 @@ fn warnings(tax: &StockTaxData) -> Vec<WarningCard> {
             icon: IconName::MapPin,
             title: format!("{} {verb} no exchange", names(&missing)).into(),
             description: format!("PIT/ZG can't put {pronoun} in a country.").into(),
+            add_buy: None,
         });
     }
     cards

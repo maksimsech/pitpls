@@ -1,5 +1,8 @@
-use crate::{format::DATE_TIME_FORMAT, theme::palette};
-use chrono::{DateTime, NaiveDateTime, NaiveTime, Utc, Weekday};
+use crate::{
+    format::{DATE_FORMAT, DATE_TIME_FORMAT},
+    theme::palette,
+};
+use chrono::{DateTime, NaiveDate, NaiveDateTime, NaiveTime, Utc, Weekday};
 use gpui_kit::{
     component::{
         date_picker::{DatePicker, DatePickerState},
@@ -83,6 +86,10 @@ pub fn text(state: &Entity<InputState>, cx: &App) -> String {
 
 pub fn optional(state: &Entity<InputState>, cx: &App) -> Option<String> {
     Some(text(state, cx)).filter(|value| !value.is_empty())
+}
+
+pub fn optional_amount(state: &Entity<InputState>, cx: &App) -> Option<String> {
+    optional(state, cx).map(|value| decimal_point(&value))
 }
 
 pub fn required(state: &Entity<InputState>, label: &str, cx: &App) -> Result<String, String> {
@@ -191,32 +198,43 @@ pub fn amount_field(
     disabled: bool,
     cx: &App,
 ) -> Div {
-    let theme = cx.theme();
     field(
         label,
-        InputGroup::new(label)
-            .input(Input::new(amount).aria_label(label))
-            .addon(
-                InputGroupAddon::new(currency_label)
-                    .align(InputGroupAddonAlignment::InlineEnd)
-                    .h_full()
-                    .p_0()
-                    .border_l_1()
-                    .border_color(theme.input)
-                    .bg(theme.button)
-                    .rounded_r(theme.radius - px(1.))
-                    .child(
-                        div().w(px(86.)).h_full().child(
-                            Select::new(currency)
-                                .appearance(false)
-                                .accessibility_label(currency_label)
-                                .disabled(disabled),
-                        ),
-                    ),
-            )
-            .disabled(disabled),
+        amount_control(label, currency_label, amount, currency, disabled, cx),
         cx,
     )
+}
+
+pub fn amount_control(
+    label: &'static str,
+    currency_label: &'static str,
+    amount: &Entity<InputState>,
+    currency: &Entity<ChoiceState<Currency>>,
+    disabled: bool,
+    cx: &App,
+) -> InputGroup {
+    let theme = cx.theme();
+    InputGroup::new(label)
+        .input(Input::new(amount).aria_label(label))
+        .addon(
+            InputGroupAddon::new(currency_label)
+                .align(InputGroupAddonAlignment::InlineEnd)
+                .h_full()
+                .p_0()
+                .border_l_1()
+                .border_color(theme.input)
+                .bg(theme.button)
+                .rounded_r(theme.radius - px(1.))
+                .child(
+                    div().w(px(86.)).h_full().child(
+                        Select::new(currency)
+                            .appearance(false)
+                            .accessibility_label(currency_label)
+                            .disabled(disabled),
+                    ),
+                ),
+        )
+        .disabled(disabled)
 }
 
 pub fn parsed_amount(
@@ -224,9 +242,13 @@ pub fn parsed_amount(
     currency: &Entity<ChoiceState<Currency>>,
     cx: &App,
 ) -> Option<(Decimal, Currency)> {
-    let value = Decimal::from_str(&decimal_point(&text(amount, cx))).ok()?;
+    let value = parsed_decimal(amount, cx)?;
     let currency = currency.read(cx).selected_value().copied()?;
     Some((value, currency))
+}
+
+pub fn parsed_decimal(state: &Entity<InputState>, cx: &App) -> Option<Decimal> {
+    Decimal::from_str(&decimal_point(&text(state, cx))).ok()
 }
 
 /// Fields also notify on focus and cursor changes, so `changed` should compare
@@ -274,6 +296,26 @@ pub fn date_picker(
     })
 }
 
+pub fn day_picker(
+    value: Option<NaiveDate>,
+    window: &mut Window,
+    cx: &mut App,
+) -> Entity<DatePickerState> {
+    cx.new(|cx| {
+        let mut state = DatePickerState::new(window, cx)
+            .date_format(DATE_FORMAT)
+            .first_day_of_week(Weekday::Mon);
+        if let Some(value) = value {
+            state.set_date(value, window, cx);
+        }
+        state
+    })
+}
+
+pub fn picked_day(state: &Entity<DatePickerState>, cx: &App) -> Option<NaiveDate> {
+    picked_local(state, cx).map(|time| time.date())
+}
+
 fn picked_local(state: &Entity<DatePickerState>, cx: &App) -> Option<NaiveDateTime> {
     state.read(cx).date_time().start()
 }
@@ -299,14 +341,30 @@ pub fn date_field(
     cx: &App,
 ) -> Div {
     field(
-        h_flex().items_baseline().gap(px(6.)).child(label).child(
+        noted_label(label, "Warsaw time", cx),
+        DatePicker::new(state).disabled(disabled),
+        cx,
+    )
+}
+
+pub fn noted_label(label: impl Into<SharedString>, note: impl Into<SharedString>, cx: &App) -> Div {
+    h_flex()
+        .items_baseline()
+        .gap(px(6.))
+        .child(label.into())
+        .child(
             div()
                 .text_size(px(11.))
                 .font_weight(FontWeight::NORMAL)
                 .text_color(palette(cx).faint)
-                .child("Warsaw time"),
-        ),
-        DatePicker::new(state).disabled(disabled),
-        cx,
-    )
+                .child(note.into()),
+        )
+}
+
+pub fn hint(text: impl Into<SharedString>, cx: &App) -> Div {
+    div()
+        .min_w_0()
+        .text_size(px(11.5))
+        .text_color(palette(cx).faint)
+        .child(text.into())
 }

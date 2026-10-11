@@ -1,4 +1,6 @@
 mod display;
+mod editor;
+mod exchange;
 mod history;
 mod holdings;
 
@@ -17,6 +19,7 @@ use crate::{
     theme::{palette, tabular_digits},
 };
 use display::{Action, InstrumentKey, StockDisplay, WarningCard};
+use editor::StockEditor;
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::{
     Role,
@@ -67,6 +70,7 @@ pub struct StocksPage {
     filter: Entity<InputState>,
     query: String,
     page_scroll: ScrollHandle,
+    editor: Option<StockEditor>,
     pending_delete: Option<Vec<String>>,
     deleting: HashSet<String>,
     nbp_year: Option<Entity<InputState>>,
@@ -157,6 +161,7 @@ impl StocksPage {
             filter,
             query: String::new(),
             page_scroll: ScrollHandle::default(),
+            editor: None,
             pending_delete: None,
             deleting: HashSet::new(),
             nbp_year: None,
@@ -171,7 +176,10 @@ impl StocksPage {
     }
 
     fn locked(&self) -> bool {
-        self.status.busy || self.pending_delete.is_some() || self.nbp_year.is_some()
+        self.status.busy
+            || self.editor.is_some()
+            || self.pending_delete.is_some()
+            || self.nbp_year.is_some()
     }
 
     fn notify(&self, cx: &mut Context<Self>) {
@@ -440,7 +448,7 @@ impl StocksPage {
             row.child(filter_field(
                 &self.filter,
                 count,
-                self.nbp_year.is_some(),
+                self.editor.is_some() || self.nbp_year.is_some(),
                 cx,
             ))
         })
@@ -455,8 +463,24 @@ impl StocksPage {
                 )))
                 .child(import_button(narrow).disabled(disabled).on_click(
                     cx.listener(|this, _, _, cx| this.context.navigate(Page::Imports, cx)),
-                )),
+                ))
+                .child(
+                    self.add_button("add-record", Some(IconName::Plus), disabled, cx)
+                        .primary(),
+                ),
         )
+    }
+
+    fn add_button(
+        &self,
+        id: &'static str,
+        icon: Option<IconName>,
+        disabled: bool,
+        cx: &mut Context<Self>,
+    ) -> Button {
+        header::button(id, icon, "Add new")
+            .disabled(disabled)
+            .on_click(cx.listener(|this, _, window, cx| this.open_editor(None, None, window, cx)))
     }
 
     fn stats(&self, compact: bool, cx: &App) -> Div {
@@ -471,13 +495,25 @@ impl StocksPage {
         }))
     }
 
-    fn warning(card: &WarningCard, cx: &App) -> Div {
+    fn warning(&self, index: usize, card: &WarningCard, cx: &mut Context<Self>) -> Div {
         let p = *palette(cx);
+        let add_buy = card.add_buy.clone().map(|prefill| {
+            header::button(
+                SharedString::from(format!("warning-add-buy-{index}")),
+                None,
+                "Add buy",
+            )
+            .disabled(self.disabled())
+            .on_click(cx.listener(move |this, _, window, cx| {
+                this.open_editor(None, prefill.clone(), window, cx)
+            }))
+        });
         h_flex()
             .flex_shrink_0()
             .mx(px(20.))
             .mb(px(8.))
-            .px(px(12.))
+            .pl(px(12.))
+            .pr(px(if add_buy.is_some() { 8. } else { 12. }))
             .py(px(8.))
             .gap(px(10.))
             .rounded(px(10.))
@@ -504,6 +540,7 @@ impl StocksPage {
                             .child(card.description.clone()),
                     ),
             )
+            .children(add_buy)
     }
 
     fn tabs(&self, cx: &mut Context<Self>) -> Div {
@@ -672,16 +709,23 @@ impl StocksPage {
             .map(|importer| crate::messages::importer_name(importer.kind))
             .collect::<Vec<_>>()
             .join(" or ");
+        let disabled = self.disabled();
         notice::notice(
             Page::Stocks.icon(),
             false,
             format!("No stocks in {year}"),
-            format!("Import a {providers} statement."),
+            format!("Import a {providers} statement, or add a record by hand."),
             cx,
         )
         .content(
             EmptyContent::new()
-                .child(h_flex().mt(px(6.)).child(self.import_action(cx)))
+                .child(
+                    h_flex()
+                        .gap(px(8.))
+                        .mt(px(6.))
+                        .child(self.import_action(cx))
+                        .child(self.add_button("empty-add", None, disabled, cx)),
+                )
                 .children(self.year_link(cx)),
         )
     }
@@ -804,11 +848,19 @@ impl TableHost for StocksPage {
     }
 
     fn editable(&self) -> bool {
-        false
+        true
     }
 
-    // Stocks get their form in docs/stocks/09-add-record.md.
-    fn edit(&mut self, _: &str, _: &mut Window, _: &mut Context<Self>) {}
+    fn edit(&mut self, id: &str, window: &mut Window, cx: &mut Context<Self>) {
+        let record = self
+            .display
+            .as_ref()
+            .and_then(|display| display.stocks.iter().find(|record| record.id == id))
+            .cloned();
+        if let Some(record) = record {
+            self.open_editor(Some(&record), None, window, cx);
+        }
+    }
 
     fn delete_one(&mut self, id: &str, window: &mut Window, cx: &mut Context<Self>) {
         self.confirm_delete(
@@ -863,9 +915,9 @@ impl Render for StocksPage {
             .overflow_y_scroll()
             .lock_scroll_axis()
             .track_scroll(&self.page_scroll)
-            // The NBP dialog shows its own errors.
+            // The editor and the NBP dialog show their own errors.
             .when(
-                self.status.is_visible() && self.nbp_year.is_none(),
+                self.status.is_visible() && self.editor.is_none() && self.nbp_year.is_none(),
                 |view| {
                     view.child(
                         div()
@@ -892,8 +944,8 @@ impl Render for StocksPage {
             let warnings = self
                 .display
                 .iter()
-                .flat_map(|display| &display.warnings)
-                .map(|card| Self::warning(card, cx))
+                .flat_map(|display| display.warnings.iter().enumerate())
+                .map(|(index, card)| self.warning(index, card, cx))
                 .collect::<Vec<_>>();
             body = body
                 .child(self.stats(compact, cx))

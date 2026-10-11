@@ -433,6 +433,10 @@ pub async fn set_exchanges(
         .await
 }
 
+pub async fn list_instruments(app: &App) -> Result<Vec<Instrument>, RepositoryError> {
+    app.db.instrument_repo().list().await
+}
+
 pub async fn load_listings(app: &App) -> Result<Listings, RepositoryError> {
     let instruments = app.db.instrument_repo().list().await?;
     listings(app, instruments).await
