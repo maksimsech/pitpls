@@ -6,6 +6,7 @@ use crate::{
     rate::{NbpRateProvider, RateConverterError},
     settings::DividendRounding,
     tax::{POLAND_TAX, get_treaty_tax},
+    time::tax_date,
 };
 
 mod model;
@@ -31,7 +32,7 @@ pub fn calculate(
 
     for dividend in dividends {
         let conversion = rate_provider
-            .convert(&dividend.value, &dividend.date)
+            .convert(&dividend.value, &tax_date(dividend.time))
             .map_err(CalculateDividendTaxError::DividendConversion)?;
         let dividend_pln = conversion.pln.maybe_round_dividend(rounding);
 
@@ -88,7 +89,7 @@ fn calculate_already_paid(
     rounding: DividendRounding,
 ) -> Result<AlreadyPaidData, CalculateDividendTaxError> {
     let conversion = rate_provider
-        .convert(&dividend.tax_paid, &dividend.date)
+        .convert(&dividend.tax_paid, &tax_date(dividend.time))
         .map_err(CalculateDividendTaxError::PaidTaxConversion)?;
     let paid_pln = conversion.pln.maybe_round_dividend(rounding);
 

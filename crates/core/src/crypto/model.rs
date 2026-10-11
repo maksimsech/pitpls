@@ -1,4 +1,4 @@
-use chrono::NaiveDate;
+use chrono::{DateTime, NaiveDate, Utc};
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 
@@ -15,7 +15,7 @@ pub struct Crypto {
     pub value: Amount,
     pub fee: Amount,
     pub action: Action,
-    pub date: NaiveDate,
+    pub time: DateTime<Utc>,
     pub provider: String,
 }
 
@@ -26,7 +26,7 @@ pub struct CalculatedCrypto {
     pub fee: Amount,
     pub calculated_fee: Decimal,
     pub action: Action,
-    pub date: NaiveDate,
+    pub time: DateTime<Utc>,
     pub nbp_date: NaiveDate,
     // The NBP rate of `nbp_date` for the value's currency (1 for PLN).
     pub nbp_rate: Decimal,
@@ -51,7 +51,7 @@ impl CalculatedCrypto {
             fee: crypto.fee,
             calculated_fee,
             action: crypto.action,
-            date: crypto.date,
+            time: crypto.time,
             nbp_date,
             nbp_rate,
             fee_nbp_rate,

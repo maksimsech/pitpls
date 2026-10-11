@@ -1,20 +1,21 @@
-use crate::theme::palette;
-use chrono::{NaiveDate, Weekday};
+use crate::{format::DATE_TIME_FORMAT, theme::palette};
+use chrono::{DateTime, NaiveDateTime, NaiveTime, Utc, Weekday};
 use gpui_kit::{
     component::{
         date_picker::{DatePicker, DatePickerState},
         input::*,
         select::*,
+        time_field::TimePrecision,
         *,
     },
     *,
 };
-use pitpls_core::common::Currency;
+use pitpls_core::{common::Currency, time};
 use rust_decimal::Decimal;
 use std::str::FromStr;
 
 /// The format the use cases parse.
-const INPUT_DATE_FORMAT: &str = "%Y-%m-%d";
+const INPUT_TIME_FORMAT: &str = "%Y-%m-%d %H:%M:%S";
 
 #[derive(Clone)]
 pub struct Choice<T> {
@@ -138,7 +139,7 @@ pub fn grid() -> Div {
     div().grid().grid_cols(2).gap_x(px(12.)).gap_y(px(14.))
 }
 
-pub fn field(label: &'static str, control: impl IntoElement, cx: &App) -> Div {
+pub fn field(label: impl IntoElement, control: impl IntoElement, cx: &App) -> Div {
     v_flex()
         .min_w_0()
         .gap(px(6.))
@@ -253,27 +254,41 @@ pub fn optional_id(
     })
 }
 
-pub fn date_picker(value: NaiveDate, window: &mut Window, cx: &mut App) -> Entity<DatePickerState> {
+pub fn date_picker(
+    value: Option<DateTime<Utc>>,
+    window: &mut Window,
+    cx: &mut App,
+) -> Entity<DatePickerState> {
+    // Midnight stands for an unknown time, as in date-only sources.
+    let value = value.map_or_else(
+        || time::local(Utc::now()).date().and_time(NaiveTime::MIN),
+        time::local,
+    );
     cx.new(|cx| {
         let mut state = DatePickerState::new(window, cx)
-            .date_format(crate::format::DATE_FORMAT)
+            .date_format(DATE_TIME_FORMAT)
+            .time_precision(TimePrecision::Second)
             .first_day_of_week(Weekday::Mon);
-        state.set_date(value, window, cx);
+        state.set_date_time(value, window, cx);
         state
     })
 }
 
-pub fn picked_date(state: &Entity<DatePickerState>, cx: &App) -> Option<NaiveDate> {
-    state.read(cx).date().start()
+fn picked_local(state: &Entity<DatePickerState>, cx: &App) -> Option<NaiveDateTime> {
+    state.read(cx).date_time().start()
 }
 
-pub fn selected_date(
+pub fn picked_time(state: &Entity<DatePickerState>, cx: &App) -> Option<DateTime<Utc>> {
+    picked_local(state, cx).and_then(time::from_local)
+}
+
+pub fn selected_time(
     state: &Entity<DatePickerState>,
     label: &str,
     cx: &App,
 ) -> Result<String, String> {
-    picked_date(state, cx)
-        .map(|date| date.format(INPUT_DATE_FORMAT).to_string())
+    picked_local(state, cx)
+        .map(|time| time.format(INPUT_TIME_FORMAT).to_string())
         .ok_or_else(|| format!("{label} is required"))
 }
 
@@ -283,5 +298,15 @@ pub fn date_field(
     disabled: bool,
     cx: &App,
 ) -> Div {
-    field(label, DatePicker::new(state).disabled(disabled), cx)
+    field(
+        h_flex().items_baseline().gap(px(6.)).child(label).child(
+            div()
+                .text_size(px(11.))
+                .font_weight(FontWeight::NORMAL)
+                .text_color(palette(cx).faint)
+                .child("Warsaw time"),
+        ),
+        DatePicker::new(state).disabled(disabled),
+        cx,
+    )
 }

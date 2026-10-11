@@ -1,6 +1,6 @@
 use std::str::FromStr;
 
-use chrono::NaiveDate;
+use chrono::{DateTime, NaiveDateTime, Utc};
 use rust_decimal::Decimal;
 
 use pitpls_core::{
@@ -110,7 +110,7 @@ fn parse_row(fields: &[String], columns: &ColumnMap, row: &str) -> Result<Option
         value,
         fee,
         action,
-        date: parse_date(timestamp)?,
+        time: parse_time(timestamp)?,
         provider: PROVIDER.to_string(),
     }))
 }
@@ -150,8 +150,9 @@ fn field<'a>(fields: &'a [String], index: usize, row: &str) -> Result<&'a str> {
         .ok_or_else(|| ImportError::malformed_row(index + 1, fields.len(), row))
 }
 
-fn parse_date(timestamp: &str) -> Result<NaiveDate> {
-    NaiveDate::parse_from_str(timestamp.get(..10).unwrap_or(""), "%Y-%m-%d")
+fn parse_time(timestamp: &str) -> Result<DateTime<Utc>> {
+    NaiveDateTime::parse_from_str(timestamp, "%Y-%m-%d %H:%M:%S UTC")
+        .map(|time| time.and_utc())
         .map_err(|source| ImportError::invalid_timestamp(timestamp, source))
 }
 
@@ -196,7 +197,7 @@ fn split_row(line: &str) -> Vec<String> {
 
 #[cfg(test)]
 mod tests {
-    use chrono::NaiveDate;
+    use chrono::TimeZone;
 
     use super::*;
 
@@ -233,7 +234,7 @@ mod tests {
             ExpectedCrypto {
                 id: "advanced-buy-fiat-1",
                 action: ExpectedAction::FiatBuy,
-                date: NaiveDate::from_ymd_opt(2025, 11, 28).unwrap(),
+                time: Utc.with_ymd_and_hms(2025, 11, 28, 18, 26, 29).unwrap(),
                 value: "413.32342",
                 fee: "0.00",
                 currency: Currency::EUR,
@@ -244,7 +245,7 @@ mod tests {
             ExpectedCrypto {
                 id: "simple-buy-fiat-1",
                 action: ExpectedAction::FiatBuy,
-                date: NaiveDate::from_ymd_opt(2025, 4, 9).unwrap(),
+                time: Utc.with_ymd_and_hms(2025, 4, 9, 8, 25, 29).unwrap(),
                 value: "9.70683",
                 fee: "0.2931714115440003565444",
                 currency: Currency::EUR,
@@ -255,7 +256,7 @@ mod tests {
             ExpectedCrypto {
                 id: "advanced-sell-fiat-1",
                 action: ExpectedAction::FiatSell,
-                date: NaiveDate::from_ymd_opt(2025, 3, 11).unwrap(),
+                time: Utc.with_ymd_and_hms(2025, 3, 11, 21, 24, 32).unwrap(),
                 value: "12.81876",
                 fee: "0.1538250674048000055985248",
                 currency: Currency::EUR,
@@ -266,7 +267,7 @@ mod tests {
     struct ExpectedCrypto<'a> {
         id: &'a str,
         action: ExpectedAction,
-        date: NaiveDate,
+        time: DateTime<Utc>,
         value: &'a str,
         fee: &'a str,
         currency: Currency,
@@ -289,7 +290,7 @@ mod tests {
     fn assert_crypto(crypto: &Crypto, expected: ExpectedCrypto<'_>) {
         assert_eq!(crypto.id, expected.id);
         assert_action(crypto.action, expected.action);
-        assert_eq!(crypto.date, expected.date);
+        assert_eq!(crypto.time, expected.time);
         assert_eq!(
             crypto.value.value,
             Decimal::from_str(expected.value).unwrap()

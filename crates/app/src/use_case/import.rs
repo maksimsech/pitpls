@@ -1,6 +1,7 @@
 use std::collections::BTreeSet;
 
-use chrono::{Datelike, NaiveDate};
+use chrono::{DateTime, Datelike, Utc};
+use pitpls_core::time::tax_date;
 use pitpls_importers::{ImportError as ParseError, import, model::ImporterKind};
 
 use super::validation::validate_year;
@@ -29,11 +30,11 @@ pub async fn run_import(
     let data = import(kind, &file).await?;
 
     let dividends = app.db.dividend_repo().save(&data.dividends).await?;
-    add_years(app, data.dividends.iter().map(|dividend| dividend.date)).await?;
+    add_years(app, data.dividends.iter().map(|dividend| dividend.time)).await?;
     let cryptos = app.db.crypto_repo().save(&data.cryptos).await?;
-    add_years(app, data.cryptos.iter().map(|crypto| crypto.date)).await?;
+    add_years(app, data.cryptos.iter().map(|crypto| crypto.time)).await?;
     let interests = app.db.interest_repo().save(&data.interests).await?;
-    add_years(app, data.interests.iter().map(|interest| interest.date)).await?;
+    add_years(app, data.interests.iter().map(|interest| interest.time)).await?;
 
     Ok(ImportResult {
         dividends,
@@ -44,10 +45,10 @@ pub async fn run_import(
 
 async fn add_years(
     app: &App,
-    dates: impl Iterator<Item = NaiveDate>,
+    times: impl Iterator<Item = DateTime<Utc>>,
 ) -> Result<(), RepositoryError> {
-    let years = dates
-        .map(|date| date.year())
+    let years = times
+        .map(|time| tax_date(time).year())
         .filter(|year| validate_year(*year).is_ok())
         .collect::<BTreeSet<_>>();
     let repo = app.db.year_repo();

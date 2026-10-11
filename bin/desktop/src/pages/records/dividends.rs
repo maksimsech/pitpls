@@ -1,4 +1,4 @@
-use super::{RecordForm, RecordKind, Submission, conversion, day, percent};
+use super::{RecordForm, RecordKind, Submission, conversion, date_label, day, percent};
 use crate::{
     components::{
         form::{self, ChoiceState},
@@ -8,7 +8,7 @@ use crate::{
     navigation::Page,
     services::Error as ServiceError,
 };
-use chrono::NaiveDate;
+use chrono::{DateTime, Utc};
 use gpui_kit::{
     component::{date_picker::DatePickerState, input::InputState},
     *,
@@ -42,13 +42,13 @@ impl RecordKind for Dividends {
         &record.id
     }
 
-    fn date(record: &CalculatedDividend) -> NaiveDate {
-        record.date
+    fn time(record: &CalculatedDividend) -> DateTime<Utc> {
+        record.time
     }
 
     fn columns() -> Vec<RecordColumn> {
         vec![
-            RecordColumn::new("Date", CellStyle::Muted, 64., 44.),
+            RecordColumn::new("Date", CellStyle::Time, 104., 44.),
             RecordColumn::new("Ticker", CellStyle::Strong, 76., 56.),
             RecordColumn::grow("Provider", CellStyle::Muted),
             RecordColumn::new("Country", CellStyle::Muted, 64., 46.),
@@ -59,7 +59,7 @@ impl RecordKind for Dividends {
 
     fn display(record: &CalculatedDividend) -> RowDisplay {
         let cells = vec![
-            day(record.date),
+            day(record.time),
             DisplayText::plain(record.ticker.clone()),
             DisplayText::plain(record.provider.clone()),
             DisplayText::plain(record.country.to_string()),
@@ -130,7 +130,7 @@ impl RecordKind for Dividends {
             steps,
             search: format!("{}\n{}\n{}", record.ticker, record.provider, record.country)
                 .to_lowercase(),
-            label: format!("{} {}", record.ticker, date(record.date).main).into(),
+            label: format!("{} {}", record.ticker, date_label(record.time)).into(),
         }
     }
 
@@ -180,7 +180,7 @@ impl RecordKind for Dividends {
         let (tax_paid, tax_paid_currency) = draft.tax_paid;
         let dividend = Dividend {
             id: String::new(),
-            date: draft.date,
+            time: draft.time,
             ticker: String::new(),
             value: Amount {
                 value,
@@ -213,7 +213,7 @@ impl RecordKind for Dividends {
 
 #[derive(Clone, PartialEq)]
 pub struct DividendDraft {
-    date: NaiveDate,
+    time: DateTime<Utc>,
     value: (Decimal, Currency),
     tax_paid: (Decimal, Currency),
     country: Country,
@@ -244,11 +244,7 @@ impl RecordForm for DividendForm {
         Self {
             existing_id: record.map(|record| record.id.clone()),
             id: form::optional_id(text(|record| record.id.clone()), window, cx),
-            date: form::date_picker(
-                record.map_or_else(|| chrono::Local::now().date_naive(), |record| record.date),
-                window,
-                cx,
-            ),
+            date: form::date_picker(record.map(|record| record.time), window, cx),
             ticker: form::input(text(|record| record.ticker.clone()), window, cx),
             value: form::input(text(|record| record.value.value.to_string()), window, cx),
             value_currency: form::currency(
@@ -296,7 +292,7 @@ impl RecordForm for DividendForm {
     }
 
     fn submission(&self, cx: &App) -> Result<DividendSubmission, String> {
-        let date = form::selected_date(&self.date, "Date", cx)?;
+        let time = form::selected_time(&self.date, "Date", cx)?;
         let ticker = form::required(&self.ticker, "Ticker", cx)?;
         let value = form::amount(&self.value, "Value", cx)?;
         let value_currency = form::selected(&self.value_currency, "Value currency", cx)?;
@@ -307,7 +303,7 @@ impl RecordForm for DividendForm {
             .map_err(crate::messages::country_error)?;
         let provider = form::required(&self.provider, "Provider", cx)?;
         let fields = DividendFields {
-            date,
+            time,
             ticker,
             value,
             value_currency,
@@ -327,7 +323,7 @@ impl RecordForm for DividendForm {
 
     fn draft(&self, cx: &App) -> Option<DividendDraft> {
         Some(DividendDraft {
-            date: form::picked_date(&self.date, cx)?,
+            time: form::picked_time(&self.date, cx)?,
             value: form::parsed_amount(&self.value, &self.value_currency, cx)?,
             tax_paid: form::parsed_amount(&self.tax_paid, &self.tax_paid_currency, cx)?,
             country: form::text(&self.country, cx).parse().ok()?,

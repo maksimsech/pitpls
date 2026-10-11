@@ -7,7 +7,7 @@ CREATE TABLE IF NOT EXISTS rates(
 
 CREATE TABLE IF NOT EXISTS cryptos(
     id TEXT PRIMARY KEY,
-    date DATE NOT NULL,
+    time TEXT NOT NULL,
     value TEXT NOT NULL,
     value_currency TEXT NOT NULL,
     fee TEXT NOT NULL,
@@ -18,7 +18,7 @@ CREATE TABLE IF NOT EXISTS cryptos(
 
 CREATE TABLE IF NOT EXISTS dividends(
     id TEXT PRIMARY KEY,
-    date DATE NOT NULL,
+    time TEXT NOT NULL,
     ticker TEXT NOT NULL,
     value TEXT NOT NULL,
     value_currency TEXT NOT NULL,
@@ -30,7 +30,7 @@ CREATE TABLE IF NOT EXISTS dividends(
 
 CREATE TABLE IF NOT EXISTS interests(
     id TEXT PRIMARY KEY,
-    date DATE NOT NULL,
+    time TEXT NOT NULL,
     value TEXT NOT NULL,
     value_currency TEXT NOT NULL,
     provider TEXT NOT NULL

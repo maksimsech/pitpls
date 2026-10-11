@@ -5,11 +5,12 @@ use pitpls_core::{
         calculate_sell_buy_values,
     },
     rate::NbpRateProvider,
+    time::tax_date,
 };
 
 use super::rates_for;
 use super::validation::{
-    AmountField, Error as ValidationError, parse_amount, parse_date, validate_optional_year,
+    AmountField, Error as ValidationError, parse_amount, parse_time, validate_optional_year,
 };
 use crate::App;
 use pitpls_db::RepositoryError;
@@ -27,7 +28,7 @@ pub enum Error {
 }
 
 pub struct CryptoFields {
-    pub date: String,
+    pub time: String,
     pub action: Action,
     pub value: String,
     pub value_currency: Currency,
@@ -47,13 +48,13 @@ pub struct UpdateCryptoInput {
 }
 
 fn build_crypto(id: String, fields: CryptoFields) -> Result<Crypto, ValidationError> {
-    let date = parse_date(&fields.date)?;
+    let time = parse_time(&fields.time)?;
     let value_dec = parse_amount(&fields.value, AmountField::Value)?;
     let fee_dec = parse_amount(&fields.fee, AmountField::Fee)?;
 
     Ok(Crypto {
         id,
-        date,
+        time,
         action: fields.action,
         value: Amount {
             value: value_dec,
@@ -113,7 +114,7 @@ pub async fn load_cryptos(app: &App, year: Option<i32>) -> Result<CryptoTaxData,
     validate_optional_year(year)?;
     let mut cryptos = app.db.crypto_repo().get_by_year(year).await?;
 
-    cryptos.sort_unstable_by_key(|a| a.date);
+    cryptos.sort_unstable_by_key(|a| a.time);
 
     let rates = app.db.rate_repo().load_all().await?;
     let rate_provider = NbpRateProvider::new(rates);
@@ -122,7 +123,7 @@ pub async fn load_cryptos(app: &App, year: Option<i32>) -> Result<CryptoTaxData,
 }
 
 pub async fn preview_crypto(app: &App, crypto: Crypto) -> Result<CalculatedCrypto, Error> {
-    let rate_provider = rates_for(app, crypto.date).await?;
+    let rate_provider = rates_for(app, tax_date(crypto.time)).await?;
 
     calculate_sell_buy_values(vec![crypto], &rate_provider)?
         .calculated

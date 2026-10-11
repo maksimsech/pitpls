@@ -8,8 +8,6 @@ pub enum ImporterKind {
 }
 
 impl ImporterKind {
-    /// Stable provider values persisted with imported records. These are data,
-    /// not UI labels; changing them would change existing provider identities.
     pub const fn provider(self) -> &'static str {
         match self {
             Self::T212 => "Trading 212",

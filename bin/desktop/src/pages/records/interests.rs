@@ -1,4 +1,4 @@
-use super::{RecordForm, RecordKind, Submission, conversion, day, percent};
+use super::{RecordForm, RecordKind, Submission, conversion, date_label, day, percent};
 use crate::{
     components::{
         form::{self, ChoiceState},
@@ -8,7 +8,7 @@ use crate::{
     navigation::Page,
     services::Error as ServiceError,
 };
-use chrono::NaiveDate;
+use chrono::{DateTime, Utc};
 use gpui_kit::{
     component::{date_picker::DatePickerState, input::InputState},
     *,
@@ -41,13 +41,13 @@ impl RecordKind for Interests {
         &record.id
     }
 
-    fn date(record: &CalculatedInterest) -> NaiveDate {
-        record.date
+    fn time(record: &CalculatedInterest) -> DateTime<Utc> {
+        record.time
     }
 
     fn columns() -> Vec<RecordColumn> {
         vec![
-            RecordColumn::new("Date", CellStyle::Muted, 76., 50.),
+            RecordColumn::new("Date", CellStyle::Time, 116., 50.),
             RecordColumn::grow("Provider", CellStyle::Muted),
             RecordColumn::new("Value", CellStyle::Number, 150., 104.),
             RecordColumn::new("Calculated value", CellStyle::Number, 170., 116.),
@@ -57,7 +57,7 @@ impl RecordKind for Interests {
 
     fn display(record: &CalculatedInterest) -> RowDisplay {
         let cells = vec![
-            day(record.date),
+            day(record.time),
             DisplayText::plain(record.provider.clone()),
             amount(record.value),
             pln(record.calculated_value),
@@ -91,7 +91,7 @@ impl RecordKind for Interests {
             cells,
             steps,
             search: record.provider.to_lowercase(),
-            label: format!("{} {}", record.provider, date(record.date).main).into(),
+            label: format!("{} {}", record.provider, date_label(record.time)).into(),
         }
     }
 
@@ -141,7 +141,7 @@ impl RecordKind for Interests {
         let (value, currency) = draft.value;
         let interest = Interest {
             id: String::new(),
-            date: draft.date,
+            time: draft.time,
             value: Amount { value, currency },
             provider: String::new(),
         };
@@ -162,7 +162,7 @@ impl RecordKind for Interests {
 
 #[derive(Clone, PartialEq)]
 pub struct InterestDraft {
-    date: NaiveDate,
+    time: DateTime<Utc>,
     value: (Decimal, Currency),
 }
 
@@ -187,11 +187,7 @@ impl RecordForm for InterestForm {
         Self {
             existing_id: record.map(|record| record.id.clone()),
             id: form::optional_id(text(|record| record.id.clone()), window, cx),
-            date: form::date_picker(
-                record.map_or_else(|| chrono::Local::now().date_naive(), |record| record.date),
-                window,
-                cx,
-            ),
+            date: form::date_picker(record.map(|record| record.time), window, cx),
             value: form::input(text(|record| record.value.value.to_string()), window, cx),
             value_currency: form::currency(
                 record.map_or(Currency::USD, |record| record.value.currency),
@@ -223,21 +219,21 @@ impl RecordForm for InterestForm {
     }
 
     fn submission(&self, cx: &App) -> Result<InterestSubmission, String> {
-        let date = form::selected_date(&self.date, "Date", cx)?;
+        let time = form::selected_time(&self.date, "Date", cx)?;
         let value = form::amount(&self.value, "Value", cx)?;
         let value_currency = form::selected(&self.value_currency, "Value currency", cx)?;
         let provider = form::required(&self.provider, "Provider", cx)?;
         Ok(match self.existing_id.clone() {
             Some(id) => Submission::Update(UpdateInterestInput {
                 id,
-                date,
+                time,
                 value,
                 value_currency,
                 provider,
             }),
             None => Submission::Create(CreateInterestInput {
                 id: form::optional(&self.id, cx),
-                date,
+                time,
                 value,
                 value_currency,
                 provider,
@@ -247,7 +243,7 @@ impl RecordForm for InterestForm {
 
     fn draft(&self, cx: &App) -> Option<InterestDraft> {
         Some(InterestDraft {
-            date: form::picked_date(&self.date, cx)?,
+            time: form::picked_time(&self.date, cx)?,
             value: form::parsed_amount(&self.value, &self.value_currency, cx)?,
         })
     }

@@ -1,4 +1,5 @@
-use chrono::NaiveDate;
+use chrono::{DateTime, NaiveDateTime, Utc};
+use pitpls_core::time::from_local;
 use thiserror::Error;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -16,11 +17,12 @@ pub enum Error {
         min: i32,
         max: i32,
     },
-    InvalidDate {
+    InvalidTime {
         value: String,
         #[source]
         source: chrono::ParseError,
     },
+    NonexistentTime(NaiveDateTime),
     InvalidAmount {
         field: AmountField,
         value: String,
@@ -30,11 +32,14 @@ pub enum Error {
     MissingId,
 }
 
-pub fn parse_date(value: &str) -> Result<NaiveDate, Error> {
-    NaiveDate::parse_from_str(value, "%Y-%m-%d").map_err(|source| Error::InvalidDate {
-        value: value.to_owned(),
-        source,
-    })
+pub fn parse_time(value: &str) -> Result<DateTime<Utc>, Error> {
+    let local = NaiveDateTime::parse_from_str(value, "%Y-%m-%d %H:%M:%S").map_err(|source| {
+        Error::InvalidTime {
+            value: value.to_owned(),
+            source,
+        }
+    })?;
+    from_local(local).ok_or(Error::NonexistentTime(local))
 }
 
 pub fn parse_amount(value: &str, field: AmountField) -> Result<rust_decimal::Decimal, Error> {

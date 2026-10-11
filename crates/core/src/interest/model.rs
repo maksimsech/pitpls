@@ -1,18 +1,18 @@
-use chrono::NaiveDate;
+use chrono::{DateTime, NaiveDate, Utc};
 use rust_decimal::Decimal;
 
 use crate::common::Amount;
 
 pub struct Interest {
     pub id: String,
-    pub date: NaiveDate,
+    pub time: DateTime<Utc>,
     pub value: Amount,
     pub provider: String,
 }
 
 pub struct CalculatedInterest {
     pub id: String,
-    pub date: NaiveDate,
+    pub time: DateTime<Utc>,
     pub nbp_date: NaiveDate,
     // The NBP rate of `nbp_date` for the value's currency (1 for PLN).
     pub nbp_rate: Decimal,
@@ -32,7 +32,7 @@ impl CalculatedInterest {
     ) -> Self {
         Self {
             id: interest.id,
-            date: interest.date,
+            time: interest.time,
             nbp_date,
             nbp_rate,
             value: interest.value,

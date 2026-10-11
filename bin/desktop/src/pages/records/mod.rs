@@ -14,12 +14,12 @@ use crate::{
         },
         spinner, value,
     },
-    format::{DisplayText, amount, pln},
+    format::{DisplayText, amount, date, pln},
     navigation::{Page, PageContext},
     services::Error as ServiceError,
     theme::{palette, tabular_digits},
 };
-use chrono::{Datelike, NaiveDate};
+use chrono::{DateTime, Datelike, NaiveTime, Utc};
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::{
     assets::IconName,
@@ -35,7 +35,7 @@ use gpui_kit::{
     *,
 };
 use pitpls_app::use_case::year::{self, YearInfo};
-use pitpls_core::common::Amount;
+use pitpls_core::{common::Amount, time};
 use pitpls_importers::{IMPORTERS, OutputType};
 use rust_decimal::Decimal;
 use std::{
@@ -86,7 +86,7 @@ pub trait RecordKind: 'static {
     const TOTAL_LABELS: &'static [&'static str];
 
     fn id(record: &Self::Record) -> &str;
-    fn date(record: &Self::Record) -> NaiveDate;
+    fn time(record: &Self::Record) -> DateTime<Utc>;
     fn columns() -> Vec<RecordColumn>;
     fn display(record: &Self::Record) -> RowDisplay;
     /// Information only: summed here at full precision, never by the
@@ -123,9 +123,23 @@ fn percent(rate: Decimal) -> String {
     format!("{}%", (rate * Decimal::ONE_HUNDRED).normalize())
 }
 
-/// The month header carries the month and year.
-fn day(date: NaiveDate) -> DisplayText {
-    DisplayText::plain(date.format("%d.%m").to_string())
+/// The month header carries the month and year. Midnight is left out, since
+/// date-only sources record it.
+fn day(value: DateTime<Utc>) -> DisplayText {
+    let local = time::local(value);
+    let clock = if local.time() == NaiveTime::MIN {
+        String::new()
+    } else {
+        local.format("%H:%M").to_string()
+    };
+    DisplayText {
+        extra: clock.into(),
+        ..DisplayText::plain(local.format("%d.%m").to_string())
+    }
+}
+
+fn date_label(value: DateTime<Utc>) -> String {
+    date(time::tax_date(value)).main.to_string()
 }
 
 const NARROW: f32 = 600.;
@@ -292,8 +306,8 @@ impl<K: RecordKind> RecordsPage<K> {
             if !row.search.contains(self.query.as_str()) {
                 continue;
             }
-            let date = K::date(record);
-            let key = (date.year(), date.month());
+            let local = time::local(K::time(record));
+            let key = (local.year(), local.month());
             match groups.last_mut() {
                 Some(group) if group.key == key => group.records.push(index),
                 _ => groups.push(MonthGroup {

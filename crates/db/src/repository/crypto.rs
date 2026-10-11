@@ -1,7 +1,11 @@
 use std::str::FromStr;
 
-use chrono::{Datelike, NaiveDate};
-use pitpls_core::{common::Amount, crypto::Crypto};
+use chrono::{DateTime, Datelike, Utc};
+use pitpls_core::{
+    common::Amount,
+    crypto::Crypto,
+    time::{tax_date, year_range},
+};
 use rust_decimal::Decimal;
 use sqlx::{Row, SqlitePool};
 
@@ -38,12 +42,12 @@ impl CryptoRepository {
 
         sqlx::query(
             r"
-                INSERT INTO cryptos(id, date, value, value_currency, fee, fee_currency, action, provider)
+                INSERT INTO cryptos(id, time, value, value_currency, fee, fee_currency, action, provider)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             ",
         )
         .bind(crypto.id.to_string())
-        .bind(crypto.date)
+        .bind(crypto.time)
         .bind(crypto.value.value.to_string())
         .bind(serde_plain::to_string(&crypto.value.currency)?)
         .bind(crypto.fee.value.to_string())
@@ -54,7 +58,7 @@ impl CryptoRepository {
         .await?;
 
         sqlx::query("INSERT OR IGNORE INTO years(year) VALUES (?)")
-            .bind(crypto.date.year())
+            .bind(tax_date(crypto.time).year())
             .execute(&mut *tx)
             .await?;
 
@@ -69,10 +73,10 @@ impl CryptoRepository {
         for crypto in cryptos {
             let result = sqlx::query(
                 r"
-                    INSERT INTO cryptos(id, date, value, value_currency, fee, fee_currency, action, provider)
+                    INSERT INTO cryptos(id, time, value, value_currency, fee, fee_currency, action, provider)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT(id) DO UPDATE SET
-                        date = excluded.date,
+                        time = excluded.time,
                         value = excluded.value,
                         value_currency = excluded.value_currency,
                         fee = excluded.fee,
@@ -83,7 +87,7 @@ impl CryptoRepository {
                 ",
             )
             .bind(crypto.id.to_string())
-            .bind(crypto.date)
+            .bind(crypto.time)
             .bind(crypto.value.value.to_string())
             .bind(serde_plain::to_string(&crypto.value.currency)?)
             .bind(crypto.fee.value.to_string())
@@ -98,7 +102,7 @@ impl CryptoRepository {
 
             if affected > 0 {
                 sqlx::query("INSERT OR IGNORE INTO years(year) VALUES (?)")
-                    .bind(crypto.date.year())
+                    .bind(tax_date(crypto.time).year())
                     .execute(&mut *tx)
                     .await?;
             }
@@ -114,11 +118,11 @@ impl CryptoRepository {
         let result = sqlx::query(
             r"
                 UPDATE cryptos
-                SET date = ?, value = ?, value_currency = ?, fee = ?, fee_currency = ?, action = ?, provider = ?
+                SET time = ?, value = ?, value_currency = ?, fee = ?, fee_currency = ?, action = ?, provider = ?
                 WHERE id = ?
             ",
         )
-        .bind(c.date)
+        .bind(c.time)
         .bind(c.value.value.to_string())
         .bind(serde_plain::to_string(&c.value.currency)?)
         .bind(c.fee.value.to_string())
@@ -130,7 +134,7 @@ impl CryptoRepository {
         .await?;
 
         sqlx::query("INSERT OR IGNORE INTO years(year) VALUES (?)")
-            .bind(c.date.year())
+            .bind(tax_date(c.time).year())
             .execute(&mut *tx)
             .await?;
 
@@ -139,15 +143,12 @@ impl CryptoRepository {
     }
 
     pub async fn get_by_year(&self, year: Option<i32>) -> Result<Vec<Crypto>> {
-        const BASE: &str = "SELECT id, date, value, value_currency, fee, fee_currency, action, provider FROM cryptos";
+        const BASE: &str = "SELECT id, time, value, value_currency, fee, fee_currency, action, provider FROM cryptos";
         let rows = match year {
             None => sqlx::query(BASE).fetch_all(&self.db).await?,
             Some(y) => {
-                let start =
-                    NaiveDate::from_ymd_opt(y, 1, 1).ok_or(RepositoryError::InvalidYear(y))?;
-                let end =
-                    NaiveDate::from_ymd_opt(y, 12, 31).ok_or(RepositoryError::InvalidYear(y))?;
-                sqlx::query(&format!("{BASE} WHERE date BETWEEN ? AND ?"))
+                let (start, end) = year_range(y).ok_or(RepositoryError::InvalidYear(y))?;
+                sqlx::query(&format!("{BASE} WHERE time >= ? AND time < ?"))
                     .bind(start)
                     .bind(end)
                     .fetch_all(&self.db)
@@ -158,7 +159,7 @@ impl CryptoRepository {
         rows.into_iter()
             .map(|row| {
                 let id: String = row.try_get("id")?;
-                let date: NaiveDate = row.try_get("date")?;
+                let time: DateTime<Utc> = row.try_get("time")?;
                 let value: String = row.try_get("value")?;
                 let value_currency: String = row.try_get("value_currency")?;
                 let fee: String = row.try_get("fee")?;
@@ -168,7 +169,7 @@ impl CryptoRepository {
 
                 Ok(Crypto {
                     id,
-                    date,
+                    time,
                     value: Amount {
                         value: Decimal::from_str(&value)?,
                         currency: serde_plain::from_str(&value_currency)?,

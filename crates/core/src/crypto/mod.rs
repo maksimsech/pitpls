@@ -4,6 +4,7 @@ use thiserror::Error;
 use crate::{
     DecimalExt,
     rate::{NbpRateProvider, RateConverterError},
+    time::tax_date,
 };
 
 pub use model::{Action, CalculatedCrypto, Crypto, CryptoTaxData};
@@ -27,11 +28,12 @@ pub fn calculate_sell_buy_values(
     let mut calculated = Vec::with_capacity(cryptos.len());
 
     for crypto in cryptos {
+        let date = tax_date(crypto.time);
         let value = rate_provider
-            .convert(&crypto.value, &crypto.date)
+            .convert(&crypto.value, &date)
             .map_err(CalculateSellBuyValuesError::ValueConversion)?;
         let fee = rate_provider
-            .convert(&crypto.fee, &crypto.date)
+            .convert(&crypto.fee, &date)
             .map_err(CalculateSellBuyValuesError::FeeConversion)?;
         let (value_pln, fee_pln) = (value.pln, fee.pln);
 

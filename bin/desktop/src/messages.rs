@@ -18,7 +18,10 @@ use pitpls_db::{OpenDatabaseError, RepositoryError};
 use pitpls_importers::{ImportAmounts, ImportContext, ImportError, ImportField, ImporterKind};
 use pitpls_nbr::{ApiImportError, CsvImportError};
 
-use crate::{format::date, services::Error as ServiceError};
+use crate::{
+    format::{DATE_TIME_FORMAT, date},
+    services::Error as ServiceError,
+};
 
 pub fn importer_name(kind: ImporterKind) -> &'static str {
     match kind {
@@ -95,9 +98,13 @@ fn validation_error(error: &ValidationError) -> String {
         ValidationError::InvalidYear { year, min, max } => {
             format!("Year {year} out of range ({min}–{max})")
         }
-        ValidationError::InvalidDate { value, .. } => {
-            format!("Invalid date '{value}' (expected YYYY-MM-DD)")
+        ValidationError::InvalidTime { value, .. } => {
+            format!("Invalid date '{value}' (expected YYYY-MM-DD HH:MM:SS)")
         }
+        ValidationError::NonexistentTime(time) => format!(
+            "{} doesn't exist in Warsaw: clocks skip that hour when summer time starts",
+            time.format(DATE_TIME_FORMAT)
+        ),
         ValidationError::InvalidAmount { field, value, .. } => {
             let field = match field {
                 AmountField::Value => "value",
@@ -353,8 +360,11 @@ fn import_context(context: &ImportContext) -> String {
             None => format!("Revolut dividend on {}", date(*at).main),
         },
         ImportContext::RevolutTotal => "Revolut total".into(),
-        ImportContext::T212Dividend { ticker, date: at } => {
-            format!("Trading 212 dividend {ticker} on {}", date(*at).main)
+        ImportContext::T212Dividend { ticker, time } => {
+            format!(
+                "Trading 212 dividend {ticker} at {} UTC",
+                time.format(DATE_TIME_FORMAT)
+            )
         }
     }
 }
