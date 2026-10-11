@@ -135,6 +135,7 @@ impl ImportsPage {
                     dividends: result.dividends,
                     interests: result.interests,
                     cryptos: result.cryptos,
+                    stocks: result.stocks,
                     imported_at: Utc::now(),
                 };
                 let counts = IMPORTERS[index]
@@ -144,6 +145,7 @@ impl ImportsPage {
                         OutputType::Dividend => count(result.dividends, "dividend"),
                         OutputType::Crypto => count(result.cryptos, "crypto record"),
                         OutputType::Interest => count(result.interests, "interest record"),
+                        OutputType::Stock => count(result.stocks, "stock record"),
                     })
                     .collect::<Vec<_>>()
                     .join(" and ");
@@ -318,6 +320,7 @@ impl ImportsPage {
                 OutputType::Dividend => "Dividends",
                 OutputType::Crypto => "Crypto",
                 OutputType::Interest => "Interest",
+                OutputType::Stock => "Stocks",
             })
             .collect::<Vec<_>>()
             .join(" & ");

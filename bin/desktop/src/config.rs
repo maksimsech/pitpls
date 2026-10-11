@@ -62,6 +62,8 @@ pub struct LastImport {
     pub dividends: u64,
     pub interests: u64,
     pub cryptos: u64,
+    #[serde(default)]
+    pub stocks: u64,
     pub imported_at: DateTime<Utc>,
 }
 

@@ -20,6 +20,7 @@ pub struct ImportResult {
     pub dividends: u64,
     pub cryptos: u64,
     pub interests: u64,
+    pub stocks: u64,
 }
 
 pub async fn run_import(
@@ -35,11 +36,20 @@ pub async fn run_import(
     add_years(app, data.cryptos.iter().map(|crypto| crypto.time)).await?;
     let interests = app.db.interest_repo().save(&data.interests).await?;
     add_years(app, data.interests.iter().map(|interest| interest.time)).await?;
+    let stocks = app.db.stock_repo().save(&data.stocks).await?;
+    add_years(app, data.stocks.iter().map(|stock| stock.time)).await?;
+    let instruments = app.db.instrument_repo();
+    for instrument in &data.instruments {
+        instruments
+            .upsert_from_import(&instrument.ticker, &instrument.provider, &instrument.isin)
+            .await?;
+    }
 
     Ok(ImportResult {
         dividends,
         cryptos,
         interests,
+        stocks,
     })
 }
 

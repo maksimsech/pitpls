@@ -1,4 +1,4 @@
-use pitpls_core::{crypto::Crypto, dividend::Dividend, interest::Interest};
+use pitpls_core::{crypto::Crypto, dividend::Dividend, interest::Interest, stock::Stock};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ImporterKind {
@@ -26,6 +26,7 @@ pub enum OutputType {
     Dividend,
     Crypto,
     Interest,
+    Stock,
 }
 
 pub struct Importer {
@@ -34,8 +35,17 @@ pub struct Importer {
     pub output: &'static [OutputType],
 }
 
+#[derive(Default)]
 pub struct ImportData {
     pub dividends: Vec<Dividend>,
     pub cryptos: Vec<Crypto>,
     pub interests: Vec<Interest>,
+    pub stocks: Vec<Stock>,
+    pub instruments: Vec<ImportedInstrument>,
+}
+
+pub struct ImportedInstrument {
+    pub ticker: String,
+    pub provider: String,
+    pub isin: String,
 }
