@@ -2,6 +2,7 @@ use thiserror::Error;
 
 pub mod crypto;
 pub mod dividend;
+pub mod instrument;
 pub mod interest;
 pub mod rate;
 pub mod settings;

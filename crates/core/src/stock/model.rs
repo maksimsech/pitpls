@@ -1,14 +1,14 @@
 use std::collections::HashMap;
 
-use chrono::NaiveDate;
+use chrono::{DateTime, NaiveDate, Utc};
 use rust_decimal::Decimal;
 
-use crate::common::Amount;
+use crate::common::{Amount, Mic};
 
 #[derive(Clone)]
 pub struct Stock {
     pub id: String,
-    pub date: NaiveDate,
+    pub time: DateTime<Utc>,
     pub ticker: String,
     pub action: StockAction,
 }
@@ -26,6 +26,7 @@ pub struct StockBuy {
     pub price: Amount,
     pub fee: Amount,
     pub provider: String,
+    pub settlement_date: Option<NaiveDate>,
 }
 
 #[derive(Clone)]
@@ -34,11 +35,23 @@ pub struct StockSell {
     pub price: Amount,
     pub fee: Amount,
     pub provider: String,
+    pub settlement_date: Option<NaiveDate>,
+    pub tax_paid: Option<Amount>,
+}
+
+// New shares = shares × after ÷ before; a ratio can't hold 1-for-3 exactly.
+#[derive(Clone)]
+pub struct StockSplit {
+    pub before: u32,
+    pub after: u32,
 }
 
 #[derive(Clone)]
-pub struct StockSplit {
-    pub ratio: Decimal,
+pub struct Instrument {
+    pub ticker: String,
+    pub provider: String,
+    pub exchange: Option<Mic>,
+    pub isin: Option<String>,
 }
 
 pub struct StockTaxData {

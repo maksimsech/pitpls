@@ -7,11 +7,12 @@ use rust_decimal::Decimal;
 use crate::{
     rate::NbpRateProvider,
     stock::model::{CalculatedStock, StockTaxData, Warning, YearStats},
+    time::tax_date,
 };
 
 mod model;
 
-pub use model::{Stock, StockAction, StockBuy, StockSell, StockSplit};
+pub use model::{Instrument, Stock, StockAction, StockBuy, StockSell, StockSplit};
 
 /*
  * For now just accept full stock data, later I could optimize it.
@@ -22,9 +23,9 @@ pub fn calculate_sell_buy_values(
     year: i32,
     rate_provider: &NbpRateProvider,
 ) -> Result<StockTaxData> {
-    debug_assert!(stocks.iter().all(|s| s.date.year() <= year));
+    debug_assert!(stocks.iter().all(|s| tax_date(s.time).year() <= year));
 
-    let this_year_sells = stocks.iter().filter(|s| s.date.year() == year);
+    let this_year_sells = stocks.iter().filter(|s| tax_date(s.time).year() == year);
     let mut this_year_sells_set = HashSet::new();
     for sell in this_year_sells {
         if let StockAction::Sell(ref sell_action) = sell.action {
@@ -70,7 +71,7 @@ fn calculate_stock(
         })
         .collect::<Vec<_>>();
 
-    stock_history.sort_unstable_by_key(|s| s.date);
+    stock_history.sort_unstable_by_key(|s| s.time);
 
     /*
      * TODO: What I need to do there:
@@ -90,19 +91,21 @@ fn calculate_stock(
     let mut statistics_by_year: HashMap<i32, YearStats> = HashMap::new();
 
     for stock in stock_history {
-        let year = stock.date.year();
+        let date = tax_date(stock.time);
+        let year = date.year();
         let year_statistics = statistics_by_year.entry(year).or_default();
         match stock.action {
             StockAction::Buy(ref b) => {
                 // TODO: Check how to implement this without clone
-                current_buys.push_front((&stock.date, b.clone()));
+                current_buys.push_front((date, b.clone()));
                 year_statistics.bought += b.number;
             }
             StockAction::Split(ref s) => {
+                let ratio = Decimal::from(s.after) / Decimal::from(s.before);
                 for buy in current_buys.iter_mut() {
-                    buy.1.number *= s.ratio;
+                    buy.1.number *= ratio;
                 }
-                year_statistics.bought *= s.ratio;
+                year_statistics.bought *= ratio;
             }
             StockAction::Sell(ref s) => {
                 year_statistics.sold += s.number;
@@ -123,10 +126,10 @@ fn calculate_stock(
 
                             buy.1.number -= sold;
 
-                            let buy_price = rate_provider.convert(&buy.1.price, buy.0)?.pln;
-                            let buy_fee = rate_provider.convert(&buy.1.fee, buy.0)?.pln;
-                            let sell_price = rate_provider.convert(&s.price, &stock.date)?.pln;
-                            let sell_fee = rate_provider.convert(&s.fee, &stock.date)?.pln;
+                            let buy_price = rate_provider.convert(&buy.1.price, &buy.0)?.pln;
+                            let buy_fee = rate_provider.convert(&buy.1.fee, &buy.0)?.pln;
+                            let sell_price = rate_provider.convert(&s.price, &date)?.pln;
+                            let sell_fee = rate_provider.convert(&s.fee, &date)?.pln;
 
                             // TODO: Bug there, review.
                             year_statistics.tax +=
@@ -150,8 +153,8 @@ fn calculate_stock(
                             let buy_price = Decimal::ZERO;
                             let buy_fee = Decimal::ZERO;
 
-                            let sell_price = rate_provider.convert(&s.price, &stock.date)?.pln;
-                            let sell_fee = rate_provider.convert(&s.fee, &stock.date)?.pln;
+                            let sell_price = rate_provider.convert(&s.price, &date)?.pln;
+                            let sell_fee = rate_provider.convert(&s.fee, &date)?.pln;
 
                             // TODO: Bug there, review.
                             year_statistics.tax +=
