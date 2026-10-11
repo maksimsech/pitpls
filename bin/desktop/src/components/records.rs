@@ -6,14 +6,20 @@ use crate::{
 use chrono::{DateTime, NaiveDate, Utc};
 use gpui_kit::{
     assets::IconName,
-    component::{ActiveTheme, Icon, StyledExt, VirtualListScrollHandle, h_flex, tag::Tag, v_flex},
+    component::{
+        ActiveTheme, Icon, StyledExt, VirtualListScrollHandle,
+        button::{Button, ButtonVariants},
+        h_flex,
+        tag::Tag,
+        v_flex,
+    },
     prelude::FluentBuilder,
     *,
 };
 use pitpls_core::time;
 use std::rc::Rc;
 
-const PADDING: f32 = 12.;
+pub const PADDING: f32 = 12.;
 /// Checkbox, chevron and "⋯" columns.
 const FRAME: [f32; 3] = [30., 20., 36.];
 const COMPACT_FRAME: [f32; 3] = [28., 18., 28.];
@@ -271,6 +277,16 @@ pub fn cell(
                     .text_size(px(12.))
                     .child(value.main.clone()),
             )
+            .when(!value.extra.is_empty(), |cell| {
+                cell.child(
+                    div()
+                        .ml(px(6.))
+                        .min_w_0()
+                        .truncate()
+                        .text_color(p.muted)
+                        .child(value.extra.clone()),
+                )
+            })
             .into_any_element(),
         CellStyle::Number => value::reveal_full(
             frame
@@ -349,6 +365,7 @@ pub struct LotTable {
     pub title: SharedString,
     pub caption: SharedString,
     pub rows: Vec<LotRow>,
+    pub link: Option<SharedString>,
 }
 
 /// Cells in `LOT_COLUMNS` order; the NBP rate's `extra` holds its date.
@@ -371,6 +388,8 @@ pub struct RowDisplay {
     /// Lower case, for the filter.
     pub search: String,
     pub label: SharedString,
+    /// In the footer of the opened row.
+    pub links: Vec<SharedString>,
 }
 
 fn parts(id: impl Into<ElementId>, parts: &[DisplayText], cx: &App) -> Stateful<Div> {
@@ -628,7 +647,21 @@ fn lot_slot(column: &LotColumn) -> Div {
     }
 }
 
-fn lot_table(table: &LotTable, layout: &TableLayout, cx: &App) -> Div {
+pub fn link(id: impl Into<ElementId>, label: SharedString, cx: &App) -> Button {
+    Button::new(id)
+        .ghost()
+        .h(px(26.))
+        .pl(px(8.))
+        .pr(px(6.))
+        .gap(px(4.))
+        .rounded(px(7.))
+        .text_color(palette(cx).muted)
+        .accessibility_label(label.clone())
+        .child(div().text_size(px(12.)).child(label))
+        .child(Icon::new(IconName::ChevronRight).size(px(13.)))
+}
+
+fn lot_table(table: &LotTable, layout: &TableLayout, link: Option<AnyElement>, cx: &App) -> Div {
     let p = *palette(cx);
     let headings = lot_row()
         .h(px(28.))
@@ -724,15 +757,22 @@ fn lot_table(table: &LotTable, layout: &TableLayout, cx: &App) -> Div {
                         .font_medium()
                         .child(table.title.clone()),
                 )
-                .child(table.caption.clone()),
+                .child(table.caption.clone())
+                .when_some(link, |header, link| {
+                    header.child(div().flex_1()).child(link)
+                }),
         )
         .child(headings)
         .children(rows)
 }
 
+/// `links` go in the footer and `lots_link` in the lot table's header,
+/// built by the host since they call back into it.
 pub fn details(
     row: &RowDisplay,
     layout: &TableLayout,
+    links: Vec<AnyElement>,
+    lots_link: Option<AnyElement>,
     actions: impl IntoIterator<Item = AnyElement>,
     cx: &App,
 ) -> Div {
@@ -775,7 +815,7 @@ pub fn details(
                 div()
                     .ml(indent)
                     .mr(px(PADDING))
-                    .child(lot_table(lots, layout, cx)),
+                    .child(lot_table(lots, layout, lots_link, cx)),
             )
         })
         .child(
@@ -800,6 +840,9 @@ pub fn details(
                     record_id.to_owned(),
                 ))
                 .child(record_time(time, layout.stacked, cx))
+                .when(!links.is_empty(), |footer| {
+                    footer.child(h_flex().ml(px(6.)).gap(px(2.)).children(links))
+                })
                 .child(div().flex_1())
                 .children(actions),
         )

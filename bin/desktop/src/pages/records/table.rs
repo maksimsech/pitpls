@@ -206,6 +206,17 @@ pub trait TableHost: Render {
     fn editable(&self) -> bool;
     fn edit(&mut self, id: &str, window: &mut Window, cx: &mut Context<Self>);
     fn delete_one(&mut self, id: &str, window: &mut Window, cx: &mut Context<Self>);
+    /// `index` is the link's place in `RowDisplay::links`; a lot table's link
+    /// is 0.
+    fn follow(
+        &mut self,
+        _which: Self::Table,
+        _id: &str,
+        _index: usize,
+        _window: &mut Window,
+        _cx: &mut Context<Self>,
+    ) {
+    }
 }
 
 pub fn month_title((year, month): (i32, u32), with_year: bool) -> SharedString {
@@ -632,9 +643,35 @@ fn record_row<V: TableHost>(
     let delete = action("delete", "Delete", Some(p.danger)).on_click(
         cx.listener(move |this: &mut V, _, window, cx| this.delete_one(&delete_id, window, cx)),
     );
+    let link = |name: &str, index: usize, label: &SharedString| {
+        let id = id.clone();
+        records::link(
+            SharedString::from(format!("{name}-{index}-{id}")),
+            label.clone(),
+            cx,
+        )
+        .disabled(disabled)
+        .on_click(cx.listener(move |this: &mut V, _, window, cx| {
+            this.follow(which, &id, index, window, cx)
+        }))
+        .into_any_element()
+    };
+    let links = display
+        .links
+        .iter()
+        .enumerate()
+        .map(|(index, label)| link("link", index, label))
+        .collect();
+    let lots_link = display
+        .lots
+        .as_ref()
+        .and_then(|lots| lots.link.as_ref())
+        .map(|label| link("lots-link", 0, label));
     row.child(details(
         display,
         layout,
+        links,
+        lots_link,
         edit.into_iter().chain([delete.into_any_element()]),
         cx,
     ))

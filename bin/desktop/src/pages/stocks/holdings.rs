@@ -1,12 +1,13 @@
 use super::{
     StocksPage,
-    display::{HoldingBlock, StockDisplay, lots_count, shares_count},
+    display::{HoldingBlock, InstrumentKey, StockDisplay, lots_count, shares_count},
 };
 use crate::{
     components::{
         measure_width,
         records::{self, CellStyle, RecordColumn, TableLayout, cell, heading},
     },
+    pages::records::TableHost,
     theme::{palette, tabular_digits},
 };
 use gpui_kit::prelude::FluentBuilder;
@@ -75,6 +76,7 @@ impl StocksPage {
     pub fn holdings_view(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         let p = *palette(cx);
         let year = self.year.unwrap_or_default();
+        let disabled = self.disabled();
         let Some(display) = &self.display else {
             return div().into_any_element();
         };
@@ -130,6 +132,20 @@ impl StocksPage {
                 Some(exchange) => chip(exchange.clone(), p.muted, cx),
                 None => chip("No exchange".into(), p.warning, cx),
             };
+            let key = InstrumentKey {
+                ticker: block.ticker.clone(),
+                provider: block.provider.clone(),
+            };
+            let history = records::link(
+                SharedString::from(format!("history-{block_index}")),
+                "History".into(),
+                cx,
+            )
+            .accessibility_label(format!("{} history in {}", block.ticker, block.provider))
+            .disabled(disabled)
+            .on_click(
+                cx.listener(move |this, _, window, cx| this.open_history(key.clone(), window, cx)),
+            );
             rows = rows.child(
                 records::row(&table)
                     .h(px(40.))
@@ -152,7 +168,8 @@ impl StocksPage {
                                 shares_count(block.shares),
                                 lots_count(block.lots.len())
                             )),
-                    ),
+                    )
+                    .child(history.mr(px(-6.))),
             );
             rows = rows.children(block.lots.iter().enumerate().map(|(lot_index, lot)| {
                 records::row(&table)

@@ -1,4 +1,5 @@
 mod display;
+mod history;
 mod holdings;
 
 use crate::{
@@ -15,7 +16,7 @@ use crate::{
     },
     theme::{palette, tabular_digits},
 };
-use display::{Action, StockDisplay, WarningCard};
+use display::{Action, InstrumentKey, StockDisplay, WarningCard};
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::{
     Role,
@@ -30,6 +31,7 @@ use gpui_kit::{
     },
     *,
 };
+use history::{HistoryEvent, HistoryView};
 use pitpls_app::use_case::{
     stock,
     year::{self, YearInfo},
@@ -70,6 +72,7 @@ pub struct StocksPage {
     nbp_year: Option<Entity<InputState>>,
     missing_rate: Option<SharedString>,
     other_year: Option<(i32, u32)>,
+    history: Option<(Entity<HistoryView>, Subscription)>,
     focus: FocusHandle,
     _subscriptions: [Subscription; 2],
 }
@@ -159,6 +162,7 @@ impl StocksPage {
             nbp_year: None,
             missing_rate: None,
             other_year: None,
+            history: None,
             focus: cx.focus_handle(),
             _subscriptions: [filter_subscription, focus_subscription],
         };
@@ -195,6 +199,29 @@ impl StocksPage {
             Tab::Records => self.records.state.viewport_width = width,
             Tab::Holdings => self.holdings.width = width,
         }
+        cx.notify();
+    }
+
+    fn open_history(&mut self, key: InstrumentKey, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(year) = self.year else {
+            return;
+        };
+        if self.disabled() {
+            return;
+        }
+        let (context, width) = (self.context.clone(), self.width());
+        let view = cx.new(|cx| HistoryView::new(context, key, year, width, window, cx));
+        let subscription =
+            cx.subscribe_in(&view, window, |this, _, event, window, cx| match event {
+                HistoryEvent::Back => {
+                    this.history = None;
+                    window.focus(&this.focus, cx);
+                    cx.notify();
+                }
+            });
+        let focus = view.read(cx).focus().clone();
+        window.focus(&focus, cx);
+        self.history = Some((view, subscription));
         cx.notify();
     }
 
@@ -791,10 +818,40 @@ impl TableHost for StocksPage {
             cx,
         );
     }
+
+    fn follow(
+        &mut self,
+        _: Table,
+        id: &str,
+        index: usize,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let key = self
+            .display
+            .as_ref()
+            .and_then(|display| display.histories.get(id))
+            .and_then(|keys| keys.get(index))
+            .cloned();
+        if let Some(key) = key {
+            self.open_history(key, window, cx);
+        }
+    }
 }
 
 impl Render for StocksPage {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        if let Some((history, _)) = &self.history {
+            return v_flex().size_full().min_h_0().child(
+                div()
+                    .id("stocks-page")
+                    .track_focus(&self.focus)
+                    .tab_index(-1)
+                    .size_full()
+                    .min_h_0()
+                    .child(history.clone()),
+            );
+        }
         let mut body = v_flex()
             .id("stocks-page")
             .track_focus(&self.focus)

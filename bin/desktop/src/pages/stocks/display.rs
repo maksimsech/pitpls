@@ -15,7 +15,7 @@ use pitpls_core::{
     time,
 };
 use rust_decimal::Decimal;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 
 #[derive(Clone, Copy, PartialEq)]
 pub enum Action {
@@ -55,6 +55,21 @@ pub struct SoldOut {
     pub search: String,
 }
 
+#[derive(Clone)]
+pub struct InstrumentKey {
+    pub ticker: SharedString,
+    pub provider: SharedString,
+}
+
+impl InstrumentKey {
+    fn new(ticker: &str, provider: &str) -> Self {
+        Self {
+            ticker: ticker.to_owned().into(),
+            provider: provider.to_owned().into(),
+        }
+    }
+}
+
 pub struct StockDisplay {
     pub stats: Vec<(&'static str, DisplayText)>,
     pub warnings: Vec<WarningCard>,
@@ -64,21 +79,36 @@ pub struct StockDisplay {
     pub actions: Vec<Action>,
     pub holdings: Vec<HoldingBlock>,
     pub sold_out: Vec<SoldOut>,
+    /// The instruments an opened row's history links open, in link order.
+    pub histories: HashMap<SharedString, Vec<InstrumentKey>>,
 }
 
 impl StockDisplay {
     pub fn new(data: &StockData, year: i32) -> Self {
         let tax = &data.tax;
         let listings = &data.listings;
+        let mut histories = HashMap::new();
         let sales = tax
             .sales
             .iter()
-            .map(|sale| sale_row(sale, holding_after(tax, sale), listings))
+            .map(|sale| {
+                let row = sale_row(sale, holding_after(tax, sale), listings);
+                histories.insert(
+                    row.id.clone(),
+                    vec![InstrumentKey::new(&sale.ticker, &sale.provider)],
+                );
+                row
+            })
             .collect();
         let records = data
             .records
             .iter()
-            .map(|record| record_row(record, tax, listings, year))
+            .map(|record| {
+                let keys = history_keys(record, tax);
+                let row = record_row(record, &keys, tax, listings, year);
+                histories.insert(row.id.clone(), keys);
+                row
+            })
             .collect();
         let (holdings, sold_out) = holdings(tax, listings);
         Self {
@@ -94,6 +124,7 @@ impl StockDisplay {
             actions: data.records.iter().map(action).collect(),
             holdings,
             sold_out,
+            histories,
         }
     }
 
@@ -106,6 +137,30 @@ fn holding_after<'a>(tax: &'a StockTaxData, sale: &CalculatedSale) -> Option<&'a
     tax.holdings
         .iter()
         .find(|holding| holding.record_id == sale.id && holding.provider == sale.provider)
+}
+
+/// A split has a history in every provider that held or traded the ticker by
+/// then.
+fn history_keys(record: &Stock, tax: &StockTaxData) -> Vec<InstrumentKey> {
+    match record.provider() {
+        Some(provider) => vec![InstrumentKey::new(&record.ticker, provider)],
+        None => tax
+            .holdings
+            .iter()
+            .filter(|holding| holding.record_id == record.id)
+            .map(|holding| InstrumentKey::new(&record.ticker, &holding.provider))
+            .collect(),
+    }
+}
+
+fn history_links(ticker: &str, keys: &[InstrumentKey]) -> Vec<SharedString> {
+    match keys {
+        [_] => vec![format!("{ticker} history").into()],
+        keys => keys
+            .iter()
+            .map(|key| format!("{ticker} history · {}", key.provider).into())
+            .collect(),
+    }
 }
 
 fn action(record: &Stock) -> Action {
@@ -140,19 +195,19 @@ fn day_month(value: NaiveDate) -> String {
     value.format("%d.%m").to_string()
 }
 
-fn trade_date(value: DateTime<Utc>) -> String {
+pub fn trade_date(value: DateTime<Utc>) -> String {
     date(time::tax_date(value)).main.to_string()
 }
 
-fn price_text(value: Amount) -> String {
+pub fn price_text(value: Amount) -> String {
     amount(value).full.to_string()
 }
 
-fn ratio(before: u32, after: u32) -> String {
+pub fn ratio(before: u32, after: u32) -> String {
     format!("{after}-for-{before}")
 }
 
-fn rate_cell(rate: Decimal, nbp_date: NaiveDate, currency: Currency) -> DisplayText {
+pub fn rate_cell(rate: Decimal, nbp_date: NaiveDate, currency: Currency) -> DisplayText {
     if currency == Currency::PLN {
         return DisplayText::plain("—");
     }
@@ -172,7 +227,7 @@ fn conversion(shares_value: Decimal, price: Amount, rate: Decimal) -> Vec<Displa
 
 /// A fee in another currency than the price has its own rate, which the
 /// calculation keeps only inside its PLN value.
-fn fee_rate(fee: Amount, fee_pln: Decimal, price: Amount, rate: Decimal) -> Decimal {
+pub fn fee_rate(fee: Amount, fee_pln: Decimal, price: Amount, rate: Decimal) -> Decimal {
     if fee.currency == price.currency || fee.value.is_zero() {
         rate
     } else {
@@ -222,15 +277,17 @@ fn sale_row(sale: &CalculatedSale, holding: Option<&Holding>, listings: &Listing
         pln(sale.costs),
         pln(sale.profit),
     ];
+    let link = format!("Full {} history", sale.ticker);
     RowDisplay {
         id: sale.id.clone().into(),
         time: sale.time,
         cells,
         steps: sale_steps(sale, listing),
-        lots: Some(fifo_table(sale, holding)),
+        lots: Some(fifo_table(sale, holding, Some(link.into()))),
         flagged: if exchange.is_none() { vec![2] } else { vec![] },
         search: search(&sale.ticker, &sale.provider, exchange.as_ref(), "sell"),
         label: format!("{} sale {}", sale.ticker, date_label(sale.time)).into(),
+        links: vec![],
     }
 }
 
@@ -353,7 +410,11 @@ fn fee_label(name: &str, fee: Amount, fee_pln: Decimal, price: Amount, rate: Dec
 
 /// The holding before the sale is the one after it plus what it took; the
 /// shares with no buy were never held.
-fn fifo_table(sale: &CalculatedSale, holding: Option<&Holding>) -> LotTable {
+fn fifo_table(
+    sale: &CalculatedSale,
+    holding: Option<&Holding>,
+    link: Option<SharedString>,
+) -> LotTable {
     let (after, after_lots) =
         holding.map_or((Decimal::ZERO, 0), |holding| (holding.shares, holding.lots));
     let taken = sale.matches.iter().map(|lot| lot.taken).sum::<Decimal>();
@@ -404,6 +465,7 @@ fn fifo_table(sale: &CalculatedSale, holding: Option<&Holding>) -> LotTable {
         title: format!("FIFO · {} in {}", sale.ticker, sale.provider).into(),
         caption: caption.into(),
         rows,
+        link,
     }
 }
 
@@ -438,7 +500,13 @@ fn split_note(split: &SplitStep) -> SharedString {
     .into()
 }
 
-fn record_row(record: &Stock, tax: &StockTaxData, listings: &Listings, year: i32) -> RowDisplay {
+fn record_row(
+    record: &Stock,
+    histories: &[InstrumentKey],
+    tax: &StockTaxData,
+    listings: &Listings,
+    year: i32,
+) -> RowDisplay {
     let action = action(record);
     let dash = || DisplayText::plain("—");
     let (cells, exchange, steps, lots) = match &record.action {
@@ -480,7 +548,7 @@ fn record_row(record: &Stock, tax: &StockTaxData, listings: &Listings, year: i32
                             .filter(|_| sale.exchange.is_some());
                         (
                             sale_steps(sale, listing),
-                            Some(fifo_table(sale, holding_after(tax, sale))),
+                            Some(fifo_table(sale, holding_after(tax, sale), None)),
                         )
                     }
                     None => (vec![], None),
@@ -529,6 +597,7 @@ fn record_row(record: &Stock, tax: &StockTaxData, listings: &Listings, year: i32
             date_label(record.time)
         )
         .into(),
+        links: history_links(&record.ticker, histories),
     }
 }
 

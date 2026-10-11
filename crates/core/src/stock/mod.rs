@@ -25,7 +25,7 @@ pub use model::{
     StockTaxData, Warning,
 };
 pub use preview::preview;
-pub use replay::replay;
+pub use replay::{replay, sort_key};
 pub use settlement::{Market, market, settlement_date};
 
 #[derive(Debug, Error)]
