@@ -8,6 +8,7 @@ pub struct YearRecords {
     pub dividends: u32,
     pub interests: u32,
     pub cryptos: u32,
+    pub stocks: u32,
     /// Whether the year is in the `years` table.
     pub custom: bool,
 }
@@ -32,19 +33,24 @@ impl YearRepository {
                        SUM(dividends) AS dividends,
                        SUM(interests) AS interests,
                        SUM(cryptos) AS cryptos,
+                       SUM(stocks) AS stocks,
                        MAX(custom) AS custom
                 FROM (
                     SELECT CAST(strftime('%Y', time, '+1 hour') AS INTEGER) AS year,
-                           COUNT(*) AS dividends, 0 AS interests, 0 AS cryptos, 0 AS custom
+                           COUNT(*) AS dividends, 0 AS interests, 0 AS cryptos, 0 AS stocks,
+                           0 AS custom
                     FROM dividends GROUP BY 1
                     UNION ALL
-                    SELECT CAST(strftime('%Y', time, '+1 hour') AS INTEGER), 0, COUNT(*), 0, 0
+                    SELECT CAST(strftime('%Y', time, '+1 hour') AS INTEGER), 0, COUNT(*), 0, 0, 0
                     FROM interests GROUP BY 1
                     UNION ALL
-                    SELECT CAST(strftime('%Y', time, '+1 hour') AS INTEGER), 0, 0, COUNT(*), 0
+                    SELECT CAST(strftime('%Y', time, '+1 hour') AS INTEGER), 0, 0, COUNT(*), 0, 0
                     FROM cryptos GROUP BY 1
                     UNION ALL
-                    SELECT year, 0, 0, 0, 1 FROM years
+                    SELECT CAST(strftime('%Y', time, '+1 hour') AS INTEGER), 0, 0, 0, COUNT(*), 0
+                    FROM stocks GROUP BY 1
+                    UNION ALL
+                    SELECT year, 0, 0, 0, 0, 1 FROM years
                 )
                 WHERE year IS NOT NULL
                 GROUP BY year
@@ -60,6 +66,7 @@ impl YearRepository {
                     dividends: row.try_get("dividends")?,
                     interests: row.try_get("interests")?,
                     cryptos: row.try_get("cryptos")?,
+                    stocks: row.try_get("stocks")?,
                     custom: row.try_get("custom")?,
                 })
             })

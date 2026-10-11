@@ -429,7 +429,7 @@ fn sale_without_buy_counts_at_zero_cost() {
 }
 
 #[test]
-fn tax_year_follows_settlement_date() {
+fn tax_year_follows_trade_date() {
     let records = [
         buy(
             "buy",
@@ -461,21 +461,22 @@ fn tax_year_follows_settlement_date() {
     let rates = NbpRateProvider::new(flat(Currency::EUR, dec!(4.5)));
 
     let data_2025 = calculate_stocks(&records, &exchanges, 2025, &rates).unwrap();
-    assert_eq!(data_2025.sales.len(), 1);
+    assert_eq!(data_2025.sales.len(), 2);
     assert_eq!(
         sale(&data_2025, "dec-29").settlement_date,
         date(2025, 12, 31)
     );
-    assert_eq!(data_2025.income, dec!(495));
+    let dec_30 = sale(&data_2025, "dec-30");
+    assert_eq!(dec_30.settlement_date, date(2026, 1, 1));
+    assert!(dec_30.settlement_worked_out);
+    assert_eq!(dec_30.nbp_date, date(2025, 12, 31));
+    assert_eq!(data_2025.income, dec!(2475));
+    assert_eq!(data_2025.costs, dec!(2250));
     assert_eq!(open_lot(&data_2025, "buy").open, dec!(5));
 
     let data_2026 = calculate_stocks(&records, &exchanges, 2026, &rates).unwrap();
-    let sale = sale(&data_2026, "dec-30");
-    assert_eq!(data_2026.sales.len(), 1);
-    assert_eq!(sale.settlement_date, date(2026, 1, 1));
-    assert!(sale.settlement_worked_out);
-    assert_eq!(data_2026.income, dec!(1980));
-    assert_eq!(data_2026.costs, dec!(1800));
+    assert!(data_2026.sales.is_empty());
+    assert_eq!(data_2026.income, Decimal::ZERO);
 }
 
 #[test]

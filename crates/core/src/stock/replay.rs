@@ -43,14 +43,12 @@ pub fn replay<'a>(
     for (ticker, mut records) in by_ticker {
         // TODO: Warn when records of a ticker share a timestamp. Until then they go split, buy,
         // sell, then by ID, so at least the result doesn't change between runs.
-        records.sort_by(|a, b| {
-            (a.time, order(&a.action), &a.id).cmp(&(b.time, order(&b.action), &b.id))
-        });
+        records.sort_by(|a, b| sort_key(a).cmp(&sort_key(b)));
 
         // Created up front so a split also gives a holding to providers that buy only after it.
         let mut positions: BTreeMap<&str, Position> = records
             .iter()
-            .filter_map(|record| provider(&record.action))
+            .filter_map(|record| record.provider())
             .map(|provider| {
                 let exchange = exchanges.get(&(ticker, provider)).copied();
                 (provider, Position::new(ticker, provider, exchange))
@@ -94,20 +92,13 @@ pub fn replay<'a>(
     })
 }
 
-fn order(action: &StockAction) -> u8 {
-    match action {
+pub fn sort_key(record: &Stock) -> (DateTime<Utc>, u8, &str) {
+    let order = match record.action {
         StockAction::Split(_) => 0,
         StockAction::Buy(_) => 1,
         StockAction::Sell(_) => 2,
-    }
-}
-
-fn provider(action: &StockAction) -> Option<&str> {
-    match action {
-        StockAction::Buy(buy) => Some(&buy.provider),
-        StockAction::Sell(sell) => Some(&sell.provider),
-        StockAction::Split(_) => None,
-    }
+    };
+    (record.time, order, &record.id)
 }
 
 struct Position<'a> {

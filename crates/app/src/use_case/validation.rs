@@ -1,5 +1,6 @@
 use chrono::{DateTime, NaiveDateTime, Utc};
 use pitpls_core::time::from_local;
+use rust_decimal::Decimal;
 use thiserror::Error;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -7,6 +8,16 @@ pub enum AmountField {
     Value,
     Fee,
     TaxPaid,
+    Shares,
+    Price,
+    SplitBefore,
+    SplitAfter,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TextField {
+    Ticker,
+    Provider,
 }
 
 #[derive(Debug, Error)]
@@ -29,6 +40,21 @@ pub enum Error {
         #[source]
         source: rust_decimal::Error,
     },
+    InvalidSplit {
+        field: AmountField,
+        value: String,
+        #[source]
+        source: std::num::ParseIntError,
+    },
+    NotPositive {
+        field: AmountField,
+        value: Decimal,
+    },
+    Negative {
+        field: AmountField,
+        value: Decimal,
+    },
+    Empty(TextField),
     MissingId,
 }
 
@@ -42,12 +68,44 @@ pub fn parse_time(value: &str) -> Result<DateTime<Utc>, Error> {
     from_local(local).ok_or(Error::NonexistentTime(local))
 }
 
-pub fn parse_amount(value: &str, field: AmountField) -> Result<rust_decimal::Decimal, Error> {
+pub fn parse_amount(value: &str, field: AmountField) -> Result<Decimal, Error> {
     value.parse().map_err(|source| Error::InvalidAmount {
         field,
         value: value.to_owned(),
         source,
     })
+}
+
+pub fn parse_split(value: &str, field: AmountField) -> Result<u32, Error> {
+    value.trim().parse().map_err(|source| Error::InvalidSplit {
+        field,
+        value: value.to_owned(),
+        source,
+    })
+}
+
+pub fn validate_positive(value: Decimal, field: AmountField) -> Result<(), Error> {
+    if value > Decimal::ZERO {
+        Ok(())
+    } else {
+        Err(Error::NotPositive { field, value })
+    }
+}
+
+pub fn validate_not_negative(value: Decimal, field: AmountField) -> Result<(), Error> {
+    if value < Decimal::ZERO {
+        Err(Error::Negative { field, value })
+    } else {
+        Ok(())
+    }
+}
+
+pub fn validate_not_empty(value: &str, field: TextField) -> Result<(), Error> {
+    if value.trim().is_empty() {
+        Err(Error::Empty(field))
+    } else {
+        Ok(())
+    }
 }
 
 pub fn validate_year(year: i32) -> Result<(), Error> {

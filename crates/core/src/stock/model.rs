@@ -11,6 +11,16 @@ pub struct Stock {
     pub action: StockAction,
 }
 
+impl Stock {
+    pub fn provider(&self) -> Option<&str> {
+        match &self.action {
+            StockAction::Buy(buy) => Some(&buy.provider),
+            StockAction::Sell(sell) => Some(&sell.provider),
+            StockAction::Split(_) => None,
+        }
+    }
+}
+
 #[derive(Clone)]
 pub enum StockAction {
     Buy(StockBuy),
@@ -63,6 +73,22 @@ pub struct Replay {
     pub sales: Vec<CalculatedSale>,
     pub open_lots: Vec<OpenLot>,
     pub holdings: Vec<Holding>,
+}
+
+// The state right after the draft record, with the records that follow it left out.
+pub enum StockPreview {
+    Buy {
+        lot: OpenLot,
+        holding: Holding,
+    },
+    Sell {
+        sale: CalculatedSale,
+        holding: Holding,
+    },
+    Split {
+        lots: Vec<OpenLot>,
+        holdings: Vec<Holding>,
+    },
 }
 
 pub struct StockTaxData {
@@ -149,6 +175,7 @@ pub struct Holding {
     pub lots: usize,
 }
 
+#[derive(Debug)]
 pub struct CountryTotal {
     pub country: Country,
     pub exchanges: Vec<Mic>,

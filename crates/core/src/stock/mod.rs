@@ -13,6 +13,7 @@ use crate::{
 };
 
 mod model;
+mod preview;
 mod replay;
 mod settlement;
 #[cfg(test)]
@@ -20,8 +21,10 @@ mod tests;
 
 pub use model::{
     CalculatedSale, CountryTotal, Holding, Instrument, InstrumentExchange, LotMatch, OpenLot,
-    Replay, SplitStep, Stock, StockAction, StockBuy, StockSell, StockSplit, StockTaxData, Warning,
+    Replay, SplitStep, Stock, StockAction, StockBuy, StockPreview, StockSell, StockSplit,
+    StockTaxData, Warning,
 };
+pub use preview::preview;
 pub use replay::replay;
 pub use settlement::{Market, market, settlement_date};
 
@@ -39,7 +42,7 @@ pub fn calculate_stocks(
     year: i32,
     rates: &NbpRateProvider,
 ) -> Result<StockTaxData, CalculateStocksError> {
-    // Later records can't settle a sale in this year, and open lots are wanted on 31.12.
+    // Later records don't count in this year, and open lots are wanted on 31.12.
     let records = records
         .iter()
         .filter(|record| tax_date(record.time).year() <= year);
@@ -47,9 +50,11 @@ pub fn calculate_stocks(
         sales, open_lots, ..
     } = replay(records, exchanges, rates)?;
 
+    // For now a sale counts in its trade year, even when it settles in the next one; the
+    // settlement date only picks the NBP rate (docs/stocks/IMPORTANT-QUESTIONS.md, Q1).
     let sales = sales
         .into_iter()
-        .filter(|sale| sale.settlement_date.year() == year)
+        .filter(|sale| tax_date(sale.time).year() == year)
         .collect::<Vec<_>>();
 
     let income = sales

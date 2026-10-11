@@ -1,21 +1,24 @@
 use gpui_kit::SharedString;
 use pitpls_app::use_case::{
-    AmountField, ValidationError,
+    AmountField, TextField, ValidationError,
     crypto::Error as CryptoError,
     dividend::Error as DividendError,
+    exchange::RefreshError as ExchangeRefreshError,
     import::Error as StatementImportError,
     interest::Error as InterestError,
     rate::{ApiImportError as RateApiError, CsvImportError as RateCsvError},
+    stock::Error as StockError,
     tax::Error as TaxError,
     year::Error as YearError,
 };
 use pitpls_core::{
     common::CountryParseError, crypto::CalculateSellBuyValuesError,
     dividend::CalculateDividendTaxError, interest::CalculateInterestTaxError,
-    rate::RateConverterError, summary::CalculateTaxSummaryError,
+    rate::RateConverterError, stock::CalculateStocksError, summary::CalculateTaxSummaryError,
 };
 use pitpls_db::{OpenDatabaseError, RepositoryError};
 use pitpls_importers::{ImportAmounts, ImportContext, ImportError, ImportField, ImporterKind};
+use pitpls_mic::{DownloadError, ParseError as MicParseError};
 use pitpls_nbr::{ApiImportError, CsvImportError};
 
 use crate::{
@@ -37,6 +40,8 @@ impl From<ServiceError> for SharedString {
             ServiceError::Crypto(error) => crypto_use_case_error(&error),
             ServiceError::Dividend(error) => dividend_use_case_error(&error),
             ServiceError::Interest(error) => interest_use_case_error(&error),
+            ServiceError::Stock(error) => stock_use_case_error(&error),
+            ServiceError::ExchangeRefresh(error) => exchange_refresh_error(&error),
             ServiceError::Import(error) => match error {
                 StatementImportError::Parse(error) => import_error(&error),
                 StatementImportError::Repository(error) => repository_error(&error),
@@ -57,6 +62,7 @@ impl From<ServiceError> for SharedString {
                     CalculateTaxSummaryError::Crypto(error) => crypto_error(&error),
                     CalculateTaxSummaryError::Dividend(error) => dividend_error(&error),
                     CalculateTaxSummaryError::Interest(error) => interest_error(&error),
+                    CalculateTaxSummaryError::Stock(error) => stock_error(&error),
                 },
             },
             ServiceError::Year(error) => match error {
@@ -106,14 +112,37 @@ fn validation_error(error: &ValidationError) -> String {
             time.format(DATE_TIME_FORMAT)
         ),
         ValidationError::InvalidAmount { field, value, .. } => {
+            format!("Invalid {}: {value}", amount_field(*field).to_lowercase())
+        }
+        ValidationError::InvalidSplit { field, value, .. } => {
+            format!("{} must be a whole number: {value}", amount_field(*field))
+        }
+        ValidationError::NotPositive { field, .. } => {
+            format!("{} must be more than 0", amount_field(*field))
+        }
+        ValidationError::Negative { field, .. } => {
+            format!("{} can't be negative", amount_field(*field))
+        }
+        ValidationError::Empty(field) => {
             let field = match field {
-                AmountField::Value => "value",
-                AmountField::Fee => "fee",
-                AmountField::TaxPaid => "tax paid",
+                TextField::Ticker => "Ticker",
+                TextField::Provider => "Provider",
             };
-            format!("Invalid {field}: {value}")
+            format!("{field} is required")
         }
         ValidationError::MissingId => "ID is required".into(),
+    }
+}
+
+fn amount_field(field: AmountField) -> &'static str {
+    match field {
+        AmountField::Value => "Value",
+        AmountField::Fee => "Fee",
+        AmountField::TaxPaid => "Tax paid",
+        AmountField::Shares => "Shares",
+        AmountField::Price => "Price",
+        AmountField::SplitBefore => "Shares before",
+        AmountField::SplitAfter => "Shares after",
     }
 }
 
@@ -148,6 +177,57 @@ fn interest_use_case_error(error: &InterestError) -> String {
         InterestError::Calculation(error) => interest_error(error),
         InterestError::NothingToPreview => "Nothing to preview".into(),
     }
+}
+
+fn stock_use_case_error(error: &StockError) -> String {
+    match error {
+        StockError::Validation(error) => validation_error(error),
+        StockError::Repository(error) => repository_error(error),
+        StockError::DuplicateId(id) => format!("Stock record with ID '{id}' already exists"),
+        StockError::NotFound(id) => format!("Stock record with ID '{id}' not found"),
+        StockError::Calculation(error) => stock_error(error),
+        StockError::NothingToPreview => "Nothing to preview".into(),
+    }
+}
+
+fn exchange_refresh_error(error: &ExchangeRefreshError) -> String {
+    match error {
+        ExchangeRefreshError::Download(error) => match error {
+            DownloadError::Request { source } => {
+                format!("Failed to download the exchange list: {source}")
+            }
+            DownloadError::HttpStatus { status } => {
+                format!("The exchange list download returned {}", status.as_u16())
+            }
+            DownloadError::Response { source } => {
+                format!("Failed to read the exchange list: {source}")
+            }
+            DownloadError::Parse(error) => match error {
+                MicParseError::Csv(source) => {
+                    format!("Failed to parse the exchange list: {source}")
+                }
+                MicParseError::InvalidMic { line, value } => {
+                    format!(
+                        "Invalid MIC '{value}' in the exchange list{}",
+                        at_line(*line)
+                    )
+                }
+                MicParseError::InvalidDate { line, value, .. } => {
+                    format!(
+                        "Invalid date '{value}' in the exchange list{}",
+                        at_line(*line)
+                    )
+                }
+                MicParseError::Empty => "The exchange list is empty.".into(),
+            },
+        },
+        ExchangeRefreshError::Repository(error) => repository_error(error),
+    }
+}
+
+fn at_line(line: Option<u64>) -> String {
+    line.map(|line| format!(" at line {line}"))
+        .unwrap_or_default()
 }
 
 fn repository_error(error: &RepositoryError) -> String {
@@ -191,6 +271,22 @@ fn interest_error(error: &CalculateInterestTaxError) -> String {
     match error {
         CalculateInterestTaxError::InterestConversion(source) => format!(
             "Failed to convert interest value to PLN: {}",
+            rate_error(source)
+        ),
+    }
+}
+
+fn stock_error(error: &CalculateStocksError) -> String {
+    match error {
+        CalculateStocksError::PriceConversion(source) => format!(
+            "Failed to convert stock value to PLN: {}",
+            rate_error(source)
+        ),
+        CalculateStocksError::FeeConversion(source) => {
+            format!("Failed to convert stock fee to PLN: {}", rate_error(source))
+        }
+        CalculateStocksError::TaxPaidConversion(source) => format!(
+            "Failed to convert tax paid on a stock sale to PLN: {}",
             rate_error(source)
         ),
     }

@@ -143,6 +143,7 @@ impl Desktop {
                 dividends: 0,
                 interests: 0,
                 cryptos: 0,
+                stocks: 0,
                 custom: false,
             });
             years.sort_unstable_by_key(|info| std::cmp::Reverse(info.year));

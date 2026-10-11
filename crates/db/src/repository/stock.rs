@@ -139,6 +139,31 @@ impl StockRepository {
         rows.into_iter().map(read_stock).collect()
     }
 
+    // A split has no provider and belongs to every provider's history of the ticker.
+    pub async fn get_by_ticker_through_year(
+        &self,
+        ticker: &str,
+        provider: Option<&str>,
+        year: i32,
+    ) -> Result<Vec<Stock>> {
+        let (_, end) = year_range(year).ok_or(RepositoryError::InvalidYear(year))?;
+        sqlx::query(
+            r"
+            SELECT * FROM stocks
+            WHERE ticker = ?1 AND (?2 IS NULL OR provider = ?2 OR action = 'Split') AND time < ?3
+            ORDER BY time, id
+            ",
+        )
+        .bind(ticker)
+        .bind(provider)
+        .bind(end)
+        .fetch_all(&self.db)
+        .await?
+        .into_iter()
+        .map(read_stock)
+        .collect()
+    }
+
     pub async fn get_through_year(&self, year: i32) -> Result<Vec<Stock>> {
         let (_, end) = year_range(year).ok_or(RepositoryError::InvalidYear(year))?;
         sqlx::query("SELECT * FROM stocks WHERE time < ? ORDER BY time, id")

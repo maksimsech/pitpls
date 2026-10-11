@@ -58,7 +58,8 @@ struct Overview {
     cryptos: u32,
     first_run: bool,
     coverage: Option<RateCoverage>,
-    totals: Totals,
+    // None on All years: tax totals only mean something per tax year.
+    totals: Option<Totals>,
 }
 
 impl Overview {
@@ -66,7 +67,7 @@ impl Overview {
         year: Option<i32>,
         years: &[YearInfo],
         coverage: Option<RateCoverage>,
-        summary: Result<TaxSummary, TaxError>,
+        summary: Option<Result<TaxSummary, TaxError>>,
     ) -> Self {
         let selected = years
             .iter()
@@ -79,7 +80,7 @@ impl Overview {
                     cryptos + info.cryptos,
                 )
             });
-        let totals = match summary {
+        let totals = summary.map(|summary| match summary {
             Ok(summary) => Totals::Ready(Box::new(Forms::new(&summary))),
             Err(error) => {
                 let error = ServiceError::from(error);
@@ -91,7 +92,7 @@ impl Overview {
                     Totals::Failed(message)
                 }
             }
-        };
+        });
         Self {
             dividends,
             interests,
@@ -251,7 +252,10 @@ impl HomePage {
             move |app| async move {
                 let years = year::list_year_info(&app).await?;
                 let coverage = rate::rate_coverage(&app).await?;
-                let summary = tax::load_tax_summary(&app, year).await;
+                let summary = match year {
+                    Some(year) => Some(tax::load_tax_summary(&app, year).await),
+                    None => None,
+                };
                 Ok(Overview::new(year, &years, coverage, summary))
             },
             |this, result, _, cx| {
@@ -338,10 +342,17 @@ impl HomePage {
             );
         let column = match &self.overview {
             Some(overview) => column
-                .child(self.totals(overview, cx))
+                .children(
+                    overview
+                        .totals
+                        .as_ref()
+                        .map(|totals| self.totals(totals, overview, cx)),
+                )
                 .child(self.data_card(overview, cx))
                 .child(notice::disclaimer(cx)),
-            None if self.status.loading_visible => column.children(self.skeleton(cx)),
+            None if self.status.loading_visible => column.when(self.year.is_some(), |column| {
+                column.children(self.skeleton(cx))
+            }),
             None if !self.status.loading => column.child(
                 h_flex().child(
                     Button::new("retry")
@@ -355,9 +366,9 @@ impl HomePage {
         div().w_full().px(px(20.)).child(column)
     }
 
-    fn totals(&self, overview: &Overview, cx: &mut Context<Self>) -> AnyElement {
+    fn totals(&self, totals: &Totals, overview: &Overview, cx: &mut Context<Self>) -> AnyElement {
         let disabled = self.locked();
-        match &overview.totals {
+        match totals {
             Totals::Ready(forms) => {
                 let foreign_page = overview.foreign_page();
                 v_flex()

@@ -16,13 +16,14 @@ pub struct YearInfo {
     pub dividends: u32,
     pub interests: u32,
     pub cryptos: u32,
+    pub stocks: u32,
     /// Whether the year is stored in the custom year table.
     pub custom: bool,
 }
 
 impl YearInfo {
     pub fn records(&self) -> u32 {
-        self.dividends + self.interests + self.cryptos
+        self.dividends + self.interests + self.cryptos + self.stocks
     }
 }
 
@@ -35,6 +36,7 @@ pub async fn list_year_info(app: &App) -> Result<Vec<YearInfo>, RepositoryError>
             dividends: year.dividends,
             interests: year.interests,
             cryptos: year.cryptos,
+            stocks: year.stocks,
             custom: year.custom,
         })
         .collect())
