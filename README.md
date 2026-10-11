@@ -8,8 +8,6 @@ pitpls is for information only. It is not tax, financial or legal advice, and no
 
 Results aren't guaranteed to be complete or correct. You are responsible for your tax return: check every figure yourself, and ask a tax adviser if you're unsure.
 
-The app shows this notice on first launch and keeps a short reminder on the Summary page.
-
 ## How to Use
 
 Make sure Rust is available on your machine, then run the app in development
@@ -23,6 +21,12 @@ For a separate database during local testing:
 
 ```sh
 just d --database /tmp/pitpls/pitpls.db
+```
+
+To run in release build in MacOS:
+
+```sh
+just rm
 ```
 
 No builds are provided. At the moment, the project is intended to be run in development mode only.

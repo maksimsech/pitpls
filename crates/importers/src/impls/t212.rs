@@ -54,7 +54,7 @@ impl ColumnMap {
         Ok(Self {
             common: CommonColumns {
                 action: find("Action")?,
-                time: find("Time")?,
+                time: find_optional("Time").map_or_else(|| find("Time (UTC)"), Ok)?,
                 id: find_optional("ID"),
             },
             dividend: DividendColumns {
@@ -235,10 +235,12 @@ fn row_id(fields: &[String], id: Option<usize>) -> String {
         .unwrap_or_else(|| uuid::Uuid::new_v4().to_string())
 }
 
-// Trading 212 writes UTC times without a zone.
 fn parse_time(timestamp: &str) -> Result<DateTime<Utc>> {
-    NaiveDateTime::parse_from_str(timestamp, "%Y-%m-%d %H:%M:%S")
-        .map(|time| time.and_utc())
+    DateTime::parse_from_str(timestamp, "%Y-%m-%d %H:%M:%S%:z")
+        .map(|time| time.with_timezone(&Utc))
+        .or_else(|_| {
+            NaiveDateTime::parse_from_str(timestamp, "%Y-%m-%d %H:%M:%S").map(|time| time.and_utc())
+        })
         .map_err(|source| ImportError::invalid_timestamp(timestamp, source))
 }
 
