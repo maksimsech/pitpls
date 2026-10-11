@@ -2,7 +2,7 @@ use super::{RecordForm, RecordKind, Submission, conversion, date_label, day, per
 use crate::{
     components::{
         form::{self, ChoiceState},
-        records::{CellStyle, Preview, RecordColumn, RowDisplay, Step, StepLine},
+        records::{CellStyle, EntryStyle, Preview, RecordColumn, RowDisplay, Step, StepLine},
     },
     format::{DisplayText, amount, date, money, pln},
     navigation::Page,
@@ -40,10 +40,6 @@ impl RecordKind for Dividends {
 
     fn id(record: &CalculatedDividend) -> &str {
         &record.id
-    }
-
-    fn time(record: &CalculatedDividend) -> DateTime<Utc> {
-        record.time
     }
 
     fn columns() -> Vec<RecordColumn> {
@@ -100,19 +96,19 @@ impl RecordKind for Dividends {
                         .concat(),
                     ),
                     StepLine::Entry {
-                        label: "Calculated tax paid",
-                        value: pln(record.calculated_tax_paid),
-                        strong: false,
+                        label: "Calculated tax paid".into(),
+                        value: vec![pln(record.calculated_tax_paid)],
+                        style: EntryStyle::Normal,
                     },
                     StepLine::Entry {
-                        label: "Max tax paid",
-                        value: pln(record.max_tax_paid),
-                        strong: false,
+                        label: "Max tax paid".into(),
+                        value: vec![pln(record.max_tax_paid)],
+                        style: EntryStyle::Normal,
                     },
                     StepLine::Entry {
-                        label: "Used tax paid",
-                        value: pln(record.used_tax_paid),
-                        strong: true,
+                        label: "Used tax paid".into(),
+                        value: vec![pln(record.used_tax_paid)],
+                        style: EntryStyle::Strong,
                     },
                     StepLine::Caption(
                         format!(
@@ -126,11 +122,14 @@ impl RecordKind for Dividends {
             },
         ];
         RowDisplay {
+            id: record.id.clone().into(),
+            time: record.time,
             cells,
             steps,
             search: format!("{}\n{}\n{}", record.ticker, record.provider, record.country)
                 .to_lowercase(),
             label: format!("{} {}", record.ticker, date_label(record.time)).into(),
+            ..Default::default()
         }
     }
 

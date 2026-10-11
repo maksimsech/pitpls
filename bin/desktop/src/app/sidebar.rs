@@ -7,7 +7,7 @@ use crate::{
 use gpui_kit::{
     assets::IconName,
     base::Easing,
-    component::{button::*, popover::Popover, tag::Tag},
+    component::{button::*, popover::Popover},
 };
 use std::time::Duration;
 
@@ -284,23 +284,15 @@ impl Desktop {
             .years
             .iter()
             .filter(|info| year.is_none_or(|year| info.year == year));
-        let (dividends, interests, cryptos) = years.fold((0, 0, 0), |sum, info| {
+        let (dividends, interests, cryptos, stocks) = years.fold((0, 0, 0, 0), |sum, info| {
             (
                 sum.0 + info.dividends,
                 sum.1 + info.interests,
                 sum.2 + info.cryptos,
+                sum.3 + info.stocks,
             )
         });
         let count = |count: u32| Some(count.to_string());
-        let p = *palette(cx);
-        let planned = Tag::custom(transparent_black(), p.faint, p.strong_line)
-            .rounded_full()
-            .h(px(20.))
-            .px(px(7.))
-            .py_0()
-            .text_size(px(11.))
-            .child("Planned")
-            .into_any_element();
         v_flex()
             .id("sidebar-pages")
             .flex_1()
@@ -313,21 +305,7 @@ impl Desktop {
             .child(self.page_item(Page::Dividends, count(dividends), expansion, cx))
             .child(self.page_item(Page::Interests, count(interests), expansion, cx))
             .child(self.page_item(Page::Crypto, count(cryptos), expansion, cx))
-            .child(
-                nav_item(
-                    "navigate-Stocks",
-                    "Stocks",
-                    IconName::TrendingUp,
-                    Some(planned),
-                    expansion,
-                )
-                .text_color(p.faint)
-                .disabled(true)
-                .when(self.preferences.sidebar_collapsed, |item| {
-                    item.tooltip("Stocks · planned")
-                        .tooltip_placement(Placement::Right)
-                }),
-            )
+            .child(self.page_item(Page::Stocks, count(stocks), expansion, cx))
             .child(group("Data", expansion, cx))
             .child(self.page_item(Page::Imports, None, expansion, cx))
             .child(self.page_item(Page::Rates, None, expansion, cx))

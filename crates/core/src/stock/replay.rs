@@ -166,6 +166,7 @@ impl<'a> Position<'a> {
         let (before, after) = (Decimal::from(split.before), Decimal::from(split.after));
         for lot in &mut self.lots {
             let shares = lot.shares * after / before;
+            let price_before = lot.price_after_splits();
             lot.splits.push(SplitStep {
                 split_id: record.id.clone(),
                 time: record.time,
@@ -173,6 +174,8 @@ impl<'a> Position<'a> {
                 after: split.after,
                 lot_shares_before: lot.shares,
                 lot_shares_after: shares,
+                price_before,
+                price_after: lot.price_after_splits(),
             });
             lot.shares = shares;
             lot.open = lot.open * after / before;
@@ -269,6 +272,8 @@ impl<'a> Position<'a> {
             nbp_rate: lot.nbp_rate,
             cost: lot.cost * lot.open / lot.shares,
             fee_part: lot.fee * lot.open / lot.shares,
+            lot_cost: lot.cost,
+            lot_fee: lot.fee,
             splits: lot.splits,
         })
     }
@@ -304,6 +309,8 @@ impl Lot<'_> {
             nbp_rate: self.nbp_rate,
             cost: self.cost * taken / self.shares,
             fee_part: self.fee * taken / self.shares,
+            lot_cost: self.cost,
+            lot_fee: self.fee,
             splits: self.splits.clone(),
         }
     }

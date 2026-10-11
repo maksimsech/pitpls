@@ -3,6 +3,7 @@ mod imports;
 mod rates;
 mod records;
 mod settings;
+mod stocks;
 
 use crate::{
     config::Preferences,
@@ -36,6 +37,9 @@ pub fn open(
             .into(),
         Page::Crypto => cx
             .new(|cx| RecordsPage::<Crypto>::new(context, year, width, window, cx))
+            .into(),
+        Page::Stocks => cx
+            .new(|cx| stocks::StocksPage::new(context, year, width, window, cx))
             .into(),
         Page::Rates => cx
             .new(|cx| rates::RatesPage::new(context, window, cx))

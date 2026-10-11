@@ -70,6 +70,25 @@ pub fn money(value: Decimal) -> DisplayText {
     }
 }
 
+/// Whole numbers stay plain; a fraction shows like money.
+pub fn shares(value: Decimal) -> DisplayText {
+    let value = value.normalize();
+    if !value.fract().is_zero() {
+        return money(value);
+    }
+    let sign = if value.is_sign_negative() { "-" } else { "" };
+    let digits = value.abs().to_string();
+    let grouped = format!("{sign}{}", group_thousands(&digits));
+    DisplayText {
+        main: grouped.clone().into(),
+        extra: SharedString::default(),
+        more: false,
+        unit: None,
+        full: grouped.into(),
+        copy: format!("{sign}{digits}").into(),
+    }
+}
+
 pub fn record_count(count: u32) -> String {
     match count {
         0 => "no records".to_owned(),

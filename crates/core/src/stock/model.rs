@@ -97,6 +97,7 @@ pub struct StockTaxData {
     pub tax_paid_abroad: Decimal,
     pub sales: Vec<CalculatedSale>,
     pub open_lots: Vec<OpenLot>,
+    pub holdings: Vec<Holding>,
     pub countries: Vec<CountryTotal>,
     pub warnings: Vec<Warning>,
 }
@@ -139,6 +140,8 @@ pub struct LotMatch {
     pub nbp_rate: Decimal,
     pub cost: Decimal,
     pub fee_part: Decimal,
+    pub lot_cost: Decimal,
+    pub lot_fee: Decimal,
     pub splits: Vec<SplitStep>,
 }
 
@@ -154,6 +157,8 @@ pub struct OpenLot {
     pub nbp_rate: Decimal,
     pub cost: Decimal,
     pub fee_part: Decimal,
+    pub lot_cost: Decimal,
+    pub lot_fee: Decimal,
     pub splits: Vec<SplitStep>,
 }
 
@@ -165,6 +170,8 @@ pub struct SplitStep {
     pub after: u32,
     pub lot_shares_before: Decimal,
     pub lot_shares_after: Decimal,
+    pub price_before: Amount,
+    pub price_after: Amount,
 }
 
 // Shares held by one provider after a record; a split gets one per provider of its ticker.

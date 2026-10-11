@@ -127,7 +127,7 @@ pub const FOCUS_RING: Pixels = px(3.);
 
 pub fn measure_width<V: 'static>(
     current: Option<Pixels>,
-    width: fn(&mut V) -> &mut Option<Pixels>,
+    width: impl FnOnce(&mut V) -> &mut Option<Pixels> + 'static,
     cx: &Context<V>,
 ) -> impl IntoElement {
     let view = cx.entity().downgrade();

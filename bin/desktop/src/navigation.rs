@@ -9,6 +9,7 @@ pub enum Page {
     Dividends,
     Interests,
     Crypto,
+    Stocks,
     Rates,
     Settings,
 }
@@ -21,6 +22,7 @@ impl Page {
             Self::Dividends => "Dividends",
             Self::Interests => "Interests",
             Self::Crypto => "Crypto",
+            Self::Stocks => "Stocks",
             Self::Rates => "Rates",
             Self::Settings => "Settings",
         }
@@ -33,6 +35,7 @@ impl Page {
             Self::Dividends => IconName::Coins,
             Self::Interests => IconName::Percent,
             Self::Crypto => IconName::Bitcoin,
+            Self::Stocks => IconName::TrendingUp,
             Self::Rates => IconName::ChartLine,
             Self::Settings => IconName::Settings,
         }

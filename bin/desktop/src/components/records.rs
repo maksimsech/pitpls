@@ -5,7 +5,8 @@ use crate::{
 };
 use chrono::{DateTime, NaiveDate, Utc};
 use gpui_kit::{
-    component::{ActiveTheme, StyledExt, VirtualListScrollHandle, h_flex, tag::Tag, v_flex},
+    assets::IconName,
+    component::{ActiveTheme, Icon, StyledExt, VirtualListScrollHandle, h_flex, tag::Tag, v_flex},
     prelude::FluentBuilder,
     *,
 };
@@ -85,8 +86,20 @@ pub struct TableLayout {
 }
 
 impl TableLayout {
-    pub fn new(columns: &[RecordColumn], fit: &[Pixels], viewport: Pixels) -> Self {
+    pub fn new(
+        columns: &[RecordColumn],
+        fit: &[Pixels],
+        viewport: Pixels,
+        selectable: bool,
+    ) -> Self {
         let viewport = viewport / px(1.);
+        let frames = |frame: [f32; 3]| {
+            if selectable {
+                frame
+            } else {
+                [0., frame[1], frame[2]]
+            }
+        };
         let widths = |compact: bool, optional: bool| -> Vec<Option<f32>> {
             columns
                 .iter()
@@ -111,16 +124,17 @@ impl TableLayout {
         let used = |frame: [f32; 3], widths: &[Option<f32>]| {
             2. * PADDING + frame.iter().sum::<f32>() + widths.iter().flatten().sum::<f32>()
         };
+        let (normal, small) = (frames(FRAME), frames(COMPACT_FRAME));
         let mut shown = widths(false, true);
-        let compact = used(FRAME, &shown) + GROW_MIN > viewport;
+        let compact = used(normal, &shown) + GROW_MIN > viewport;
         let (frame, grow_min) = if compact {
             shown = widths(true, true);
-            if used(COMPACT_FRAME, &shown) + COMPACT_GROW_MIN > viewport {
+            if used(small, &shown) + COMPACT_GROW_MIN > viewport {
                 shown = widths(true, false);
             }
-            (COMPACT_FRAME, COMPACT_GROW_MIN)
+            (small, COMPACT_GROW_MIN)
         } else {
-            (FRAME, GROW_MIN)
+            (normal, GROW_MIN)
         };
         let used = used(frame, &shown);
         let grow = (viewport - used).max(grow_min);
@@ -199,10 +213,26 @@ pub fn cell(
     column: &RecordColumn,
     width: Pixels,
     compact: bool,
+    flagged: bool,
     cx: &App,
 ) -> AnyElement {
     let p = *palette(cx);
     let frame = div().w(width).flex_shrink_0().min_w_0().truncate();
+    if flagged {
+        return frame
+            .flex()
+            .items_center()
+            .gap(px(5.))
+            .text_size(px(12.))
+            .text_color(p.warning)
+            .child(
+                Icon::new(IconName::TriangleAlert)
+                    .size(px(12.))
+                    .flex_shrink_0(),
+            )
+            .child(value.main.clone())
+            .into_any_element();
+    }
     match column.style {
         CellStyle::Muted => frame
             .text_color(p.muted)
@@ -288,15 +318,22 @@ pub fn fit_widths(
         .collect()
 }
 
+#[derive(Clone, Copy, PartialEq)]
+pub enum EntryStyle {
+    Normal,
+    Strong,
+    Warning,
+}
+
 #[derive(PartialEq)]
 pub enum StepLine {
     Formula(Vec<DisplayText>),
     Result(Vec<DisplayText>),
     Caption(SharedString),
     Entry {
-        label: &'static str,
-        value: DisplayText,
-        strong: bool,
+        label: SharedString,
+        value: Vec<DisplayText>,
+        style: EntryStyle,
     },
 }
 
@@ -306,10 +343,31 @@ pub struct Step {
     pub lines: Vec<StepLine>,
 }
 
+/// Under the steps of an opened row: the lots a sale took, oldest first.
 #[derive(PartialEq)]
+pub struct LotTable {
+    pub title: SharedString,
+    pub caption: SharedString,
+    pub rows: Vec<LotRow>,
+}
+
+/// Cells in `LOT_COLUMNS` order; the NBP rate's `extra` holds its date.
+#[derive(PartialEq)]
+pub struct LotRow {
+    pub cells: Vec<DisplayText>,
+    pub uncovered: bool,
+    pub notes: Vec<SharedString>,
+}
+
+#[derive(Default, PartialEq)]
 pub struct RowDisplay {
+    pub id: SharedString,
+    pub time: DateTime<Utc>,
     pub cells: Vec<DisplayText>,
     pub steps: Vec<Step>,
+    pub lots: Option<LotTable>,
+    /// Cells drawn as a warning.
+    pub flagged: Vec<usize>,
     /// Lower case, for the filter.
     pub search: String,
     pub label: SharedString,
@@ -378,26 +436,29 @@ fn step(index: usize, step: &Step, cx: &App) -> Stateful<Div> {
                 StepLine::Entry {
                     label,
                     value,
-                    strong,
+                    style,
                 } => h_flex()
                     .justify_between()
                     .items_baseline()
                     .gap(px(12.))
                     .line_height(px(22.))
-                    .when(*strong, |entry| entry.font_semibold())
+                    .when(*style == EntryStyle::Strong, |entry| entry.font_semibold())
                     .child(
                         div()
-                            .text_color(if *strong { p.text } else { p.muted })
-                            .child(*label),
+                            .min_w_0()
+                            .text_color(match style {
+                                EntryStyle::Normal => p.muted,
+                                EntryStyle::Strong => p.text,
+                                EntryStyle::Warning => p.warning,
+                            })
+                            .child(label.clone()),
                     )
-                    .child(value::reveal_full(
-                        div()
-                            .id(id)
-                            .text_right()
-                            .font_features(tabular_digits())
-                            .child(value::text(value, false, true, cx)),
-                        value,
-                    ))
+                    .child(
+                        parts(id, value, cx)
+                            .flex_shrink_0()
+                            .justify_end()
+                            .font_features(tabular_digits()),
+                    )
                     .into_any_element(),
             }
         }))
@@ -482,15 +543,201 @@ fn preview_value(
     )
 }
 
+#[derive(Clone, Copy, PartialEq)]
+enum LotCell {
+    Muted,
+    Shares,
+    Taken,
+    Number,
+    Rate,
+}
+
+struct LotColumn {
+    label: &'static str,
+    cell: LotCell,
+    width: f32,
+    min: f32,
+    /// Left out of compact and stacked tables, or of stacked ones only.
+    hide_compact: bool,
+    hide_stacked: bool,
+}
+
+const fn lot_column(label: &'static str, cell: LotCell, width: f32, min: f32) -> LotColumn {
+    LotColumn {
+        label,
+        cell,
+        width,
+        min,
+        hide_compact: false,
+        hide_stacked: false,
+    }
+}
+
+const LOT_COLUMNS: [LotColumn; 9] = [
+    lot_column("Bought", LotCell::Muted, 80., 72.),
+    LotColumn {
+        hide_stacked: true,
+        ..lot_column("Lot", LotCell::Shares, 64., 44.)
+    },
+    LotColumn {
+        hide_compact: true,
+        ..lot_column("Before", LotCell::Shares, 64., 44.)
+    },
+    lot_column("Taken", LotCell::Taken, 64., 44.),
+    LotColumn {
+        hide_compact: true,
+        ..lot_column("After", LotCell::Shares, 64., 44.)
+    },
+    LotColumn {
+        hide_stacked: true,
+        ..lot_column("Price", LotCell::Number, 112., 80.)
+    },
+    LotColumn {
+        hide_stacked: true,
+        ..lot_column("NBP rate", LotCell::Rate, 112., 88.)
+    },
+    // Takes the rest of the row.
+    lot_column("Cost, PLN", LotCell::Number, 0., 88.),
+    lot_column("Buy fee, PLN", LotCell::Number, 96., 72.),
+];
+
+const LOT_GAP: f32 = 8.;
+
+fn lot_row() -> Div {
+    h_flex().gap(px(LOT_GAP)).px(px(PADDING))
+}
+
+fn lot_columns(layout: &TableLayout) -> impl Iterator<Item = (usize, &'static LotColumn)> {
+    let (compact, stacked) = (layout.compact, layout.stacked);
+    LOT_COLUMNS.iter().enumerate().filter(move |(_, column)| {
+        !(column.hide_compact && compact || column.hide_stacked && stacked)
+    })
+}
+
+fn lot_slot(column: &LotColumn) -> Div {
+    let slot = div().min_w(px(column.min)).truncate();
+    let slot = if column.width == 0. {
+        slot.flex_1()
+    } else {
+        slot.w(px(column.width)).flex_shrink(1.)
+    };
+    if column.cell == LotCell::Muted {
+        slot
+    } else {
+        slot.text_right()
+    }
+}
+
+fn lot_table(table: &LotTable, layout: &TableLayout, cx: &App) -> Div {
+    let p = *palette(cx);
+    let headings = lot_row()
+        .h(px(28.))
+        .border_t_1()
+        .border_b_1()
+        .border_color(p.line)
+        .text_size(px(12.))
+        .text_color(p.faint)
+        .children(lot_columns(layout).map(|(_, column)| lot_slot(column).child(column.label)));
+    let rows = table.rows.iter().enumerate().map(|(row_index, row)| {
+        let cells = lot_columns(layout).map(|(index, column)| {
+            let value = &row.cells[index];
+            let slot = lot_slot(column).font_features(tabular_digits());
+            let id = SharedString::from(format!("lot-{row_index}-{index}"));
+            match column.cell {
+                LotCell::Muted if row.uncovered => slot
+                    .text_color(p.warning)
+                    .font_medium()
+                    .child(value.main.clone())
+                    .into_any_element(),
+                LotCell::Muted => slot
+                    .text_color(p.muted)
+                    .child(value.main.clone())
+                    .into_any_element(),
+                LotCell::Rate => slot
+                    .child(value.main.clone())
+                    .when(!value.extra.is_empty(), |slot| {
+                        slot.child(
+                            div()
+                                .ml(px(5.))
+                                .text_size(px(12.))
+                                .text_color(p.faint)
+                                .child(value.extra.clone()),
+                        )
+                    })
+                    .flex()
+                    .justify_end()
+                    .items_baseline()
+                    .into_any_element(),
+                LotCell::Shares | LotCell::Taken | LotCell::Number => value::reveal_full(
+                    slot.id(id)
+                        .when(column.cell == LotCell::Shares, |slot| {
+                            slot.text_color(p.muted)
+                        })
+                        .when(column.cell == LotCell::Taken, |slot| slot.font_semibold())
+                        .child(value::text(value, true, true, cx)),
+                    value,
+                ),
+            }
+        });
+        v_flex()
+            .id(("lot-row", row_index))
+            .when(row_index > 0, |lot| lot.border_t_1().border_color(p.line))
+            .when(row.uncovered, |lot| lot.bg(p.warning.opacity(0.08)))
+            .child(lot_row().h(px(34.)).children(cells))
+            .children(row.notes.iter().map(|note| {
+                h_flex()
+                    .gap(px(6.))
+                    .mt(px(-4.))
+                    .pb(px(8.))
+                    .pl(px(PADDING + LOT_COLUMNS[0].width + LOT_GAP))
+                    .pr(px(PADDING))
+                    .text_size(px(12.))
+                    .text_color(p.faint)
+                    .child(
+                        Icon::new(IconName::CornerDownRight)
+                            .size(px(12.))
+                            .flex_shrink_0(),
+                    )
+                    .child(div().min_w_0().child(note.clone()))
+            }))
+    });
+    v_flex()
+        .mt(px(10.))
+        .rounded(px(10.))
+        .border_1()
+        .border_color(p.line)
+        .bg(p.surface)
+        .overflow_hidden()
+        .text_size(ROW_TEXT)
+        .child(
+            h_flex()
+                .min_h(px(36.))
+                .py(px(6.))
+                .px(px(PADDING))
+                .gap(px(8.))
+                .flex_wrap()
+                .text_size(px(12.))
+                .text_color(p.faint)
+                .child(
+                    div()
+                        .text_color(p.muted)
+                        .font_medium()
+                        .child(table.title.clone()),
+                )
+                .child(table.caption.clone()),
+        )
+        .child(headings)
+        .children(rows)
+}
+
 pub fn details(
-    record_id: &str,
-    time: DateTime<Utc>,
-    steps: &[Step],
+    row: &RowDisplay,
     layout: &TableLayout,
     actions: impl IntoIterator<Item = AnyElement>,
     cx: &App,
 ) -> Div {
     let p = *palette(cx);
+    let (record_id, time, steps) = (row.id.as_ref(), row.time, &row.steps);
     let indent = layout.indent();
     let steps = if layout.stacked {
         v_flex()
@@ -523,9 +770,17 @@ pub fn details(
         .border_b_1()
         .border_color(p.line)
         .child(steps)
+        .when_some(row.lots.as_ref(), |details, lots| {
+            details.child(
+                div()
+                    .ml(indent)
+                    .mr(px(PADDING))
+                    .child(lot_table(lots, layout, cx)),
+            )
+        })
         .child(
             h_flex()
-                .mt(px(8.))
+                .mt(px(if row.lots.is_some() { 10. } else { 8. }))
                 .ml(indent)
                 .mr(px(PADDING))
                 .gap(px(6.))

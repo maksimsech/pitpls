@@ -47,7 +47,9 @@ pub fn calculate_stocks(
         .iter()
         .filter(|record| tax_date(record.time).year() <= year);
     let Replay {
-        sales, open_lots, ..
+        sales,
+        open_lots,
+        holdings,
     } = replay(records, exchanges, rates)?;
 
     // For now a sale counts in its trade year, even when it settles in the next one; the
@@ -81,6 +83,7 @@ pub fn calculate_stocks(
         tax_paid_abroad,
         sales,
         open_lots,
+        holdings,
         countries,
         warnings,
     })
