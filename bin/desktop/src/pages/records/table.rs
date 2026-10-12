@@ -31,7 +31,6 @@ pub struct MonthGroup {
     pub key: (i32, u32),
     pub title: SharedString,
     pub records: Vec<usize>,
-    /// Left out of compact tables.
     pub count: SharedString,
     pub summary: Vec<(Option<&'static str>, DisplayText)>,
 }
@@ -83,8 +82,6 @@ impl RecordTable {
         }
     }
 
-    /// Keeps the selection and the opened rows that are still listed, and
-    /// returns whether the rows changed.
     pub fn set_rows(&mut self, rows: Vec<RowDisplay>) -> bool {
         if rows == self.state.rows {
             return false;
@@ -99,8 +96,7 @@ impl RecordTable {
         true
     }
 
-    /// The rows the query matches, by month; `count` and `summary` are left
-    /// empty.
+    /// `count` and `summary` are left for the caller.
     pub fn month_groups(&self, query: &str, with_year: bool) -> Vec<MonthGroup> {
         let mut groups: Vec<MonthGroup> = Vec::new();
         for (index, row) in self.state.rows.iter().enumerate() {
@@ -202,7 +198,6 @@ pub trait TableHost: Render {
     fn disabled(&self) -> bool;
     fn deleting(&self) -> &HashSet<String>;
     fn page_focus(&self) -> &FocusHandle;
-    /// Without it, the row menu and an opened row offer only Delete.
     fn editable(&self) -> bool;
     fn edit(&mut self, id: &str, window: &mut Window, cx: &mut Context<Self>);
     fn delete_one(&mut self, id: &str, window: &mut Window, cx: &mut Context<Self>);
@@ -776,7 +771,6 @@ fn rebuild<V: TableHost>(
     table.state.set_items(items, keys, sizes);
 }
 
-/// `empty` shows in place of the rows when the filter matches none.
 pub fn table<V: TableHost>(
     host: &mut V,
     which: V::Table,

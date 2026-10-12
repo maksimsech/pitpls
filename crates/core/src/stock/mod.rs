@@ -8,9 +8,10 @@ use crate::{
     DecimalExt,
     common::{Country, IsinCountryCode, Mic},
     rate::{NbpRateProvider, RateConverterError},
-    tax::POLAND_TAX,
     time::tax_date,
 };
+
+use settlement::settles_on;
 
 mod model;
 mod preview;
@@ -52,12 +53,12 @@ pub fn calculate_stocks(
         holdings,
     } = replay(records, exchanges, rates)?;
 
-    // For now a sale counts in its trade year, even when it settles in the next one; the
-    // settlement date only picks the NBP rate (docs/stocks/IMPORTANT-QUESTIONS.md, Q1).
-    let sales = sales
+    // A sale counts in the year it settles, like on podatekgieldowy.pl: one traded on 30.12 that
+    // settles on 02.01 is next year's tax (docs/stocks/IMPORTANT-QUESTIONS.md, Q1).
+    let (sales, next_year_sales): (Vec<_>, Vec<_>) = sales
         .into_iter()
-        .filter(|sale| tax_date(sale.time).year() == year)
-        .collect::<Vec<_>>();
+        .filter(|sale| sale.settlement_date.year() >= year)
+        .partition(|sale| sale.settlement_date.year() == year);
 
     let income = sales
         .iter()
@@ -69,19 +70,14 @@ pub fn calculate_stocks(
         .map(|sale| sale.costs)
         .sum::<Decimal>()
         .round_groszy();
-    let countries = country_totals(&sales, income - costs);
-    let tax_paid_abroad = countries
-        .iter()
-        .map(|country| country.used)
-        .sum::<Decimal>()
-        .round_groszy();
+    let countries = country_totals(&sales);
     let warnings = warnings(&sales);
 
     Ok(StockTaxData {
         income,
         costs,
-        tax_paid_abroad,
         sales,
+        next_year_sales,
         open_lots,
         holdings,
         countries,
@@ -89,10 +85,9 @@ pub fn calculate_stocks(
     })
 }
 
-// TODO: Revisit D-34 (docs/stocks/12-investigations.md). The per-country limit (art. 30b ust. 5a)
-// is an assumption: each country gets its share of the Polish tax, capped at the whole tax, but the
-// sum over countries isn't capped yet. Tax paid on a sale without an exchange stays out of D-34.
-fn country_totals(sales: &[CalculatedSale], total_profit: Decimal) -> Vec<CountryTotal> {
+// No D-34 for now: its limit needs the whole taxable income, which the app doesn't know
+// (docs/stocks/d34-tax-paid-abroad.md). Tax paid on a sale without an exchange stays out of PIT/ZG.
+fn country_totals(sales: &[CalculatedSale]) -> Vec<CountryTotal> {
     struct Sum {
         country: Country,
         exchanges: BTreeSet<Mic>,
@@ -119,30 +114,40 @@ fn country_totals(sales: &[CalculatedSale], total_profit: Decimal) -> Vec<Countr
         sum.tax_paid += sale.tax_paid_pln;
     }
 
-    let polish_tax = if total_profit > Decimal::ZERO {
-        POLAND_TAX * total_profit.round_zloty()
-    } else {
-        Decimal::ZERO
-    };
-
     sums.into_values()
-        .map(|sum| {
-            let limit = if sum.profit > Decimal::ZERO && total_profit > Decimal::ZERO {
-                polish_tax * sum.profit.min(total_profit) / total_profit
-            } else {
-                Decimal::ZERO
+        .map(|sum| CountryTotal {
+            country: sum.country,
+            exchanges: sum.exchanges.into_iter().collect(),
+            sales: sum.sales,
+            profit: sum.profit,
+            income: sum.profit.max(Decimal::ZERO).round_groszy(),
+            tax_paid: sum.tax_paid.round_groszy(),
+        })
+        .collect()
+}
+
+// The years sales count in, worked out without rates. Records lists a sale under its trade year,
+// so a sale traded on 30.12 can be all its tax year has.
+pub fn sale_years(records: &[Stock], exchanges: &[InstrumentExchange]) -> BTreeSet<i32> {
+    records
+        .iter()
+        .filter_map(|record| {
+            let StockAction::Sell(sell) = &record.action else {
+                return None;
             };
-            CountryTotal {
-                country: sum.country,
-                exchanges: sum.exchanges.into_iter().collect(),
-                sales: sum.sales,
-                profit: sum.profit,
-                income: sum.profit.max(Decimal::ZERO).round_groszy(),
-                tax_paid: sum.tax_paid.round_groszy(),
-                withheld: sum.tax_paid,
-                limit,
-                used: sum.tax_paid.min(limit),
-            }
+            let country = exchanges
+                .iter()
+                .find(|exchange| {
+                    exchange.ticker == record.ticker && exchange.provider == sell.provider
+                })
+                .map(|exchange| exchange.country);
+            let (date, _) = settles_on(
+                record.time,
+                sell.settlement_date,
+                country,
+                sell.price.currency,
+            );
+            Some(date.year())
         })
         .collect()
 }

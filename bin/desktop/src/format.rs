@@ -70,7 +70,6 @@ pub fn money(value: Decimal) -> DisplayText {
     }
 }
 
-/// Whole numbers stay plain; a fraction shows like money.
 pub fn shares(value: Decimal) -> DisplayText {
     let value = value.normalize();
     if !value.fract().is_zero() {

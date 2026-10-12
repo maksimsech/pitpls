@@ -465,20 +465,15 @@ impl ImportsPage {
         let p = palette(cx);
         let import = data::import_status(self.last_import.as_ref(), cx);
         data::card(cx).child(
-            status_row(
-                import.dot,
-                "Last import",
-                StyledText::new(import.detail),
-                cx,
-            )
-            .pr(px(16.))
-            .children(import.date.map(|date| {
-                div()
-                    .flex_shrink_0()
-                    .text_color(p.faint)
-                    .font_features(tabular_digits())
-                    .child(date)
-            })),
+            status_row(import.dot, "Last import", data::import_detail(&import), cx)
+                .pr(px(16.))
+                .children(import.date.map(|date| {
+                    div()
+                        .flex_shrink_0()
+                        .text_color(p.faint)
+                        .font_features(tabular_digits())
+                        .child(date)
+                })),
         )
     }
 
@@ -518,7 +513,7 @@ impl ImportsPage {
     }
 }
 
-fn status_row(dot: Hsla, title: &'static str, detail: StyledText, cx: &App) -> Div {
+fn status_row(dot: Hsla, title: &'static str, detail: impl IntoElement, cx: &App) -> Div {
     h_flex()
         .h(px(56.))
         .gap(px(12.))

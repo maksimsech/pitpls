@@ -142,6 +142,10 @@ impl StockEditor {
             Some(StockAction::Split(_)) => Action::Split,
             Some(StockAction::Buy(_)) | None => Action::Buy,
         };
+        // The missing buy came before the sale; at midnight it sorts before it too.
+        let buy_time = prefill
+            .as_ref()
+            .and_then(|prefill| time::start_of_day(time::tax_date(prefill.first_sale)));
         let currency = trade
             .as_ref()
             .map(|trade| trade.price.currency)
@@ -166,7 +170,10 @@ impl StockEditor {
             action,
             id: form::optional_id(text(record.map(|record| record.id.clone())), window, cx),
             time: form::date_picker(
-                record.filter(|_| trade.is_some()).map(|record| record.time),
+                record
+                    .filter(|_| trade.is_some())
+                    .map(|record| record.time)
+                    .or(buy_time),
                 window,
                 cx,
             ),
@@ -453,9 +460,9 @@ impl StockEditor {
         )
     }
 
-    fn exchange_hint(&self, catalog: &Catalog, cx: &App) -> (String, bool) {
+    fn exchange_hint(&self, catalog: &Catalog, cx: &App) -> Result<String, String> {
         if let Some(error) = &catalog.refresh_error {
-            return (error.to_string(), true);
+            return Err(error.to_string());
         }
         let ticker = self.ticker(cx);
         let ticker = if ticker.is_empty() {
@@ -463,10 +470,7 @@ impl StockEditor {
         } else {
             ticker
         };
-        (
-            format!("Saved with {ticker} · its country goes to PIT/ZG"),
-            false,
-        )
+        Ok(format!("Saved with {ticker} · its country goes to"))
     }
 
     fn time_hint(&self, cx: &App) -> String {
@@ -679,9 +683,9 @@ impl PreviewView {
                     "Profit"
                 };
                 let tax_note = if sale.country.is_some() {
-                    "→ D-34, PIT/ZG 30"
+                    "→ PIT/ZG 30"
                 } else {
-                    "· no D-34 or PIT/ZG until the exchange is set"
+                    "· no PIT/ZG until the exchange is set"
                 };
                 Self {
                     settles: Some(sale.settlement_date),
@@ -1152,7 +1156,10 @@ impl StocksPage {
 
     fn trade_fields(&self, editor: &StockEditor, busy: bool, cx: &mut Context<Self>) -> Div {
         let p = *palette(cx);
-        let (exchange_hint, exchange_warning) = editor.exchange_hint(self.catalog.read(cx), cx);
+        let exchange_hint = match editor.exchange_hint(self.catalog.read(cx), cx) {
+            Ok(lead) => form::hint_ending(lead, "PIT/ZG", cx),
+            Err(error) => form::hint(error, cx).text_color(p.warning),
+        };
         let exchange = form::field(
             "Exchange",
             div().w_full().h_8().flex_shrink_0().child(exchange::picker(
@@ -1164,9 +1171,7 @@ impl StocksPage {
             )),
             cx,
         )
-        .child(
-            form::hint(exchange_hint, cx).when(exchange_warning, |hint| hint.text_color(p.warning)),
-        );
+        .child(exchange_hint);
         let settlement = form::field(
             form::noted_label("Settlement date", "optional", cx),
             DatePicker::new(&editor.settlement)
@@ -1343,7 +1348,7 @@ impl StocksPage {
                     .when_some(line.lead.clone(), |row, lead| {
                         row.child(div().text_color(p.text).child(lead))
                     })
-                    .child(line.text.clone())
+                    .child(div().min_w_0().child(line.text.clone()))
             }))
             .when(!preview.results.is_empty(), |band| {
                 band.child(

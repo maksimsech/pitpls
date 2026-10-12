@@ -4,8 +4,9 @@ use serde::{Deserialize, Serialize};
 use crate::common::{Country, Mic};
 
 // Lower case inside a title-case name; other short words are mostly abbreviations (AG, PLC, MTF).
-const LOWER_CASE_WORDS: [&str; 15] = [
-    "AND", "OF", "THE", "FOR", "DA", "DAS", "DE", "DEL", "DES", "DI", "DO", "DOS", "DU", "LA", "LE",
+const LOWER_CASE_WORDS: [&str; 18] = [
+    "AND", "OF", "THE", "FOR", "AM", "DA", "DAS", "DE", "DEL", "DES", "DI", "DO", "DOS", "DU",
+    "ES", "LA", "LE", "SUR",
 ];
 const ABBREVIATION_MAX_LEN: usize = 3;
 
@@ -45,16 +46,17 @@ impl Exchange {
     pub fn display_name(&self) -> String {
         match &self.acronym {
             Some(acronym) => acronym.clone(),
-            None => title_case(&self.name),
+            None => title_case(&self.name, true),
         }
     }
 
+    // A city has no abbreviations: NEW YORK and SAN JOSE get title case too.
     pub fn display_city(&self) -> Option<String> {
-        self.city.as_deref().map(title_case)
+        self.city.as_deref().map(|city| title_case(city, false))
     }
 }
 
-fn title_case(name: &str) -> String {
+fn title_case(name: &str, abbreviations: bool) -> String {
     let mut result = String::with_capacity(name.len());
     let mut word = String::new();
     let mut first = true;
@@ -63,15 +65,15 @@ fn title_case(name: &str) -> String {
             word.push(c);
             continue;
         }
-        push_word(&mut result, &word, &mut first);
+        push_word(&mut result, &word, abbreviations, &mut first);
         word.clear();
         result.push(c);
     }
-    push_word(&mut result, &word, &mut first);
+    push_word(&mut result, &word, abbreviations, &mut first);
     result
 }
 
-fn push_word(result: &mut String, word: &str, first: &mut bool) {
+fn push_word(result: &mut String, word: &str, abbreviations: bool, first: &mut bool) {
     if word.is_empty() {
         return;
     }
@@ -81,7 +83,7 @@ fn push_word(result: &mut String, word: &str, first: &mut bool) {
     if lower_case && !first_word {
         result.extend(word.chars().flat_map(char::to_lowercase));
     } else if !lower_case
-        && (word.chars().count() <= ABBREVIATION_MAX_LEN
+        && ((abbreviations && word.chars().count() <= ABBREVIATION_MAX_LEN)
             || word.chars().any(|c| c.is_ascii_digit()))
     {
         result.push_str(word);

@@ -22,7 +22,6 @@ pub struct Layout {
     columns: Vec<RecordColumn>,
     pub fit: Option<Vec<Pixels>>,
     pub width: Option<Pixels>,
-    compact: bool,
     scroll: ScrollHandle,
 }
 
@@ -34,19 +33,14 @@ impl Layout {
                 RecordColumn::new("Lot", CellStyle::Number, 64., 56.),
                 RecordColumn::new("Open", CellStyle::Number, 64., 56.),
                 RecordColumn::new("Price", CellStyle::Number, 112., 96.),
-                RecordColumn::new("NBP rate", CellStyle::Time, 112., 64.).optional(),
+                RecordColumn::new("NBP rate", CellStyle::Rate, 112., 64.).optional(),
                 RecordColumn::grow("Cost, PLN", CellStyle::Number),
                 RecordColumn::new("Buy fee, PLN", CellStyle::Number, 104., 88.),
             ],
             fit: None,
             width,
-            compact: false,
             scroll: ScrollHandle::default(),
         }
-    }
-
-    pub fn compact(&self) -> bool {
-        self.compact
     }
 }
 
@@ -99,7 +93,6 @@ impl StocksPage {
             layout.width.unwrap_or(px(900.)),
             false,
         );
-        layout.compact = table.compact;
         let spacer = || div().w(table.frame[0] + table.frame[1]).flex_shrink_0();
         let blocks = display
             .holdings

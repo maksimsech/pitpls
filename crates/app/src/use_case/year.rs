@@ -1,3 +1,4 @@
+use super::stock;
 use super::validation::{Error as ValidationError, validate_year};
 use crate::App;
 use pitpls_db::RepositoryError;
@@ -29,7 +30,7 @@ impl YearInfo {
 
 pub async fn list_year_info(app: &App) -> Result<Vec<YearInfo>, RepositoryError> {
     let years = app.db.year_repo().list_with_records().await?;
-    Ok(years
+    let mut years = years
         .into_iter()
         .map(|year| YearInfo {
             year: year.year,
@@ -39,7 +40,30 @@ pub async fn list_year_info(app: &App) -> Result<Vec<YearInfo>, RepositoryError>
             stocks: year.stocks,
             custom: year.custom,
         })
-        .collect())
+        .collect::<Vec<_>>();
+
+    // A sale counts in the year it settles, so one traded on 30.12 can be all the next year has.
+    if let Some(last) = years
+        .iter()
+        .filter(|info| info.stocks > 0)
+        .map(|info| info.year)
+        .max()
+    {
+        for year in stock::sale_years(app, last).await? {
+            if !years.iter().any(|info| info.year == year) {
+                years.push(YearInfo {
+                    year,
+                    dividends: 0,
+                    interests: 0,
+                    cryptos: 0,
+                    stocks: 0,
+                    custom: false,
+                });
+            }
+        }
+        years.sort_by_key(|info| std::cmp::Reverse(info.year));
+    }
+    Ok(years)
 }
 
 pub async fn add_year(app: &App, year: i32) -> Result<(), Error> {

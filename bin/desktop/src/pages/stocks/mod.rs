@@ -8,7 +8,7 @@ mod set_exchange;
 use crate::{
     components::{
         ButtonText, Status, dialog, header, nbp, notice,
-        records::{CellStyle, RecordColumn},
+        records::{CellStyle, RecordColumn, TableLayout},
         value,
     },
     format::{DisplayText, pln, record_count},
@@ -716,7 +716,7 @@ impl StocksPage {
             .min_h_0()
             .child(
                 totals_row(compact).children(
-                    ["Income (C-22)", "Costs (C-23)", "Tax paid abroad (D-34)"]
+                    ["Income (C-22)", "Costs (C-23)"]
                         .map(|label| value::stat_skeleton(label, visible, cx)),
                 ),
             )
@@ -989,11 +989,14 @@ impl Render for StocksPage {
         } else if self.status.ready && empty {
             body = body.child(self.empty_state(cx));
         } else if self.status.ready {
-            let compact = match self.tab {
-                Tab::Sales => self.sales.compact(),
-                Tab::Records => self.records.compact(),
-                Tab::Holdings => self.holdings.compact(),
-            };
+            // Sales decides for every tab, so the totals don't move when the tab changes.
+            let compact = TableLayout::new(
+                &self.sales.columns,
+                self.sales.state.fit.as_deref().unwrap_or_default(),
+                self.width().unwrap_or(px(900.)),
+                false,
+            )
+            .compact;
             let warnings = self
                 .display
                 .iter()

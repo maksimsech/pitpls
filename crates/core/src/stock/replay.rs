@@ -9,7 +9,7 @@ use super::{
         CalculatedSale, Holding, InstrumentExchange, LotMatch, OpenLot, Replay, SplitStep, Stock,
         StockAction, StockBuy, StockSell, StockSplit,
     },
-    settlement::{market, settlement_date},
+    settlement::settles_on,
 };
 use crate::{
     common::{Amount, Currency},
@@ -124,13 +124,12 @@ impl<'a> Position<'a> {
         recorded: Option<NaiveDate>,
         currency: Currency,
     ) -> (NaiveDate, bool) {
-        match recorded {
-            Some(date) => (date, false),
-            None => {
-                let market = market(self.exchange.map(|exchange| exchange.country), currency);
-                (settlement_date(time, market), true)
-            }
-        }
+        settles_on(
+            time,
+            recorded,
+            self.exchange.map(|exchange| exchange.country),
+            currency,
+        )
     }
 
     fn buy(
@@ -167,6 +166,10 @@ impl<'a> Position<'a> {
         for lot in &mut self.lots {
             let shares = lot.shares * after / before;
             let price_before = lot.price_after_splits();
+            let price_after = Amount {
+                value: price_before.value * before / after,
+                currency: price_before.currency,
+            };
             lot.splits.push(SplitStep {
                 split_id: record.id.clone(),
                 time: record.time,
@@ -175,7 +178,7 @@ impl<'a> Position<'a> {
                 lot_shares_before: lot.shares,
                 lot_shares_after: shares,
                 price_before,
-                price_after: lot.price_after_splits(),
+                price_after,
             });
             lot.shares = shares;
             lot.open = lot.open * after / before;

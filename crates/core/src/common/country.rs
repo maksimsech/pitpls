@@ -77,7 +77,10 @@ impl<'de> Deserialize<'de> for Country {
 pub struct IsinCountryCode([u8; 2]);
 
 impl IsinCountryCode {
+    pub const CA: Self = Self(*b"CA");
+    pub const DE: Self = Self(*b"DE");
     pub const JP: Self = Self(*b"JP");
+    pub const MX: Self = Self(*b"MX");
     pub const US: Self = Self(*b"US");
 
     pub fn from_isin(isin: &str) -> Result<Self, CountryParseError> {

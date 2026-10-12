@@ -76,7 +76,8 @@ pub fn rate_status(
 
 pub struct ImportStatus {
     pub dot: Hsla,
-    pub detail: SharedString,
+    pub source: SharedString,
+    pub counts: Option<SharedString>,
     pub date: Option<SharedString>,
 }
 
@@ -85,13 +86,8 @@ pub fn import_status(last: Option<&LastImport>, cx: &App) -> ImportStatus {
     match last {
         Some(last) => ImportStatus {
             dot: p.ok,
-            detail: format!(
-                "{} · {} · {}",
-                last.provider,
-                last.file_name,
-                import_counts(last)
-            )
-            .into(),
+            source: format!("{} · {}", last.provider, last.file_name).into(),
+            counts: Some(import_counts(last).into()),
             date: Some(
                 last.imported_at
                     .with_timezone(&Local)
@@ -102,10 +98,24 @@ pub fn import_status(last: Option<&LastImport>, cx: &App) -> ImportStatus {
         },
         None => ImportStatus {
             dot: p.faint,
-            detail: "No statement imported yet".into(),
+            source: "No statement imported yet".into(),
+            counts: None,
             date: None,
         },
     }
+}
+
+// Statement file names are long; they give way so the counts stay readable.
+pub fn import_detail(status: &ImportStatus) -> Div {
+    div()
+        .flex()
+        .gap(px(4.))
+        .child(div().min_w_0().truncate().child(status.source.clone()))
+        .children(status.counts.clone().map(|counts| {
+            div()
+                .flex_shrink_0()
+                .child(SharedString::from(format!("· {counts}")))
+        }))
 }
 
 fn import_counts(last: &LastImport) -> String {

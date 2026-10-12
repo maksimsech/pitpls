@@ -19,7 +19,6 @@ pub struct ForeignTaxSummary {
 pub struct StockTaxSummary {
     pub income: Decimal,
     pub costs: Decimal,
-    pub tax_paid_abroad: Decimal,
     // Loss countries too, so Summary can say they need no PIT/ZG.
     pub countries: Vec<CountryTotal>,
     pub warnings: Vec<Warning>,

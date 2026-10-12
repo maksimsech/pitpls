@@ -25,8 +25,7 @@ use pitpls_importers::{IMPORTERS, InputType};
 use rust_decimal::Decimal;
 
 struct Forms {
-    shares: [(&'static str, DisplayText); 3],
-    capped: Vec<Capped>,
+    shares: [(&'static str, DisplayText); 2],
     pit_zg: Option<PitZg>,
     foreign: [(&'static str, DisplayText); 3],
     /// A plain subtraction of the two totals, never rounded.
@@ -34,17 +33,9 @@ struct Forms {
     crypto: [(&'static str, DisplayText); 2],
 }
 
-struct Capped {
-    country: SharedString,
-    withheld: DisplayText,
-    // None when there's no Polish tax on the country's income.
-    limit: Option<DisplayText>,
-}
-
 struct PitZg {
     countries: Vec<PitZgCountry>,
     no_exchange: Option<SharedString>,
-    capped: bool,
 }
 
 struct PitZgCountry {
@@ -65,18 +56,7 @@ impl Forms {
             shares: [
                 ("Income (C-22)", pln(stocks.income)),
                 ("Costs (C-23)", pln(stocks.costs)),
-                ("Tax paid abroad (D-34)", pln(stocks.tax_paid_abroad)),
             ],
-            capped: stocks
-                .countries
-                .iter()
-                .filter(|country| country.limit < country.withheld)
-                .map(|country| Capped {
-                    country: country.country.to_string().into(),
-                    withheld: pln(country.withheld),
-                    limit: (country.limit > Decimal::ZERO).then(|| pln(country.limit)),
-                })
-                .collect(),
             pit_zg: PitZg::new(stocks, &data.listings),
             foreign: [
                 ("Income (I-65)", pln(foreign.income)),
@@ -152,10 +132,6 @@ impl PitZg {
         Some(Self {
             countries,
             no_exchange,
-            capped: stocks
-                .countries
-                .iter()
-                .any(|country| country.income > Decimal::ZERO && country.limit < country.withheld),
         })
     }
 }
@@ -592,7 +568,7 @@ impl HomePage {
         let last_import = data_row(
             import.dot,
             "Last import",
-            StyledText::new(import.detail),
+            data::import_detail(&import),
             import.date.map(|date| {
                 div()
                     .text_color(p.faint)
@@ -633,31 +609,6 @@ impl HomePage {
                 .iter()
                 .map(|(label, value)| value::card_row(form_id(label), *label, value, false, cx)),
         )
-        .when(!forms.capped.is_empty(), |card| {
-            card.child(card_note(cx).children(forms.capped.iter().map(|capped| {
-                let withheld = format!(" was withheld in {}.", capped.country);
-                let parts = match &capped.limit {
-                    Some(limit) => vec![
-                        Part::Value(&capped.withheld),
-                        Part::Text(format!("{withheld} Only the Polish tax on that income,")),
-                        Part::Value(limit),
-                        Part::Text(", can be deducted.".to_owned()),
-                    ],
-                    None => vec![
-                        Part::Value(&capped.withheld),
-                        Part::Text(format!(
-                            "{withheld} There's no Polish tax on that income, so none of \
-                                 it can be deducted."
-                        )),
-                    ],
-                };
-                sentence(
-                    SharedString::from(format!("capped-{}", capped.country)),
-                    &parts,
-                    cx,
-                )
-            })))
-        })
     }
 
     fn pit_zg_card(&self, pit_zg: &PitZg, cx: &mut Context<Self>) -> Div {
@@ -702,11 +653,6 @@ impl HomePage {
             .chain(rows)
             .collect::<Vec<_>>()
         }))
-        .when(pit_zg.capped, |card| {
-            card.child(
-                card_note(cx).child("Field 30 takes the whole withheld tax, without the limit."),
-            )
-        })
         .children(losses.into_iter().map(|country| {
             let result = if country.loss { "Loss" } else { "Profit" };
             h_flex()
@@ -775,11 +721,8 @@ impl HomePage {
                 .collect::<Vec<_>>()
         };
         [
-            card("Shares and other securities", None, None, cx).children(rows(&[
-                "Income (C-22)",
-                "Costs (C-23)",
-                "Tax paid abroad (D-34)",
-            ])),
+            card("Shares and other securities", None, None, cx)
+                .children(rows(&["Income (C-22)", "Costs (C-23)"])),
             card("Foreign dividends and interest", None, None, cx).children(rows(&[
                 "Income (I-65)",
                 "Tax to pay (G-47)",
@@ -912,16 +855,6 @@ fn card(title: &'static str, caption: Option<&'static str>, link: Option<Button>
     )
 }
 
-fn card_note(cx: &App) -> Div {
-    v_flex()
-        .gap(px(2.))
-        .mt(px(-6.))
-        .px(px(16.))
-        .pb(px(12.))
-        .text_size(px(12.))
-        .text_color(palette(cx).faint)
-}
-
 enum Part<'a> {
     Text(String),
     Value(&'a DisplayText),
@@ -980,7 +913,7 @@ fn link(id: &'static str, label: &'static str, disabled: bool, cx: &App) -> Butt
 fn data_row(
     dot: Hsla,
     label: &'static str,
-    detail: StyledText,
+    detail: impl IntoElement,
     end: Option<impl IntoElement>,
     cx: &App,
 ) -> Div {

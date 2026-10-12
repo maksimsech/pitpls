@@ -26,6 +26,8 @@ const COMPACT_FRAME: [f32; 3] = [28., 18., 28.];
 const GROW_MIN: f32 = 140.;
 const COMPACT_GROW_MIN: f32 = 60.;
 const NUMBER_INSET: f32 = 8.;
+const RATE_GAP: f32 = 5.;
+const RATE_DATE_TEXT: Pixels = px(12.);
 pub const ROW_TEXT: Pixels = px(13.);
 const STACK_BELOW: f32 = 680.;
 /// Room under the last row, so the selection bar doesn't cover it.
@@ -39,6 +41,9 @@ pub enum CellStyle {
     Strong,
     Tag,
     Number,
+    // Right-aligned so it doesn't run into the price's currency before it. Unlike
+    // Time it keeps its date (`extra`) when compact: a rate means little without it.
+    Rate,
 }
 
 pub struct RecordColumn {
@@ -206,9 +211,10 @@ pub fn heading(column: &RecordColumn, width: Pixels) -> Div {
         .w(width)
         .flex_shrink_0()
         .truncate()
-        .when(column.style == CellStyle::Number, |cell| {
-            cell.pl(px(NUMBER_INSET)).text_right()
-        })
+        .when(
+            matches!(column.style, CellStyle::Number | CellStyle::Rate),
+            |cell| cell.pl(px(NUMBER_INSET)).text_right(),
+        )
         .child(column.label)
 }
 
@@ -297,6 +303,23 @@ pub fn cell(
                 .child(value::text(value, true, true, cx)),
             value,
         ),
+        CellStyle::Rate => frame
+            .flex()
+            .justify_end()
+            .items_baseline()
+            .gap(px(RATE_GAP))
+            .pl(px(NUMBER_INSET))
+            .font_features(tabular_digits())
+            .child(value.main.clone())
+            .when(!value.extra.is_empty(), |cell| {
+                cell.child(
+                    div()
+                        .text_size(RATE_DATE_TEXT)
+                        .text_color(p.faint)
+                        .child(value.extra.clone()),
+                )
+            })
+            .into_any_element(),
     }
 }
 
@@ -312,6 +335,13 @@ pub fn fit_widths(
         .iter()
         .enumerate()
         .map(|(index, column)| {
+            if column.style == CellStyle::Rate {
+                return rate_width(
+                    rows.iter().filter_map(|row| row.cells.get(index)),
+                    window,
+                    cx,
+                );
+            }
             if column.style != CellStyle::Number {
                 return px(0.);
             }
@@ -332,6 +362,33 @@ pub fn fit_widths(
             (px(NUMBER_INSET) + widest).ceil()
         })
         .collect()
+}
+
+fn rate_width<'a>(
+    values: impl Iterator<Item = &'a DisplayText>,
+    window: &Window,
+    cx: &App,
+) -> Pixels {
+    let Some(widest) =
+        values.max_by_key(|value| value.main.chars().count() + value.extra.chars().count())
+    else {
+        return px(0.);
+    };
+    let width = |text: &SharedString, size| {
+        value::text_width(
+            &DisplayText::plain(text.clone()),
+            false,
+            false,
+            size,
+            window,
+            cx,
+        )
+    };
+    let mut total = px(NUMBER_INSET) + width(&widest.main, ROW_TEXT);
+    if !widest.extra.is_empty() {
+        total += px(RATE_GAP) + width(&widest.extra, RATE_DATE_TEXT);
+    }
+    total.ceil()
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -359,7 +416,6 @@ pub struct Step {
     pub lines: Vec<StepLine>,
 }
 
-/// Under the steps of an opened row: the lots a sale took, oldest first.
 #[derive(PartialEq)]
 pub struct LotTable {
     pub title: SharedString,
@@ -383,12 +439,10 @@ pub struct RowDisplay {
     pub cells: Vec<DisplayText>,
     pub steps: Vec<Step>,
     pub lots: Option<LotTable>,
-    /// Cells drawn as a warning.
     pub flagged: Vec<usize>,
     /// Lower case, for the filter.
     pub search: String,
     pub label: SharedString,
-    /// In the footer of the opened row.
     pub links: Vec<SharedString>,
 }
 
@@ -587,7 +641,6 @@ struct LotColumn {
     cell: LotCell,
     width: f32,
     min: f32,
-    /// Left out of compact and stacked tables, or of stacked ones only.
     hide_compact: bool,
     hide_stacked: bool,
 }
@@ -777,8 +830,7 @@ fn lot_table(table: &LotTable, layout: &TableLayout, link: Option<AnyElement>, c
         .children(rows)
 }
 
-/// `links` go in the footer and `lots_link` in the lot table's header,
-/// built by the host since they call back into it.
+/// The host builds the links, since they call back into it.
 pub fn details(
     row: &RowDisplay,
     layout: &TableLayout,

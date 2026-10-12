@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, btree_map::Entry};
+use std::collections::{BTreeMap, BTreeSet, btree_map::Entry};
 
 use chrono::{DateTime, Datelike, NaiveDate, Utc};
 use pitpls_core::{
@@ -438,6 +438,16 @@ pub async fn set_exchanges(
 
 pub async fn list_instruments(app: &App) -> Result<Vec<Instrument>, RepositoryError> {
     app.db.instrument_repo().list().await
+}
+
+// The years stock sales count in, through `year` (the last year with stock records).
+pub async fn sale_years(app: &App, year: i32) -> Result<BTreeSet<i32>, RepositoryError> {
+    let records = app.db.stock_repo().get_through_year(year).await?;
+    let listings = load_listings(app).await?;
+    Ok(pitpls_core::stock::sale_years(
+        &records,
+        &listings.exchanges(),
+    ))
 }
 
 pub async fn load_listings(app: &App) -> Result<Listings, RepositoryError> {

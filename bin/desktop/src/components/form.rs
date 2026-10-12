@@ -370,6 +370,19 @@ pub fn hint(text: impl Into<SharedString>, cx: &App) -> Div {
         .child(text.into())
 }
 
+// GPUI may break a line at "/", so `end` moves to the next line whole instead.
+pub fn hint_ending(lead: impl Into<SharedString>, end: &'static str, cx: &App) -> Div {
+    h_flex()
+        .flex_wrap()
+        .items_baseline()
+        .gap_x(px(3.))
+        .min_w_0()
+        .text_size(px(11.5))
+        .text_color(palette(cx).faint)
+        .child(div().min_w_0().child(lead.into()))
+        .child(div().flex_shrink_0().child(end))
+}
+
 pub fn error(text: impl Into<SharedString>, cx: &App) -> Div {
     h_flex()
         .items_start()

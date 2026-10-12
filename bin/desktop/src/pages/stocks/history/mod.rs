@@ -68,7 +68,7 @@ impl HistoryView {
                 RecordColumn::grow("Event", CellStyle::Tag),
                 RecordColumn::new("Shares", CellStyle::Number, 64., 56.),
                 RecordColumn::new("Price", CellStyle::Number, 112., 96.).optional(),
-                RecordColumn::new("NBP rate", CellStyle::Time, 112., 64.).optional(),
+                RecordColumn::new("NBP rate", CellStyle::Rate, 112., 64.).optional(),
                 RecordColumn::new("Value, PLN", CellStyle::Number, 120., 100.),
                 RecordColumn::new("Profit, PLN", CellStyle::Number, 120., 100.),
                 RecordColumn::new("Holding after", CellStyle::Number, 112., 96.),

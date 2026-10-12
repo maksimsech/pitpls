@@ -13,12 +13,13 @@ use pitpls_core::{
 use crate::{ImportContext, ImportData, ImportError, ImportField, ImportedInstrument, Result};
 
 const PROVIDER: &str = crate::ImporterKind::T212.provider();
+const FREE_SHARES_NOTE: &str = "Free Shares Promotion";
 
 struct ColumnMap {
     common: CommonColumns,
     instrument: InstrumentColumns,
     dividend: DividendColumns,
-    interest: InterestColumns,
+    total: TotalColumns,
     trade: TradeColumns,
 }
 
@@ -26,6 +27,7 @@ struct CommonColumns {
     action: usize,
     time: usize,
     id: Option<usize>,
+    notes: Option<usize>,
 }
 
 struct InstrumentColumns {
@@ -41,7 +43,7 @@ struct DividendColumns {
     tax_currency: Option<usize>,
 }
 
-struct InterestColumns {
+struct TotalColumns {
     total: Option<usize>,
     total_currency: Option<usize>,
 }
@@ -67,6 +69,7 @@ impl ColumnMap {
                 action: find("Action")?,
                 time: find_optional("Time").map_or_else(|| find("Time (UTC)"), Ok)?,
                 id: find_optional("ID"),
+                notes: find_optional("Notes"),
             },
             instrument: InstrumentColumns {
                 isin: find_optional("ISIN"),
@@ -79,7 +82,7 @@ impl ColumnMap {
                 tax: find_optional("Withholding tax"),
                 tax_currency: find_optional("Currency (Withholding tax)"),
             },
-            interest: InterestColumns {
+            total: TotalColumns {
                 total: find_optional("Total"),
                 total_currency: find_optional("Currency (Total)"),
             },
@@ -137,25 +140,42 @@ pub fn parse(csv_content: String) -> Result<ImportData> {
     let mut data = ImportData::default();
     let mut isins = BTreeMap::new();
 
-    for line in lines {
-        let line = line.trim_end();
-        if line.is_empty() {
-            continue;
-        }
+    let rows = lines
+        .map(str::trim_end)
+        .filter(|line| !line.is_empty())
+        .map(|line| (line, split_row(line)))
+        .collect::<Vec<_>>();
 
-        let fields = split_row(line);
-        let action = required_indexed_field(&fields, columns.common.action, line)?;
+    // Trading 212 pays for promotion shares: a "Free Shares Promotion" deposit covers the buy at the
+    // same second, its fee too, so the shares cost 0, like a gift (podatekgieldowy.pl does the same).
+    let mut promotions = rows
+        .iter()
+        .filter(|(_, fields)| {
+            optional_field(fields, Some(columns.common.action)) == Some("Deposit")
+                && optional_field(fields, columns.common.notes) == Some(FREE_SHARES_NOTE)
+        })
+        .filter_map(|(_, fields)| paid_total(fields, &columns))
+        .collect::<Vec<_>>();
+
+    for (line, fields) in &rows {
+        let line = *line;
+        let action = required_indexed_field(fields, columns.common.action, line)?;
 
         match RowKind::from_action(action) {
             RowKind::Dividend => data
                 .dividends
-                .push(parse_dividend_row(&fields, &columns, line)?),
+                .push(parse_dividend_row(fields, &columns, line)?),
             RowKind::Interest => data
                 .interests
-                .push(parse_interest_row(&fields, &columns, line)?),
+                .push(parse_interest_row(fields, &columns, line)?),
             RowKind::Stock(side) => {
-                let stock = parse_stock_row(&fields, &columns, side, line)?;
-                if let Some(isin) = optional_field(&fields, columns.instrument.isin) {
+                let free = matches!(side, Side::Buy)
+                    && paid_total(fields, &columns)
+                        .and_then(|paid| promotions.iter().position(|promotion| *promotion == paid))
+                        .map(|index| promotions.remove(index))
+                        .is_some();
+                let stock = parse_stock_row(fields, &columns, side, free, line)?;
+                if let Some(isin) = optional_field(fields, columns.instrument.isin) {
                     isins
                         .entry(stock.ticker.clone())
                         .or_insert_with(|| isin.to_owned());
@@ -178,7 +198,23 @@ pub fn parse(csv_content: String) -> Result<ImportData> {
     Ok(data)
 }
 
-fn parse_stock_row(fields: &[String], columns: &ColumnMap, side: Side, row: &str) -> Result<Stock> {
+fn paid_total(
+    fields: &[String],
+    columns: &ColumnMap,
+) -> Option<(DateTime<Utc>, Decimal, Currency)> {
+    let time = parse_time(optional_field(fields, Some(columns.common.time))?).ok()?;
+    let total = parse_decimal(optional_field(fields, columns.total.total)?).ok()?;
+    let currency = parse_currency(optional_field(fields, columns.total.total_currency)?).ok()?;
+    Some((time, total, currency))
+}
+
+fn parse_stock_row(
+    fields: &[String],
+    columns: &ColumnMap,
+    side: Side,
+    free: bool,
+    row: &str,
+) -> Result<Stock> {
     let timestamp = required_indexed_field(fields, columns.common.time, row)?;
     let ticker = required_field(fields, columns.instrument.ticker, "Ticker", row)?;
     let shares = required_field(fields, columns.instrument.shares, "No. of shares", row)?;
@@ -206,6 +242,15 @@ fn parse_stock_row(fields: &[String], columns: &ColumnMap, side: Side, row: &str
             value: Decimal::ZERO,
             currency: price.currency,
         },
+    };
+    let (price, fee) = if free {
+        let zero = |amount: Amount| Amount {
+            value: Decimal::ZERO,
+            currency: amount.currency,
+        };
+        (zero(price), zero(fee))
+    } else {
+        (price, fee)
     };
     let provider = PROVIDER.to_owned();
 
@@ -237,10 +282,10 @@ fn parse_stock_row(fields: &[String], columns: &ColumnMap, side: Side, row: &str
 
 fn parse_interest_row(fields: &[String], columns: &ColumnMap, row: &str) -> Result<Interest> {
     let timestamp = required_indexed_field(fields, columns.common.time, row)?;
-    let total = required_field(fields, columns.interest.total, "Total", row)?;
+    let total = required_field(fields, columns.total.total, "Total", row)?;
     let total_currency = required_field(
         fields,
-        columns.interest.total_currency,
+        columns.total.total_currency,
         "Currency (Total)",
         row,
     )?;

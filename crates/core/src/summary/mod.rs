@@ -52,7 +52,6 @@ pub fn calculate(
         stocks: StockTaxSummary {
             income: stock_tax.income,
             costs: stock_tax.costs,
-            tax_paid_abroad: stock_tax.tax_paid_abroad,
             countries: stock_tax.countries,
             warnings: stock_tax.warnings,
         },

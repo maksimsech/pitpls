@@ -4,7 +4,7 @@ use crate::{
     format::{DisplayText, amount, date, money, pln, shares},
     pages::records::{date_label, day},
 };
-use chrono::{DateTime, NaiveDate, Utc};
+use chrono::{DateTime, Datelike, NaiveDate, Utc};
 use gpui_kit::{SharedString, assets::IconName};
 use pitpls_app::use_case::stock::{Listing, Listings, StockData};
 use pitpls_core::{
@@ -53,6 +53,7 @@ pub struct BuyPrefill {
     pub ticker: String,
     pub provider: String,
     pub currency: Currency,
+    pub first_sale: DateTime<Utc>,
 }
 
 pub struct HoldingBlock {
@@ -95,7 +96,7 @@ pub struct StockDisplay {
     pub actions: Vec<Action>,
     pub holdings: Vec<HoldingBlock>,
     pub sold_out: Vec<SoldOut>,
-    /// The instruments an opened row's history links open, in link order.
+    /// In the order of the row's history links.
     pub histories: HashMap<SharedString, Vec<InstrumentKey>>,
 }
 
@@ -131,7 +132,6 @@ impl StockDisplay {
             stats: vec![
                 ("Income (C-22)", pln(tax.income)),
                 ("Costs (C-23)", pln(tax.costs)),
-                ("Tax paid abroad (D-34)", pln(tax.tax_paid_abroad)),
             ],
             warnings: warnings(tax, year),
             sales,
@@ -145,8 +145,9 @@ impl StockDisplay {
         }
     }
 
+    // A year can hold only a sale traded on 30.12 of the year before, which settles in it.
     pub fn is_empty(&self) -> bool {
-        self.records.is_empty() && self.holdings.is_empty()
+        self.records.is_empty() && self.holdings.is_empty() && self.sales.is_empty()
     }
 }
 
@@ -327,6 +328,9 @@ fn sale_steps(sale: &CalculatedSale, listing: Option<&Listing>) -> Vec<Step> {
     } else {
         format!("NBP date {}", date(sale.nbp_date).main)
     };
+    let counts_in = counts_in(sale)
+        .map(|year| format!(" for {year}"))
+        .unwrap_or_default();
 
     let mut costs = vec![
         entry(
@@ -360,7 +364,7 @@ fn sale_steps(sale: &CalculatedSale, listing: Option<&Listing>) -> Vec<Step> {
             EntryStyle::Normal,
         ),
         entry("Costs", vec![pln(sale.costs)], EntryStyle::Strong),
-        StepLine::Caption("Adds to Costs (C-23)".into()),
+        StepLine::Caption(format!("Adds to Costs (C-23){counts_in}").into()),
     ]);
 
     let result = if sale.profit < Decimal::ZERO {
@@ -389,7 +393,9 @@ fn sale_steps(sale: &CalculatedSale, listing: Option<&Listing>) -> Vec<Step> {
             lines: vec![
                 StepLine::Formula(conversion(sale.shares, sale.price, sale.nbp_rate)),
                 StepLine::Result(vec![pln(sale.income)]),
-                StepLine::Caption(format!("{settled} · {nbp} · adds to Income (C-22)").into()),
+                StepLine::Caption(
+                    format!("{settled} · {nbp} · adds to Income (C-22){counts_in}").into(),
+                ),
             ],
         },
         Step {
@@ -409,6 +415,17 @@ fn sale_steps(sale: &CalculatedSale, listing: Option<&Listing>) -> Vec<Step> {
             ],
         },
     ]
+}
+
+// The year's sales and the late-December ones that settle, and count, in the next year.
+fn all_sales(tax: &StockTaxData) -> impl Iterator<Item = &CalculatedSale> {
+    tax.sales.iter().chain(&tax.next_year_sales)
+}
+
+// A sale counts in the year it settles, so one traded in late December can count in the next.
+fn counts_in(sale: &CalculatedSale) -> Option<i32> {
+    let year = sale.settlement_date.year();
+    (year != time::tax_date(sale.time).year()).then_some(year)
 }
 
 fn fee_label(name: &str, fee: Amount, fee_pln: Decimal, price: Amount, rate: Decimal) -> String {
@@ -558,7 +575,7 @@ fn record_row(
             ];
             let (steps, lots) = match &record.action {
                 StockAction::Buy(buy) => (buy_steps(record, buy, tax, year), None),
-                _ => match tax.sales.iter().find(|sale| sale.id == record.id) {
+                _ => match all_sales(tax).find(|sale| sale.id == record.id) {
                     Some(sale) => {
                         let listing = listings
                             .get(&sale.ticker, &sale.provider)
@@ -629,9 +646,7 @@ struct LotView<'a> {
 /// A buy's lot shows up in the sales that took from it and, if any of it is
 /// left, among the open lots; all of them fall in the buy's year.
 fn buy_steps(record: &Stock, buy: &StockBuy, tax: &StockTaxData, year: i32) -> Vec<Step> {
-    let taken = tax
-        .sales
-        .iter()
+    let taken = all_sales(tax)
         .flat_map(|sale| {
             sale.matches
                 .iter()
@@ -709,7 +724,10 @@ fn buy_steps(record: &Stock, buy: &StockBuy, tax: &StockTaxData, year: i32) -> V
         (
             sale.time,
             entry(
-                format!("Sold {}", trade_date(sale.time)),
+                match counts_in(sale) {
+                    Some(year) => format!("Sold {} · counts in {year}", trade_date(sale.time)),
+                    None => format!("Sold {}", trade_date(sale.time)),
+                },
                 vec![
                     shares(lot.taken),
                     DisplayText::plain("→ Costs"),
@@ -764,7 +782,7 @@ fn conversion_fee(fee: Amount, rate: Decimal) -> Vec<DisplayText> {
 /// year.
 fn split_steps(record: &Stock, split: &StockSplit, tax: &StockTaxData) -> Vec<Step> {
     let mut changed: BTreeMap<(&str, DateTime<Utc>, &str), &SplitStep> = BTreeMap::new();
-    let taken = tax.sales.iter().flat_map(|sale| {
+    let taken = all_sales(tax).flat_map(|sale| {
         sale.matches.iter().map(move |lot| {
             (
                 sale.provider.as_str(),
@@ -876,7 +894,7 @@ fn holdings(tax: &StockTaxData, listings: &Listings) -> (Vec<HoldingBlock>, Vec<
     blocks.sort_by(|a, b| (&a.ticker, &a.provider).cmp(&(&b.ticker, &b.provider)));
 
     let mut last_sales: BTreeMap<(&str, &str), &CalculatedSale> = BTreeMap::new();
-    for sale in &tax.sales {
+    for sale in all_sales(tax) {
         last_sales.insert((&sale.ticker, &sale.provider), sale);
     }
     let sold_out = last_sales
@@ -917,7 +935,7 @@ pub fn names(names: &[&str]) -> String {
 }
 
 fn warnings(tax: &StockTaxData, year: i32) -> Vec<WarningCard> {
-    let mut uncovered: Vec<(&str, &str, Currency, Decimal)> = Vec::new();
+    let mut uncovered: Vec<(&str, &str, Currency, Decimal, DateTime<Utc>)> = Vec::new();
     let mut missing: Vec<&str> = Vec::new();
     let mut rows = Vec::new();
     for warning in &tax.warnings {
@@ -926,13 +944,17 @@ fn warnings(tax: &StockTaxData, year: i32) -> Vec<WarningCard> {
                 let Some(sale) = tax.sales.iter().find(|sale| &sale.id == sell_id) else {
                     continue;
                 };
-                match uncovered.iter_mut().find(|(ticker, provider, _, _)| {
+                match uncovered.iter_mut().find(|(ticker, provider, ..)| {
                     *ticker == sale.ticker && *provider == sale.provider
                 }) {
-                    Some((_, _, _, sum)) => *sum += shares,
-                    None => {
-                        uncovered.push((&sale.ticker, &sale.provider, sale.price.currency, *shares))
-                    }
+                    Some((_, _, _, sum, _)) => *sum += shares,
+                    None => uncovered.push((
+                        &sale.ticker,
+                        &sale.provider,
+                        sale.price.currency,
+                        *shares,
+                        sale.time,
+                    )),
                 }
             }
             Warning::MissingExchange {
@@ -949,7 +971,7 @@ fn warnings(tax: &StockTaxData, year: i32) -> Vec<WarningCard> {
     }
 
     let mut cards = Vec::new();
-    if let [(ticker, provider, currency, shares)] = uncovered[..] {
+    if let [(ticker, provider, currency, shares, first_sale)] = uncovered[..] {
         cards.push(WarningCard {
             icon: IconName::TriangleAlert,
             title: format!("{ticker} sold {} with no buy", shares_count(shares)).into(),
@@ -962,12 +984,13 @@ fn warnings(tax: &StockTaxData, year: i32) -> Vec<WarningCard> {
                 ticker: ticker.to_owned(),
                 provider: provider.to_owned(),
                 currency,
+                first_sale,
             })),
         });
     } else if !uncovered.is_empty() {
         let sold = uncovered
             .iter()
-            .map(|(ticker, _, _, shares)| format!("{ticker} {}", shares_text(*shares)))
+            .map(|(ticker, _, _, shares, _)| format!("{ticker} {}", shares_text(*shares)))
             .collect::<Vec<_>>();
         cards.push(WarningCard {
             icon: IconName::TriangleAlert,

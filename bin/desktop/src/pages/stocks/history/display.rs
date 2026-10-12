@@ -271,8 +271,9 @@ impl HistoryDisplay {
                 StockAction::Buy(_) => count[0] += 1,
                 StockAction::Sell(_) => {
                     count[1] += 1;
+                    // Profit goes to the tax year, which is the settlement year.
                     if let Some(sale) = replay.sales.iter().find(|sale| sale.id == record.id) {
-                        *profits.entry(record_year).or_default() += sale.profit;
+                        *profits.entry(sale.settlement_date.year()).or_default() += sale.profit;
                     }
                 }
                 StockAction::Split(_) => count[2] += 1,
@@ -303,8 +304,7 @@ impl HistoryDisplay {
             .collect::<Vec<_>>()
             .join(" · ")
             .into();
-            group.profit =
-                (sales > 0).then(|| pln(profits.get(&group.year).copied().unwrap_or_default()));
+            group.profit = profits.get(&group.year).copied().map(pln);
         }
 
         let carried = replay
@@ -590,8 +590,14 @@ fn sale_note(sale: &CalculatedSale) -> SharedString {
             shares_text(sale.uncovered)
         ));
     }
+    let settles = sale.settlement_date.year();
+    let counts_in = if settles == time::tax_date(sale.time).year() {
+        String::new()
+    } else {
+        format!(" · counts in {settles}")
+    };
     format!(
-        "Took {} · costs {} PLN",
+        "Took {} · costs {} PLN{counts_in}",
         join_and(&parts),
         money(sale.costs).full
     )

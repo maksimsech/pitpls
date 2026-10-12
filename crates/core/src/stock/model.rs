@@ -94,8 +94,10 @@ pub enum StockPreview {
 pub struct StockTaxData {
     pub income: Decimal,
     pub costs: Decimal,
-    pub tax_paid_abroad: Decimal,
+    // The sales that settle in the year.
     pub sales: Vec<CalculatedSale>,
+    // Traded in the year, but they settle and count in the next one.
+    pub next_year_sales: Vec<CalculatedSale>,
     pub open_lots: Vec<OpenLot>,
     pub holdings: Vec<Holding>,
     pub countries: Vec<CountryTotal>,
@@ -190,12 +192,8 @@ pub struct CountryTotal {
     pub profit: Decimal,
     // PIT/ZG field 29, 0 for a loss.
     pub income: Decimal,
-    // PIT/ZG field 30, without the D-34 limit.
+    // PIT/ZG field 30.
     pub tax_paid: Decimal,
-    // Field 30 before rounding.
-    pub withheld: Decimal,
-    pub limit: Decimal,
-    pub used: Decimal,
 }
 
 #[derive(Debug)]
