@@ -144,11 +144,6 @@ impl StockDisplay {
             histories,
         }
     }
-
-    // A year can hold only a sale traded on 30.12 of the year before, which settles in it.
-    pub fn is_empty(&self) -> bool {
-        self.records.is_empty() && self.holdings.is_empty() && self.sales.is_empty()
-    }
 }
 
 fn holding_after<'a>(tax: &'a StockTaxData, sale: &CalculatedSale) -> Option<&'a Holding> {

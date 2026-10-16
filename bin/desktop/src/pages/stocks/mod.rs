@@ -185,6 +185,14 @@ impl StocksPage {
         view
     }
 
+    fn is_empty(&self) -> bool {
+        self.display.as_ref().is_none_or(|display| {
+            self.sales.state.rows.is_empty()
+                && self.records.state.rows.is_empty()
+                && display.holdings.is_empty()
+        })
+    }
+
     fn locked(&self) -> bool {
         self.status.busy
             || self.editor.is_some()
@@ -433,12 +441,7 @@ impl StocksPage {
 
     fn header(&self, window: &mut Window, cx: &mut Context<Self>) -> Stateful<Div> {
         let disabled = self.disabled();
-        let filterable = self.status.ready
-            && self.missing_rate.is_none()
-            && self
-                .display
-                .as_ref()
-                .is_some_and(|display| !display.is_empty());
+        let filterable = self.status.ready && self.missing_rate.is_none() && !self.is_empty();
         let narrow = self.width().is_some_and(|width| width < px(NARROW));
         let (shown, total) = match self.tab {
             Tab::Sales => (self.sales.shown(), self.sales.state.rows.len()),
@@ -823,13 +826,17 @@ impl StocksPage {
                     return Ok((None, latest_year(&years)));
                 };
                 let data = stock::load_stocks(&app, year).await?;
-                let display = StockDisplay::new(&data, year);
-                let other_year = if display.is_empty() {
+                // A sale traded in the previous year can settle in this one.
+                let other_year = if data.records.is_empty()
+                    && data.tax.sales.is_empty()
+                    && data.tax.open_lots.is_empty()
+                {
                     let years = year::list_year_info(&app).await.unwrap_or_default();
                     other_year(year, &years)
                 } else {
                     None
                 };
+                let display = StockDisplay::new(&data, year);
                 Ok((Some(display), other_year))
             },
             |this, result, _, cx| {
@@ -981,12 +988,11 @@ impl Render for StocksPage {
                     )
                 },
             );
-        let empty = self.display.as_ref().is_none_or(StockDisplay::is_empty);
         if let Some(error) = self.missing_rate.clone() {
             body = body.child(self.missing_rate_state(&error, cx));
         } else if self.status.ready && self.year.is_none() {
             body = body.child(self.all_years_state(cx));
-        } else if self.status.ready && empty {
+        } else if self.status.ready && self.is_empty() {
             body = body.child(self.empty_state(cx));
         } else if self.status.ready {
             // Sales decides for every tab, so the totals don't move when the tab changes.
