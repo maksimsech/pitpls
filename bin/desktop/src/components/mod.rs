@@ -1,3 +1,5 @@
+#[expect(dead_code, reason = "Portfolio pages adopt this in tasks 5–9.")]
+pub mod chart;
 pub mod copy;
 pub mod data;
 pub mod dialog;
@@ -7,7 +9,10 @@ pub mod header;
 pub mod nbp;
 pub mod notice;
 pub mod records;
+pub mod tabs;
 pub mod value;
+#[expect(dead_code, reason = "Portfolio pages adopt this in tasks 5–9.")]
+pub mod year_table;
 
 use crate::services::Error as ServiceError;
 use gpui_kit::prelude::FluentBuilder;

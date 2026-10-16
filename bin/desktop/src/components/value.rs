@@ -238,6 +238,58 @@ pub fn stat(
         )
 }
 
+#[expect(dead_code, reason = "Portfolio pages adopt this in tasks 5–9.")]
+pub fn plain_stat(
+    id: impl Into<ElementId>,
+    label: impl Into<SharedString>,
+    value: &DisplayText,
+    unit: Option<SharedString>,
+    caption: Option<SharedString>,
+    cx: &App,
+) -> Div {
+    let p = palette(cx);
+    v_flex()
+        .min_w(STAT_WIDTH)
+        .gap(px(2.))
+        .child(
+            div()
+                .text_size(px(12.))
+                .text_color(p.muted)
+                .child(label.into()),
+        )
+        .child(
+            h_flex()
+                .gap_1()
+                .child(
+                    div()
+                        .id(id)
+                        .text_size(px(18.))
+                        .font_medium()
+                        .font_features(tabular_digits())
+                        .when(value.more, |element| {
+                            let full = value.full.clone();
+                            element.tooltip(move |window, cx| {
+                                Tooltip::new(full.clone()).build(window, cx)
+                            })
+                        })
+                        .child(text(value, false, false, cx)),
+                )
+                .when_some(unit, |row, unit| {
+                    row.child(
+                        div()
+                            .relative()
+                            .top(baseline_drop(px(18.), px(12.), cx))
+                            .text_size(px(12.))
+                            .text_color(p.muted)
+                            .child(unit),
+                    )
+                })
+                .when_some(caption, |row, caption| {
+                    row.child(div().text_size(px(12.)).text_color(p.muted).child(caption))
+                }),
+        )
+}
+
 /// The copy button's fixed column keeps "Copied" from moving the value.
 pub fn card_row(
     id: impl Into<ElementId>,

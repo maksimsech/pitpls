@@ -15,10 +15,13 @@ use gpui_kit::{
 use rust_i18n::t;
 
 pub fn disclaimer(cx: &App) -> Div {
+    info(t!("notice.disclaimer"), cx).px(px(16.))
+}
+
+pub fn info(text: impl Into<SharedString>, cx: &App) -> Div {
     h_flex()
         .items_start()
         .gap(px(8.))
-        .px(px(16.))
         .text_size(px(12.))
         .line_height(relative(1.5))
         .text_color(palette(cx).faint)
@@ -28,7 +31,7 @@ pub fn disclaimer(cx: &App) -> Div {
                 .flex_shrink_0()
                 .mt(px(2.)),
         )
-        .child(div().flex_1().min_w_0().child(t!("notice.disclaimer")))
+        .child(div().flex_1().min_w_0().child(text.into()))
 }
 
 pub fn first_launch(dialog: Dialog, cx: &App) -> Dialog {

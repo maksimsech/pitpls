@@ -9,6 +9,7 @@ use crate::{
     components::{
         ButtonText, Status, dialog, header, nbp, notice,
         records::{CellStyle, RecordColumn, TableLayout},
+        tabs::{self, TabItem},
         value,
     },
     format::{DisplayText, pln, record_count},
@@ -18,14 +19,13 @@ use crate::{
         RecordTable, TableHost, delete_selected_message, filter_count, filter_field, import_button,
         no_match, selection_bar, table, totals_row,
     },
-    theme::{palette, tabular_digits},
+    theme::palette,
 };
 use display::{Action, InstrumentKey, StockDisplay, WarningAction, WarningCard};
 use editor::StockEditor;
 use exchange::Catalog;
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::{
-    Role,
     assets::IconName,
     component::{
         button::*,
@@ -592,7 +592,6 @@ impl StocksPage {
     }
 
     fn tabs(&self, cx: &mut Context<Self>) -> Div {
-        let p = *palette(cx);
         let Some(display) = &self.display else {
             return div();
         };
@@ -602,79 +601,32 @@ impl StocksPage {
             Tab::Records => t!("stocks.records_caption", year = year),
             Tab::Holdings => t!("stocks.holdings_caption", year = year),
         };
-        let tabs = [
-            (
-                Tab::Sales,
-                "sales",
-                t!("stocks.sales"),
-                self.sales.state.rows.len(),
-            ),
-            (
-                Tab::Records,
-                "records",
-                t!("stocks.records"),
-                self.records.state.rows.len(),
-            ),
-            (
-                Tab::Holdings,
-                "holdings",
-                t!("stocks.holdings"),
-                display.holdings.len(),
-            ),
+        let items = vec![
+            TabItem {
+                key: Tab::Sales,
+                label: t!("stocks.sales").into(),
+                count: self.sales.state.rows.len(),
+            },
+            TabItem {
+                key: Tab::Records,
+                label: t!("stocks.records").into(),
+                count: self.records.state.rows.len(),
+            },
+            TabItem {
+                key: Tab::Holdings,
+                label: t!("stocks.holdings").into(),
+                count: display.holdings.len(),
+            },
         ];
-        h_flex()
-            .flex_shrink_0()
-            .h(px(40.))
-            .px(px(20.))
-            .pb(px(8.))
-            .gap(px(12.))
-            .child(
-                h_flex()
-                    .id("stock-tabs")
-                    .flex_shrink_0()
-                    .role(Role::TabList)
-                    .aria_label(t!("stocks.view"))
-                    .gap(px(2.))
-                    .p(px(2.))
-                    .rounded(px(9.))
-                    .bg(p.selected)
-                    .children(tabs.map(|(tab, id, label, count)| {
-                        let selected = self.tab == tab;
-                        Button::new(SharedString::from(format!("tab-{id}")))
-                            .ghost()
-                            .role(Role::Tab)
-                            .h(px(24.))
-                            .px(px(10.))
-                            .gap(px(6.))
-                            .rounded(px(7.))
-                            .accessibility_label(format!("{label}, {count}"))
-                            .when(selected, |tab| tab.bg(cx.theme().tokens.button).shadow_xs())
-                            .child(
-                                div()
-                                    .text_size(px(12.5))
-                                    .font_medium()
-                                    .text_color(if selected { p.text } else { p.muted })
-                                    .child(label),
-                            )
-                            .child(
-                                div()
-                                    .text_size(px(11.5))
-                                    .text_color(p.faint)
-                                    .font_features(tabular_digits())
-                                    .child(count.to_string()),
-                            )
-                            .on_click(cx.listener(move |this, _, _, cx| this.select_tab(tab, cx)))
-                    })),
-            )
-            .child(div().flex_1())
-            .child(
-                div()
-                    .min_w_0()
-                    .truncate()
-                    .text_size(px(12.))
-                    .text_color(p.faint)
-                    .child(caption),
-            )
+        tabs::tabs(
+            "stock-tabs",
+            t!("stocks.view"),
+            items,
+            self.tab,
+            cx.listener(|this, tab, _, cx| this.select_tab(*tab, cx)),
+            caption,
+            cx,
+        )
     }
 
     fn tab_content(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {

@@ -480,6 +480,12 @@ header:
     pl: "Wróć do: %{page}"
 
 year:
+  open_tax_year:
+    en: Open tax year %{year}
+    pl: Otwórz rok podatkowy %{year}
+  so_far:
+    en: so far
+    pl: do tej pory
   all:
     en: All years
     pl: Wszystkie lata
