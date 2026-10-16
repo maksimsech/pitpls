@@ -6,7 +6,7 @@ pub mod model;
 
 use crate::impls::{coinbase, revolut, t212};
 pub use error::{ImportAmounts, ImportContext, ImportError, ImportField, Result};
-pub use model::{ImportData, Importer, ImporterKind, InputType, OutputType};
+pub use model::{ImportData, ImportedInstrument, Importer, ImporterKind, InputType, OutputType};
 
 pub async fn import(kind: ImporterKind, path: &str) -> Result<ImportData> {
     Ok(match kind {
@@ -15,9 +15,8 @@ pub async fn import(kind: ImporterKind, path: &str) -> Result<ImportData> {
             let cryptos = coinbase::parse(content)?;
 
             ImportData {
-                dividends: vec![],
                 cryptos,
-                interests: vec![],
+                ..ImportData::default()
             }
         }
         ImporterKind::Revolut => {
@@ -26,19 +25,12 @@ pub async fn import(kind: ImporterKind, path: &str) -> Result<ImportData> {
 
             ImportData {
                 dividends,
-                cryptos: vec![],
-                interests: vec![],
+                ..ImportData::default()
             }
         }
         ImporterKind::T212 => {
             let content = read_to_string(path).await?;
-            let (dividends, interests) = t212::parse(content)?;
-
-            ImportData {
-                dividends,
-                cryptos: vec![],
-                interests,
-            }
+            t212::parse(content)?
         }
     })
 }
@@ -47,7 +39,11 @@ pub const IMPORTERS: &[Importer] = &[
     Importer {
         kind: ImporterKind::T212,
         input: &[InputType::Csv],
-        output: &[OutputType::Dividend, OutputType::Interest],
+        output: &[
+            OutputType::Dividend,
+            OutputType::Interest,
+            OutputType::Stock,
+        ],
     },
     Importer {
         kind: ImporterKind::Revolut,

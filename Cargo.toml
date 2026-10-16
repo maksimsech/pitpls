@@ -5,6 +5,7 @@ members = [
     "crates/core",
     "crates/db",
     "crates/importers",
+    "crates/mic",
     "crates/nbr",
 ]
 resolver = "3"
@@ -19,6 +20,7 @@ pitpls-app = { path = "crates/app" }
 pitpls-core = { path = "crates/core" }
 pitpls-db = { path = "crates/db" }
 pitpls-importers = { path = "crates/importers" }
+pitpls-mic = { path = "crates/mic" }
 pitpls-nbr = { path = "crates/nbr" }
 
 anyhow = "1.0"

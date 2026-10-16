@@ -135,6 +135,7 @@ impl ImportsPage {
                     dividends: result.dividends,
                     interests: result.interests,
                     cryptos: result.cryptos,
+                    stocks: result.stocks,
                     imported_at: Utc::now(),
                 };
                 let counts = IMPORTERS[index]
@@ -144,9 +145,15 @@ impl ImportsPage {
                         OutputType::Dividend => count(result.dividends, "dividend"),
                         OutputType::Crypto => count(result.cryptos, "crypto record"),
                         OutputType::Interest => count(result.interests, "interest record"),
+                        OutputType::Stock => count(result.stocks, "stock record"),
                     })
-                    .collect::<Vec<_>>()
-                    .join(" and ");
+                    .collect::<Vec<_>>();
+                let counts = match counts.split_last() {
+                    Some((last, rest)) if !rest.is_empty() => {
+                        format!("{} and {last}", rest.join(", "))
+                    }
+                    _ => counts.concat(),
+                };
                 Ok((format!("Imported {counts}."), last_import))
             },
             |this, result, window, cx| {
@@ -318,6 +325,7 @@ impl ImportsPage {
                 OutputType::Dividend => "Dividends",
                 OutputType::Crypto => "Crypto",
                 OutputType::Interest => "Interest",
+                OutputType::Stock => "Stocks",
             })
             .collect::<Vec<_>>()
             .join(" & ");
@@ -457,20 +465,15 @@ impl ImportsPage {
         let p = palette(cx);
         let import = data::import_status(self.last_import.as_ref(), cx);
         data::card(cx).child(
-            status_row(
-                import.dot,
-                "Last import",
-                StyledText::new(import.detail),
-                cx,
-            )
-            .pr(px(16.))
-            .children(import.date.map(|date| {
-                div()
-                    .flex_shrink_0()
-                    .text_color(p.faint)
-                    .font_features(tabular_digits())
-                    .child(date)
-            })),
+            status_row(import.dot, "Last import", data::import_detail(&import), cx)
+                .pr(px(16.))
+                .children(import.date.map(|date| {
+                    div()
+                        .flex_shrink_0()
+                        .text_color(p.faint)
+                        .font_features(tabular_digits())
+                        .child(date)
+                })),
         )
     }
 
@@ -510,7 +513,7 @@ impl ImportsPage {
     }
 }
 
-fn status_row(dot: Hsla, title: &'static str, detail: StyledText, cx: &App) -> Div {
+fn status_row(dot: Hsla, title: &'static str, detail: impl IntoElement, cx: &App) -> Div {
     h_flex()
         .h(px(56.))
         .gap(px(12.))

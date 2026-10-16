@@ -40,10 +40,6 @@ impl RecordKind for Crypto {
         &record.id
     }
 
-    fn time(record: &CalculatedCrypto) -> DateTime<Utc> {
-        record.time
-    }
-
     fn columns() -> Vec<RecordColumn> {
         vec![
             RecordColumn::new("Date", CellStyle::Time, 100., 50.),
@@ -121,10 +117,13 @@ impl RecordKind for Crypto {
             },
         ];
         RowDisplay {
+            id: record.id.clone().into(),
+            time: record.time,
             cells,
             steps,
             search: format!("{}\n{action}", record.provider).to_lowercase(),
             label: format!("{action} {}", date_label(record.time)).into(),
+            ..Default::default()
         }
     }
 

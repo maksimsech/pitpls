@@ -6,16 +6,19 @@ use pitpls_app::{
     use_case::{
         crypto::Error as CryptoError,
         dividend::Error as DividendError,
+        exchange::RefreshError as ExchangeRefreshError,
         import::Error as ImportError,
         interest::Error as InterestError,
         rate::{ApiImportError, CsvImportError},
+        stock::Error as StockError,
         tax::Error as TaxError,
         year::Error as YearError,
     },
 };
 use pitpls_core::{
     crypto::CalculateSellBuyValuesError, dividend::CalculateDividendTaxError,
-    interest::CalculateInterestTaxError, summary::CalculateTaxSummaryError,
+    interest::CalculateInterestTaxError, stock::CalculateStocksError,
+    summary::CalculateTaxSummaryError,
 };
 use pitpls_db::RepositoryError;
 use tokio::runtime::Runtime;
@@ -54,6 +57,8 @@ pub enum Error {
     Crypto(CryptoError),
     Dividend(DividendError),
     Interest(InterestError),
+    Stock(StockError),
+    ExchangeRefresh(ExchangeRefreshError),
     Import(ImportError),
     RateCsv(CsvImportError),
     RateApi(ApiImportError),
@@ -73,7 +78,8 @@ impl Error {
         use CalculateDividendTaxError::{DividendConversion, PaidTaxConversion};
         use CalculateInterestTaxError::InterestConversion;
         use CalculateSellBuyValuesError::{FeeConversion, ValueConversion};
-        use CalculateTaxSummaryError::{Crypto, Dividend, Interest};
+        use CalculateStocksError::{PriceConversion, TaxPaidConversion};
+        use CalculateTaxSummaryError::{Crypto, Dividend, Interest, Stock};
 
         matches!(
             self,
@@ -82,10 +88,20 @@ impl Error {
             )) | Self::Dividend(DividendError::Calculation(
                 DividendConversion(_) | PaidTaxConversion(_)
             )) | Self::Interest(InterestError::Calculation(InterestConversion(_)))
+                | Self::Stock(StockError::Calculation(
+                    PriceConversion(_)
+                        | CalculateStocksError::FeeConversion(_)
+                        | TaxPaidConversion(_)
+                ))
                 | Self::Tax(TaxError::Calculation(
                     Crypto(ValueConversion(_) | FeeConversion(_))
                         | Dividend(DividendConversion(_) | PaidTaxConversion(_))
                         | Interest(InterestConversion(_))
+                        | Stock(
+                            PriceConversion(_)
+                                | CalculateStocksError::FeeConversion(_)
+                                | TaxPaidConversion(_)
+                        )
                 ))
         )
     }
@@ -106,6 +122,18 @@ impl From<DividendError> for Error {
 impl From<InterestError> for Error {
     fn from(error: InterestError) -> Self {
         Self::Interest(error)
+    }
+}
+
+impl From<StockError> for Error {
+    fn from(error: StockError) -> Self {
+        Self::Stock(error)
+    }
+}
+
+impl From<ExchangeRefreshError> for Error {
+    fn from(error: ExchangeRefreshError) -> Self {
+        Self::ExchangeRefresh(error)
     }
 }
 

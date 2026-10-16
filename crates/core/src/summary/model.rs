@@ -1,5 +1,7 @@
 use rust_decimal::Decimal;
 
+use crate::stock::{CountryTotal, Warning};
+
 #[derive(Debug)]
 pub struct CryptoTaxSummary {
     pub income: Decimal,
@@ -14,7 +16,17 @@ pub struct ForeignTaxSummary {
 }
 
 #[derive(Debug)]
+pub struct StockTaxSummary {
+    pub income: Decimal,
+    pub costs: Decimal,
+    // Loss countries too, so Summary can say they need no PIT/ZG.
+    pub countries: Vec<CountryTotal>,
+    pub warnings: Vec<Warning>,
+}
+
+#[derive(Debug)]
 pub struct TaxSummary {
     pub crypto: CryptoTaxSummary,
     pub foreign: ForeignTaxSummary,
+    pub stocks: StockTaxSummary,
 }

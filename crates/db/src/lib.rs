@@ -10,8 +10,9 @@ use thiserror::Error;
 pub use repository::RepositoryError;
 
 use repository::{
-    crypto::CryptoRepository, dividend::DividendRepository, interest::InterestRepository,
-    rate::RateRepository, settings::SettingsRepository, year::YearRepository,
+    crypto::CryptoRepository, dividend::DividendRepository, exchange::ExchangeRepository,
+    instrument::InstrumentRepository, interest::InterestRepository, rate::RateRepository,
+    settings::SettingsRepository, stock::StockRepository, year::YearRepository,
 };
 
 pub mod repository;
@@ -67,6 +68,14 @@ impl Database {
         DividendRepository::new(self.pool.clone())
     }
 
+    pub fn exchange_repo(&self) -> ExchangeRepository {
+        ExchangeRepository::new(self.pool.clone())
+    }
+
+    pub fn instrument_repo(&self) -> InstrumentRepository {
+        InstrumentRepository::new(self.pool.clone())
+    }
+
     pub fn interest_repo(&self) -> InterestRepository {
         InterestRepository::new(self.pool.clone())
     }
@@ -77,6 +86,10 @@ impl Database {
 
     pub fn settings_repo(&self) -> SettingsRepository {
         SettingsRepository::new(self.pool.clone())
+    }
+
+    pub fn stock_repo(&self) -> StockRepository {
+        StockRepository::new(self.pool.clone())
     }
 
     pub fn year_repo(&self) -> YearRepository {

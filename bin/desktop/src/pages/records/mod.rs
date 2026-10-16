@@ -3,18 +3,20 @@ mod dividends;
 mod interests;
 mod table;
 
-pub use self::{crypto::Crypto, dividends::Dividends, interests::Interests};
+pub use self::{
+    crypto::Crypto,
+    dividends::Dividends,
+    interests::Interests,
+    table::{RecordTable, TableHost, selection_bar, table},
+};
 
 use crate::{
     components::{
         ButtonText, Status, dialog, form, header, nbp, notice,
-        records::{
-            ItemKey, Preview, RecordColumn, RecordTableState, RowDisplay, TableLayout,
-            preview_band, record_skeleton,
-        },
-        spinner, value,
+        records::{Preview, RecordColumn, RowDisplay, preview_band},
+        value,
     },
-    format::{DisplayText, amount, date, pln},
+    format::{DisplayText, amount, date, pln, record_count},
     navigation::{Page, PageContext},
     services::Error as ServiceError,
     theme::{palette, tabular_digits},
@@ -38,11 +40,7 @@ use pitpls_app::use_case::year::{self, YearInfo};
 use pitpls_core::{common::Amount, time};
 use pitpls_importers::{IMPORTERS, OutputType};
 use rust_decimal::Decimal;
-use std::{
-    collections::{HashMap, HashSet},
-    future::Future,
-    sync::Arc,
-};
+use std::{collections::HashSet, future::Future, sync::Arc};
 
 pub enum Submission<C, U> {
     Create(C),
@@ -86,7 +84,6 @@ pub trait RecordKind: 'static {
     const TOTAL_LABELS: &'static [&'static str];
 
     fn id(record: &Self::Record) -> &str;
-    fn time(record: &Self::Record) -> DateTime<Utc>;
     fn columns() -> Vec<RecordColumn>;
     fn display(record: &Self::Record) -> RowDisplay;
     /// Information only: summed here at full precision, never by the
@@ -125,7 +122,7 @@ fn percent(rate: Decimal) -> String {
 
 /// The month header carries the month and year. Midnight is left out, since
 /// date-only sources record it.
-fn day(value: DateTime<Utc>) -> DisplayText {
+pub fn day(value: DateTime<Utc>) -> DisplayText {
     let local = time::local(value);
     let clock = if local.time() == NaiveTime::MIN {
         String::new()
@@ -138,18 +135,11 @@ fn day(value: DateTime<Utc>) -> DisplayText {
     }
 }
 
-fn date_label(value: DateTime<Utc>) -> String {
+pub fn date_label(value: DateTime<Utc>) -> String {
     date(time::tax_date(value)).main.to_string()
 }
 
 const NARROW: f32 = 600.;
-
-struct MonthGroup {
-    key: (i32, u32),
-    title: SharedString,
-    records: Vec<usize>,
-    summary: Vec<(Option<&'static str>, DisplayText)>,
-}
 
 struct Editor<K: RecordKind> {
     form: K::Form,
@@ -168,18 +158,10 @@ pub struct RecordsPage<K: RecordKind> {
     status: Status,
     records: Vec<K::Record>,
     totals: Vec<(&'static str, DisplayText)>,
-    columns: Vec<RecordColumn>,
-    groups: Vec<MonthGroup>,
+    table: RecordTable,
     filter: Entity<InputState>,
     query: String,
-    folded: HashSet<(i32, u32)>,
-    table_scroll: ScrollHandle,
     page_scroll: ScrollHandle,
-    table_state: RecordTableState,
-    item_focus: HashMap<ItemKey, table::ItemFocus>,
-    item_handles: Vec<Option<FocusHandle>>,
-    selected: HashSet<String>,
-    expanded: HashSet<String>,
     editor: Option<Editor<K>>,
     pending_delete: Option<Vec<String>>,
     deleting: HashSet<String>,
@@ -205,7 +187,7 @@ impl<K: RecordKind> RecordsPage<K> {
                 if query != this.query {
                     this.query = query;
                     this.regroup();
-                    this.table_state.scroll_to_top();
+                    this.table.state.scroll_to_top();
                     cx.notify();
                 }
             }
@@ -230,18 +212,10 @@ impl<K: RecordKind> RecordsPage<K> {
             status: Status::default(),
             records: Vec::new(),
             totals: Vec::new(),
-            columns: K::columns(),
-            groups: Vec::new(),
+            table: RecordTable::new("records-horizontal", K::columns(), true, width),
             filter,
             query: String::new(),
-            folded: HashSet::new(),
-            table_scroll: ScrollHandle::default(),
             page_scroll: ScrollHandle::default(),
-            table_state: RecordTableState::default(),
-            item_focus: HashMap::new(),
-            item_handles: Vec::new(),
-            selected: HashSet::new(),
-            expanded: HashSet::new(),
             editor: None,
             pending_delete: None,
             deleting: HashSet::new(),
@@ -251,8 +225,6 @@ impl<K: RecordKind> RecordsPage<K> {
             focus: cx.focus_handle(),
             _subscriptions: [filter_subscription, focus_subscription],
         };
-        // So the first frame doesn't lay the table out at a guessed width.
-        view.table_state.viewport_width = width;
         view.refresh(window, cx);
         view
     }
@@ -262,10 +234,6 @@ impl<K: RecordKind> RecordsPage<K> {
             || self.editor.is_some()
             || self.pending_delete.is_some()
             || self.nbp_year.is_some()
-    }
-
-    fn disabled(&self) -> bool {
-        self.locked() || self.status.loading
     }
 
     fn notify(&self, cx: &mut Context<Self>) {
@@ -285,14 +253,9 @@ impl<K: RecordKind> RecordsPage<K> {
             .zip(totals.into_iter().map(pln))
             .collect();
         self.other_year = other_year;
-        let rows = records.iter().map(K::display).collect::<Vec<_>>();
-        let changed = rows != self.table_state.rows;
-        if changed {
-            let ids = records.iter().map(K::id).collect::<HashSet<_>>();
-            self.selected.retain(|id| ids.contains(id.as_str()));
-            self.expanded.retain(|id| ids.contains(id.as_str()));
-            self.table_state.reset(rows);
-        }
+        let changed = self
+            .table
+            .set_rows(records.iter().map(K::display).collect());
         self.records = records;
         if changed {
             self.regroup();
@@ -300,44 +263,20 @@ impl<K: RecordKind> RecordsPage<K> {
     }
 
     fn regroup(&mut self) {
-        let mut groups: Vec<MonthGroup> = Vec::new();
-        let rows = self.records.iter().zip(&self.table_state.rows);
-        for (index, (record, row)) in rows.enumerate() {
-            if !row.search.contains(self.query.as_str()) {
-                continue;
-            }
-            let local = time::local(K::time(record));
-            let key = (local.year(), local.month());
-            match groups.last_mut() {
-                Some(group) if group.key == key => group.records.push(index),
-                _ => groups.push(MonthGroup {
-                    key,
-                    title: month_title(key, self.year.is_none()),
-                    records: vec![index],
-                    summary: vec![],
-                }),
-            }
-        }
+        let mut groups = self.table.month_groups(&self.query, self.year.is_none());
         for group in &mut groups {
             let records = group
                 .records
                 .iter()
                 .map(|&index| &self.records[index])
                 .collect::<Vec<_>>();
+            group.count = record_count(records.len() as u32).into();
             group.summary = K::subtotal(&records)
                 .into_iter()
                 .map(|(label, value)| (label, pln(value)))
                 .collect();
         }
-        self.groups = groups;
-        self.table_state.dirty = true;
-    }
-
-    fn visible(&self) -> impl Iterator<Item = &str> {
-        self.groups
-            .iter()
-            .flat_map(|group| &group.records)
-            .map(|&index| K::id(&self.records[index]))
+        self.table.set_groups(groups);
     }
 
     fn open_editor(&mut self, form: K::Form, window: &mut Window, cx: &mut Context<Self>) {
@@ -404,16 +343,6 @@ impl<K: RecordKind> RecordsPage<K> {
             window.focus(&id, cx);
         }
         cx.notify();
-    }
-
-    fn edit(&mut self, id: &str, window: &mut Window, cx: &mut Context<Self>) {
-        if self.disabled() {
-            return;
-        }
-        if let Some(record) = self.records.iter().find(|record| K::id(record) == id) {
-            let form = K::Form::new(Some(record), window, cx);
-            self.open_editor(form, window, cx);
-        }
     }
 
     fn close_editor(&mut self, cx: &mut Context<Self>) {
@@ -514,36 +443,11 @@ impl<K: RecordKind> RecordsPage<K> {
         self.notify(cx);
     }
 
-    fn delete_one(&mut self, id: &str, window: &mut Window, cx: &mut Context<Self>) {
-        self.confirm_delete(
-            vec![id.to_owned()],
-            "Delete this record? This cannot be undone.".into(),
-            window,
-            cx,
-        );
-    }
-
     /// Includes the selected records the filter hides.
     fn delete_selected(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let visible = self.visible().collect::<HashSet<_>>();
-        let hidden = self
-            .selected
-            .iter()
-            .filter(|id| !visible.contains(id.as_str()))
-            .count();
-        let message = if hidden > 0 {
-            format!(
-                "Delete {} selected record(s)? {hidden} of them are hidden by the filter. \
-                 This cannot be undone.",
-                self.selected.len()
-            )
-        } else {
-            format!(
-                "Delete {} selected record(s)? This cannot be undone.",
-                self.selected.len()
-            )
-        };
-        let ids = self.selected.iter().cloned().collect();
+        let selected = &self.table.selected;
+        let message = delete_selected_message(selected, self.table.visible());
+        let ids = selected.iter().cloned().collect();
         self.confirm_delete(ids, message, window, cx);
     }
 
@@ -711,30 +615,17 @@ impl<K: RecordKind> RecordsPage<K> {
 
     fn header(&self, window: &mut Window, cx: &mut Context<Self>) -> Stateful<Div> {
         let disabled = self.disabled();
-        let p = *palette(cx);
         let filterable = self.status.ready && !self.records.is_empty();
         let filter_disabled = self.editor.is_some() || self.nbp_year.is_some();
-        let shown = self
-            .groups
-            .iter()
-            .map(|group| group.records.len())
-            .sum::<usize>();
-        // A narrow panel, such as the minimum window with the sidebar
-        // expanded, has no room for the filter count beside Import's label.
+        let shown = self.table.shown();
         let narrow = self
-            .table_state
+            .table
+            .state
             .viewport_width
             .is_some_and(|width| width < px(NARROW));
-        let count = if narrow {
-            format!("{shown} of {}", self.records.len())
-        } else {
-            format!("Showing {shown} of {}", self.records.len())
-        };
-        let import = if narrow {
-            header::icon_button("open-imports", IconName::Upload, "Import")
-        } else {
-            header::button("open-imports", IconName::Upload, "Import")
-        };
+        let count =
+            (!self.query.is_empty()).then(|| filter_count(shown, self.records.len(), narrow));
+        let import = import_button(narrow);
         header::page(
             K::PAGE.title(),
             Some(header::year_label(self.year)),
@@ -742,51 +633,7 @@ impl<K: RecordKind> RecordsPage<K> {
             cx,
         )
         .when(filterable, |row| {
-            row.child(
-                header::no_drag()
-                    .flex()
-                    .flex_shrink(1.)
-                    .min_w_0()
-                    .items_center()
-                    .gap(px(8.))
-                    .when(!self.query.is_empty(), |field| {
-                        field.child(
-                            div()
-                                .flex_shrink_0()
-                                .whitespace_nowrap()
-                                .text_size(px(12.))
-                                .text_color(p.faint)
-                                .font_features(tabular_digits())
-                                .child(count),
-                        )
-                    })
-                    .child(
-                        // A width, not a flex basis: the row sizes itself
-                        // from its content, so a basis left the field at its
-                        // minimum.
-                        div().w(px(180.)).flex_shrink(1.).min_w(px(110.)).child(
-                            Input::new(&self.filter)
-                                .small()
-                                // `Input::h` only sizes multi-line inputs.
-                                .map(|input| Styled::h(input, px(28.)))
-                                .pl(px(11.))
-                                .gap_2()
-                                .text_size(px(13.))
-                                .rounded(px(8.))
-                                // The buttons' fill; disabled keeps the
-                                // input's, close to a disabled button's.
-                                .when(!filter_disabled, |input| input.bg(cx.theme().tokens.button))
-                                .aria_label("Filter records")
-                                .prefix(
-                                    Icon::new(IconName::Search)
-                                        .size(px(14.))
-                                        .text_color(p.faint),
-                                )
-                                .cleanable(true)
-                                .disabled(filter_disabled),
-                        ),
-                    ),
-            )
+            row.child(filter_field(&self.filter, count, filter_disabled, cx))
         })
         .child(
             header::actions()
@@ -837,22 +684,18 @@ impl<K: RecordKind> RecordsPage<K> {
 
     fn loading(&self, cx: &App) -> Div {
         let visible = self.status.loading_visible;
-        let layout = TableLayout::new(
-            &self.columns,
-            &[],
-            self.table_state.viewport_width.unwrap_or(px(900.)),
-        );
+        let (skeleton, compact) = self.table.skeleton(visible, cx);
         v_flex()
             .flex_1()
             .min_h_0()
             .child(
-                totals_row(layout.compact).children(
+                totals_row(compact).children(
                     K::TOTAL_LABELS
                         .iter()
                         .map(|label| value::stat_skeleton(label, visible, cx)),
                 ),
             )
-            .child(record_skeleton(&self.columns, &layout, visible, cx))
+            .child(skeleton)
     }
 
     fn empty_state(&self, cx: &mut Context<Self>) -> Empty {
@@ -914,83 +757,154 @@ impl<K: RecordKind> RecordsPage<K> {
             cx,
         )
     }
+}
 
-    /// The count includes records the filter hides.
-    fn selection_bar(&self, cx: &mut Context<Self>) -> Div {
-        let p = *palette(cx);
-        let disabled = self.disabled();
-        let danger = if disabled { p.muted } else { p.danger };
-        let removing = !self.deleting.is_empty() && self.deleting == self.selected;
-        div()
-            .absolute()
-            .left_0()
-            .right_0()
-            .bottom(px(18.))
-            .flex()
-            .justify_center()
-            .child(
-                h_flex()
-                    .id("selection-bar")
-                    .h(px(40.))
-                    .pl(px(14.))
-                    .pr(px(6.))
-                    .gap(px(6.))
-                    .rounded(px(12.))
-                    .border_1()
-                    .border_color(p.strong_line)
-                    .bg(p.popover)
-                    .shadow_lg()
-                    .child(
-                        div()
-                            .mr(px(8.))
-                            .font_medium()
-                            .font_features(tabular_digits())
-                            .whitespace_nowrap()
-                            .child(format!("{} selected", self.selected.len())),
-                    )
-                    .child(
-                        Button::new("delete-selected")
-                            .h(px(28.))
-                            .px(px(11.))
-                            .rounded(px(8.))
-                            .accessibility_label("Remove selected")
-                            .disabled(disabled)
-                            // On the children: the kit's hover colour replaces
-                            // the button's own.
-                            .map(|button| {
-                                if removing {
-                                    button.child(spinner().color(danger))
-                                } else {
-                                    button.child(
-                                        Icon::new(IconName::Trash).size(px(14.)).text_color(danger),
-                                    )
-                                }
-                            })
-                            .child(
-                                div()
-                                    .text_size(px(13.))
-                                    .font_medium()
-                                    .text_color(danger)
-                                    .child("Remove selected"),
-                            )
-                            .on_click(
-                                cx.listener(|this, _, window, cx| this.delete_selected(window, cx)),
-                            ),
-                    )
-                    .child(
-                        header::icon_button("clear-selection", IconName::X, "Clear selection")
-                            .text_color(p.muted)
-                            .disabled(disabled)
-                            .on_click(cx.listener(|this, _, _, cx| {
-                                this.selected.clear();
-                                cx.notify();
-                            })),
-                    ),
-            )
+impl<K: RecordKind> TableHost for RecordsPage<K> {
+    type Table = ();
+
+    fn table(&self, _: ()) -> &RecordTable {
+        &self.table
+    }
+
+    fn table_mut(&mut self, _: ()) -> &mut RecordTable {
+        &mut self.table
+    }
+
+    fn disabled(&self) -> bool {
+        self.locked() || self.status.loading
+    }
+
+    fn deleting(&self) -> &HashSet<String> {
+        &self.deleting
+    }
+
+    fn page_focus(&self) -> &FocusHandle {
+        &self.focus
+    }
+
+    fn editable(&self) -> bool {
+        true
+    }
+
+    fn edit(&mut self, id: &str, window: &mut Window, cx: &mut Context<Self>) {
+        if self.disabled() {
+            return;
+        }
+        if let Some(record) = self.records.iter().find(|record| K::id(record) == id) {
+            let form = K::Form::new(Some(record), window, cx);
+            self.open_editor(form, window, cx);
+        }
+    }
+
+    fn delete_one(&mut self, id: &str, window: &mut Window, cx: &mut Context<Self>) {
+        self.confirm_delete(
+            vec![id.to_owned()],
+            "Delete this record? This cannot be undone.".into(),
+            window,
+            cx,
+        );
     }
 }
 
-fn totals_row(compact: bool) -> Div {
+pub fn delete_selected_message<'a>(
+    selected: &HashSet<String>,
+    visible: impl Iterator<Item = &'a str>,
+) -> String {
+    let visible = visible.collect::<HashSet<_>>();
+    let hidden = selected
+        .iter()
+        .filter(|id| !visible.contains(id.as_str()))
+        .count();
+    if hidden > 0 {
+        format!(
+            "Delete {} selected record(s)? {hidden} of them are hidden by the filter. \
+             This cannot be undone.",
+            selected.len()
+        )
+    } else {
+        format!(
+            "Delete {} selected record(s)? This cannot be undone.",
+            selected.len()
+        )
+    }
+}
+
+/// A narrow panel, such as the minimum window with the sidebar expanded, has
+/// no room for "Showing" beside Import's label.
+pub fn filter_count(shown: usize, total: usize, narrow: bool) -> String {
+    if narrow {
+        format!("{shown} of {total}")
+    } else {
+        format!("Showing {shown} of {total}")
+    }
+}
+
+pub fn import_button(narrow: bool) -> Button {
+    if narrow {
+        header::icon_button("open-imports", IconName::Upload, "Import")
+    } else {
+        header::button("open-imports", IconName::Upload, "Import")
+    }
+}
+
+pub fn filter_field(
+    filter: &Entity<InputState>,
+    count: Option<String>,
+    disabled: bool,
+    cx: &App,
+) -> Div {
+    let p = *palette(cx);
+    header::no_drag()
+        .flex()
+        .flex_shrink(1.)
+        .min_w_0()
+        .items_center()
+        .gap(px(8.))
+        .children(count.map(|count| {
+            div()
+                .flex_shrink_0()
+                .whitespace_nowrap()
+                .text_size(px(12.))
+                .text_color(p.faint)
+                .font_features(tabular_digits())
+                .child(count)
+        }))
+        .child(
+            // A width, not a flex basis: the row sizes itself from its
+            // content, so a basis left the field at its minimum.
+            div().w(px(180.)).flex_shrink(1.).min_w(px(110.)).child(
+                Input::new(filter)
+                    .small()
+                    // `Input::h` only sizes multi-line inputs.
+                    .map(|input| Styled::h(input, px(28.)))
+                    .pl(px(11.))
+                    .gap_2()
+                    .text_size(px(13.))
+                    .rounded(px(8.))
+                    // The buttons' fill; disabled keeps the input's, close
+                    // to a disabled button's.
+                    .when(!disabled, |input| input.bg(cx.theme().tokens.button))
+                    .aria_label("Filter records")
+                    .prefix(
+                        Icon::new(IconName::Search)
+                            .size(px(14.))
+                            .text_color(p.faint),
+                    )
+                    .cleanable(true)
+                    .disabled(disabled),
+            ),
+        )
+}
+
+pub fn no_match(query: &str, cx: &App) -> Div {
+    div()
+        .px(px(20.))
+        .py(px(24.))
+        .text_color(palette(cx).muted)
+        .child(format!("No records match “{query}”."))
+}
+
+pub fn totals_row(compact: bool) -> Div {
     h_flex()
         .flex_shrink_0()
         .flex_wrap()
@@ -1000,18 +914,6 @@ fn totals_row(compact: bool) -> Div {
         .px(px(20.))
         .pt(px(4.))
         .pb(px(14.))
-}
-
-fn month_title((year, month): (i32, u32), with_year: bool) -> SharedString {
-    let name = u8::try_from(month)
-        .ok()
-        .and_then(|month| chrono::Month::try_from(month).ok())
-        .map_or("", |month| month.name());
-    if with_year {
-        format!("{name} {year}").into()
-    } else {
-        name.into()
-    }
 }
 
 /// Newer first on a tie. Nothing for all years, which already includes every
@@ -1098,10 +1000,11 @@ impl<K: RecordKind> Render for RecordsPage<K> {
         } else if self.status.ready && self.records.is_empty() {
             body = body.child(self.empty_state(cx));
         } else if self.status.ready {
-            let compact = self.table_state.layout.as_ref().is_some_and(|l| l.compact);
+            let compact = self.table.compact();
+            let empty = no_match(&self.query, cx);
             body = body
                 .child(self.totals(compact, cx))
-                .child(self.table(window, cx));
+                .child(table(self, (), empty, window, cx));
         } else if self.status.loading {
             body = body.child(self.loading(cx));
         } else {
@@ -1116,7 +1019,7 @@ impl<K: RecordKind> Render for RecordsPage<K> {
                 ),
             );
         }
-        let selecting = self.status.ready && !self.selected.is_empty();
+        let selecting = self.status.ready && !self.table.selected.is_empty();
         v_flex()
             .size_full()
             .min_h_0()
@@ -1128,7 +1031,9 @@ impl<K: RecordKind> Render for RecordsPage<K> {
                     .min_h_0()
                     .child(body)
                     .vertical_scrollbar(&self.page_scroll)
-                    .when(selecting, |view| view.child(self.selection_bar(cx))),
+                    .when(selecting, |view| {
+                        view.child(selection_bar(self, (), Self::delete_selected, cx))
+                    }),
             )
     }
 }

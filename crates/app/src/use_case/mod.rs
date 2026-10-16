@@ -6,16 +6,18 @@ use crate::App;
 
 pub mod crypto;
 pub mod dividend;
+pub mod exchange;
 pub mod import;
 pub mod interest;
 pub mod rate;
 pub mod settings;
+pub mod stock;
 pub mod tax;
 pub mod year;
 
 mod validation;
 
-pub use validation::{AmountField, Error as ValidationError};
+pub use validation::{AmountField, Error as ValidationError, TextField};
 
 async fn rates_for(app: &App, date: NaiveDate) -> Result<NbpRateProvider, RepositoryError> {
     let (first, last) = NbpRateProvider::lookup_window(date);

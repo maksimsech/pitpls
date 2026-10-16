@@ -1,9 +1,11 @@
+use chrono::NaiveDate;
 use pitpls_core::settings::{DividendRounding, Settings};
 use sqlx::{Row, SqlitePool};
 
 use super::Result;
 
 const DIVIDEND_ROUNDING_SETTING: &str = "dividend_rounding";
+const EXCHANGES_DOWNLOADED_SETTING: &str = "exchanges_downloaded";
 
 pub struct SettingsRepository {
     db: SqlitePool,
@@ -50,6 +52,33 @@ impl SettingsRepository {
         )
         .bind(DIVIDEND_ROUNDING_SETTING)
         .bind(serde_plain::to_string(&rounding)?)
+        .execute(&self.db)
+        .await?;
+
+        Ok(())
+    }
+
+    pub async fn load_exchanges_downloaded(&self) -> Result<Option<NaiveDate>> {
+        let row = sqlx::query("SELECT value FROM settings WHERE name = ?")
+            .bind(EXCHANGES_DOWNLOADED_SETTING)
+            .fetch_optional(&self.db)
+            .await?;
+
+        row.map(|row| row.try_get("value"))
+            .transpose()
+            .map_err(Into::into)
+    }
+
+    pub async fn save_exchanges_downloaded(&self, date: NaiveDate) -> Result<()> {
+        sqlx::query(
+            r"
+                INSERT INTO settings(name, value)
+                VALUES (?, ?)
+                ON CONFLICT(name) DO UPDATE SET value = excluded.value
+            ",
+        )
+        .bind(EXCHANGES_DOWNLOADED_SETTING)
+        .bind(date)
         .execute(&self.db)
         .await?;
 

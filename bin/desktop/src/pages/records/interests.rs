@@ -41,10 +41,6 @@ impl RecordKind for Interests {
         &record.id
     }
 
-    fn time(record: &CalculatedInterest) -> DateTime<Utc> {
-        record.time
-    }
-
     fn columns() -> Vec<RecordColumn> {
         vec![
             RecordColumn::new("Date", CellStyle::Time, 116., 50.),
@@ -88,10 +84,13 @@ impl RecordKind for Interests {
             },
         ];
         RowDisplay {
+            id: record.id.clone().into(),
+            time: record.time,
             cells,
             steps,
             search: record.provider.to_lowercase(),
             label: format!("{} {}", record.provider, date_label(record.time)).into(),
+            ..Default::default()
         }
     }
 

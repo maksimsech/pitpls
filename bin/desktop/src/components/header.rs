@@ -92,6 +92,59 @@ pub fn page(
         .child(div().flex_1())
 }
 
+pub fn breadcrumb(
+    parent: &'static str,
+    title: SharedString,
+    context: SharedString,
+    back: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
+    window: &mut Window,
+    cx: &mut App,
+) -> Stateful<Div> {
+    let p = *palette(cx);
+    drag_region("page-header", window, cx)
+        .flex()
+        .flex_shrink_0()
+        .items_center()
+        .gap(px(8.))
+        .h(HEIGHT)
+        .pl(px(10.))
+        .pr(px(12.))
+        .child(
+            no_drag().flex_shrink_0().child(
+                Button::new("page-back")
+                    .ghost()
+                    .h(px(28.))
+                    .pl(px(4.))
+                    .pr(px(8.))
+                    .gap(px(4.))
+                    .rounded(px(8.))
+                    .text_color(p.muted)
+                    .accessibility_label(format!("Back to {parent}"))
+                    .child(Icon::new(IconName::ChevronLeft).size(px(16.)))
+                    .child(div().text_size(px(13.)).child(parent))
+                    .on_click(back),
+            ),
+        )
+        .child(div().flex_shrink_0().text_color(p.faint).child("/"))
+        .child(
+            div()
+                .flex_shrink_0()
+                .ml(px(4.))
+                .text_size(px(15.))
+                .font_semibold()
+                .child(title),
+        )
+        .child(
+            div()
+                .min_w_0()
+                .truncate()
+                .text_size(px(13.))
+                .text_color(p.faint)
+                .child(context),
+        )
+        .child(div().flex_1())
+}
+
 pub fn actions() -> Div {
     no_drag().flex().flex_shrink_0().items_center().gap(px(8.))
 }

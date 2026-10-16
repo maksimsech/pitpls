@@ -1,4 +1,4 @@
-use std::str::FromStr;
+use std::{collections::BTreeMap, str::FromStr};
 
 use chrono::{DateTime, NaiveDateTime, Utc};
 use rust_decimal::Decimal;
@@ -7,37 +7,50 @@ use pitpls_core::{
     common::{Amount, Country, Currency},
     dividend::Dividend,
     interest::Interest,
+    stock::{Stock, StockAction, StockBuy, StockSell},
 };
 
-use crate::{ImportContext, ImportError, ImportField, Result};
+use crate::{ImportContext, ImportData, ImportError, ImportField, ImportedInstrument, Result};
 
 const PROVIDER: &str = crate::ImporterKind::T212.provider();
+const FREE_SHARES_NOTE: &str = "Free Shares Promotion";
 
 struct ColumnMap {
     common: CommonColumns,
+    instrument: InstrumentColumns,
     dividend: DividendColumns,
-    interest: InterestColumns,
+    total: TotalColumns,
+    trade: TradeColumns,
 }
 
 struct CommonColumns {
     action: usize,
     time: usize,
     id: Option<usize>,
+    notes: Option<usize>,
 }
 
-struct DividendColumns {
+struct InstrumentColumns {
     isin: Option<usize>,
     ticker: Option<usize>,
     shares: Option<usize>,
     price: Option<usize>,
     price_currency: Option<usize>,
+}
+
+struct DividendColumns {
     tax: Option<usize>,
     tax_currency: Option<usize>,
 }
 
-struct InterestColumns {
+struct TotalColumns {
     total: Option<usize>,
     total_currency: Option<usize>,
+}
+
+struct TradeColumns {
+    fee: Option<usize>,
+    fee_currency: Option<usize>,
 }
 
 impl ColumnMap {
@@ -56,19 +69,26 @@ impl ColumnMap {
                 action: find("Action")?,
                 time: find_optional("Time").map_or_else(|| find("Time (UTC)"), Ok)?,
                 id: find_optional("ID"),
+                notes: find_optional("Notes"),
             },
-            dividend: DividendColumns {
+            instrument: InstrumentColumns {
                 isin: find_optional("ISIN"),
                 ticker: find_optional("Ticker"),
                 shares: find_optional("No. of shares"),
                 price: find_optional("Price / share"),
                 price_currency: find_optional("Currency (Price / share)"),
+            },
+            dividend: DividendColumns {
                 tax: find_optional("Withholding tax"),
                 tax_currency: find_optional("Currency (Withholding tax)"),
             },
-            interest: InterestColumns {
+            total: TotalColumns {
                 total: find_optional("Total"),
                 total_currency: find_optional("Currency (Total)"),
+            },
+            trade: TradeColumns {
+                fee: find_optional("Currency conversion fee"),
+                fee_currency: find_optional("Currency (Currency conversion fee)"),
             },
         })
     }
@@ -77,8 +97,14 @@ impl ColumnMap {
 enum RowKind {
     Dividend,
     Interest,
-    Stock,
+    Stock(Side),
     Unknown,
+}
+
+#[derive(Clone, Copy)]
+enum Side {
+    Buy,
+    Sell,
 }
 
 impl RowKind {
@@ -87,15 +113,17 @@ impl RowKind {
             Self::Dividend
         } else if action.starts_with("Interest on cash") {
             Self::Interest
-        } else if matches!(action, "Market buy" | "Market sell") {
-            Self::Stock
+        } else if action.ends_with(" buy") {
+            Self::Stock(Side::Buy)
+        } else if action.ends_with(" sell") {
+            Self::Stock(Side::Sell)
         } else {
             Self::Unknown
         }
     }
 }
 
-pub fn parse(csv_content: String) -> Result<(Vec<Dividend>, Vec<Interest>)> {
+pub fn parse(csv_content: String) -> Result<ImportData> {
     let mut lines = csv_content.lines();
 
     let header = lines
@@ -109,34 +137,155 @@ pub fn parse(csv_content: String) -> Result<(Vec<Dividend>, Vec<Interest>)> {
 
     let columns = ColumnMap::from_header(header)?;
 
-    let mut dividends = Vec::new();
-    let mut interests = Vec::new();
+    let mut data = ImportData::default();
+    let mut isins = BTreeMap::new();
 
-    for line in lines {
-        let line = line.trim_end();
-        if line.is_empty() {
-            continue;
-        }
+    let rows = lines
+        .map(str::trim_end)
+        .filter(|line| !line.is_empty())
+        .map(|line| (line, split_row(line)))
+        .collect::<Vec<_>>();
 
-        let fields = split_row(line);
-        let action = required_indexed_field(&fields, columns.common.action, line)?;
+    // Trading 212 pays for promotion shares: a "Free Shares Promotion" deposit covers the buy at the
+    // same second, its fee too, so the shares cost 0, like a gift (podatekgieldowy.pl does the same).
+    let mut promotions = rows
+        .iter()
+        .filter(|(_, fields)| {
+            optional_field(fields, Some(columns.common.action)) == Some("Deposit")
+                && optional_field(fields, columns.common.notes) == Some(FREE_SHARES_NOTE)
+        })
+        .filter_map(|(_, fields)| paid_total(fields, &columns))
+        .collect::<Vec<_>>();
+
+    for (line, fields) in &rows {
+        let line = *line;
+        let action = required_indexed_field(fields, columns.common.action, line)?;
 
         match RowKind::from_action(action) {
-            RowKind::Dividend => dividends.push(parse_dividend_row(&fields, &columns, line)?),
-            RowKind::Interest => interests.push(parse_interest_row(&fields, &columns, line)?),
-            RowKind::Stock | RowKind::Unknown => {}
+            RowKind::Dividend => data
+                .dividends
+                .push(parse_dividend_row(fields, &columns, line)?),
+            RowKind::Interest => data
+                .interests
+                .push(parse_interest_row(fields, &columns, line)?),
+            RowKind::Stock(side) => {
+                let free = matches!(side, Side::Buy)
+                    && paid_total(fields, &columns)
+                        .and_then(|paid| promotions.iter().position(|promotion| *promotion == paid))
+                        .map(|index| promotions.remove(index))
+                        .is_some();
+                let stock = parse_stock_row(fields, &columns, side, free, line)?;
+                if let Some(isin) = optional_field(fields, columns.instrument.isin) {
+                    isins
+                        .entry(stock.ticker.clone())
+                        .or_insert_with(|| isin.to_owned());
+                }
+                data.stocks.push(stock);
+            }
+            RowKind::Unknown => {}
         }
     }
 
-    Ok((dividends, interests))
+    data.instruments = isins
+        .into_iter()
+        .map(|(ticker, isin)| ImportedInstrument {
+            ticker,
+            provider: PROVIDER.to_owned(),
+            isin,
+        })
+        .collect();
+
+    Ok(data)
+}
+
+fn paid_total(
+    fields: &[String],
+    columns: &ColumnMap,
+) -> Option<(DateTime<Utc>, Decimal, Currency)> {
+    let time = parse_time(optional_field(fields, Some(columns.common.time))?).ok()?;
+    let total = parse_decimal(optional_field(fields, columns.total.total)?).ok()?;
+    let currency = parse_currency(optional_field(fields, columns.total.total_currency)?).ok()?;
+    Some((time, total, currency))
+}
+
+fn parse_stock_row(
+    fields: &[String],
+    columns: &ColumnMap,
+    side: Side,
+    free: bool,
+    row: &str,
+) -> Result<Stock> {
+    let timestamp = required_indexed_field(fields, columns.common.time, row)?;
+    let ticker = required_field(fields, columns.instrument.ticker, "Ticker", row)?;
+    let shares = required_field(fields, columns.instrument.shares, "No. of shares", row)?;
+    let price = required_field(fields, columns.instrument.price, "Price / share", row)?;
+    let price_currency = required_field(
+        fields,
+        columns.instrument.price_currency,
+        "Currency (Price / share)",
+        row,
+    )?;
+
+    let number = parse_decimal(shares)?;
+    let price = parse_amount(price, price_currency)?;
+    let fee = match optional_field(fields, columns.trade.fee) {
+        Some(fee) => {
+            let fee_currency = required_field(
+                fields,
+                columns.trade.fee_currency,
+                "Currency (Currency conversion fee)",
+                row,
+            )?;
+            parse_amount(fee, fee_currency)?
+        }
+        None => Amount {
+            value: Decimal::ZERO,
+            currency: price.currency,
+        },
+    };
+    let (price, fee) = if free {
+        let zero = |amount: Amount| Amount {
+            value: Decimal::ZERO,
+            currency: amount.currency,
+        };
+        (zero(price), zero(fee))
+    } else {
+        (price, fee)
+    };
+    let provider = PROVIDER.to_owned();
+
+    let action = match side {
+        Side::Buy => StockAction::Buy(StockBuy {
+            number,
+            price,
+            fee,
+            provider,
+            settlement_date: None,
+        }),
+        Side::Sell => StockAction::Sell(StockSell {
+            number,
+            price,
+            fee,
+            provider,
+            settlement_date: None,
+            tax_paid: None,
+        }),
+    };
+
+    Ok(Stock {
+        id: row_id(fields, columns.common.id),
+        time: parse_time(timestamp)?,
+        ticker: ticker.to_owned(),
+        action,
+    })
 }
 
 fn parse_interest_row(fields: &[String], columns: &ColumnMap, row: &str) -> Result<Interest> {
     let timestamp = required_indexed_field(fields, columns.common.time, row)?;
-    let total = required_field(fields, columns.interest.total, "Total", row)?;
+    let total = required_field(fields, columns.total.total, "Total", row)?;
     let total_currency = required_field(
         fields,
-        columns.interest.total_currency,
+        columns.total.total_currency,
         "Currency (Total)",
         row,
     )?;
@@ -151,13 +300,13 @@ fn parse_interest_row(fields: &[String], columns: &ColumnMap, row: &str) -> Resu
 
 fn parse_dividend_row(fields: &[String], columns: &ColumnMap, row: &str) -> Result<Dividend> {
     let timestamp = required_indexed_field(fields, columns.common.time, row)?;
-    let isin = required_field(fields, columns.dividend.isin, "ISIN", row)?;
-    let ticker = required_field(fields, columns.dividend.ticker, "Ticker", row)?;
-    let shares = required_field(fields, columns.dividend.shares, "No. of shares", row)?;
-    let price = required_field(fields, columns.dividend.price, "Price / share", row)?;
+    let isin = required_field(fields, columns.instrument.isin, "ISIN", row)?;
+    let ticker = required_field(fields, columns.instrument.ticker, "Ticker", row)?;
+    let shares = required_field(fields, columns.instrument.shares, "No. of shares", row)?;
+    let price = required_field(fields, columns.instrument.price, "Price / share", row)?;
     let price_currency = required_field(
         fields,
-        columns.dividend.price_currency,
+        columns.instrument.price_currency,
         "Currency (Price / share)",
         row,
     )?;
@@ -227,10 +376,15 @@ fn required_indexed_field<'a>(fields: &'a [String], index: usize, row: &str) -> 
         .ok_or_else(|| ImportError::malformed_row(index + 1, fields.len(), row))
 }
 
-fn row_id(fields: &[String], id: Option<usize>) -> String {
-    id.and_then(|i| fields.get(i))
+fn optional_field(fields: &[String], index: Option<usize>) -> Option<&str> {
+    index
+        .and_then(|i| fields.get(i))
         .map(|s| s.trim())
         .filter(|s| !s.is_empty())
+}
+
+fn row_id(fields: &[String], id: Option<usize>) -> String {
+    optional_field(fields, id)
         .map(str::to_owned)
         .unwrap_or_else(|| uuid::Uuid::new_v4().to_string())
 }
@@ -295,7 +449,8 @@ mod tests {
     use super::*;
 
     fn parse_fixture(content: &str) -> (Vec<Dividend>, Vec<Interest>) {
-        parse(content.to_owned()).expect("fixture should parse")
+        let data = parse(content.to_owned()).expect("fixture should parse");
+        (data.dividends, data.interests)
     }
 
     #[test]

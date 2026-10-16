@@ -2,9 +2,12 @@ use thiserror::Error;
 
 pub mod crypto;
 pub mod dividend;
+pub mod exchange;
+pub mod instrument;
 pub mod interest;
 pub mod rate;
 pub mod settings;
+pub mod stock;
 pub mod year;
 
 pub type Result<T> = std::result::Result<T, RepositoryError>;
@@ -19,6 +22,12 @@ pub enum RepositoryError {
     Decimal(#[from] rust_decimal::Error),
 
     InvalidYear(i32),
+
+    #[error("Invalid stock record: {0}")]
+    InvalidStockRecord(String),
+
+    #[error("Invalid exchange: {0}")]
+    InvalidExchange(String),
 }
 
 impl RepositoryError {
