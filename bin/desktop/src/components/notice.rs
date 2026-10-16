@@ -101,18 +101,20 @@ pub fn notice(
 
 pub fn missing_rate(
     year: Option<i32>,
+    import_year: Option<i32>,
     error: SharedString,
     disabled: bool,
     on_import: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
     on_open_rates: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
     cx: &App,
 ) -> Empty {
-    let (title, import) = match year {
-        Some(year) => (
-            t!("notice.cannot_calculate_year", year = year),
-            t!("notice.import_year", year = year),
-        ),
-        None => (t!("notice.cannot_calculate_all"), t!("nbp.import_title")),
+    let title = match year {
+        Some(year) => t!("notice.cannot_calculate_year", year = year),
+        None => t!("notice.cannot_calculate_all"),
+    };
+    let import = match import_year {
+        Some(year) => t!("notice.import_year", year = year),
+        None => t!("nbp.import_title"),
     };
     notice(IconName::TriangleAlert, true, title, error, cx).content(
         EmptyContent::new().child(

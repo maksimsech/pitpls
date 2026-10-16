@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use chrono::NaiveDate;
+use chrono::{Datelike, NaiveDate};
 use rust_decimal::Decimal;
 use thiserror::Error;
 
@@ -21,6 +21,15 @@ pub enum RateConverterError {
         currency: Currency,
         date: NaiveDate,
     },
+}
+
+impl RateConverterError {
+    pub fn missing_year(&self) -> Option<i32> {
+        match self {
+            Self::StepLimitReached { date, .. } => date.pred_opt().map(|date| date.year()),
+            Self::NoRatesAvailable => None,
+        }
+    }
 }
 
 pub struct NbpRateProvider {

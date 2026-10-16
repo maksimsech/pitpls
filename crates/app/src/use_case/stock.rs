@@ -19,7 +19,8 @@ use thiserror::Error;
 use super::exchange::country_of;
 use super::validation::{
     AmountField, Error as ValidationError, TextField, parse_amount, parse_split, parse_time,
-    validate_not_empty, validate_not_negative, validate_positive, validate_year,
+    validate_not_empty, validate_not_negative, validate_optional_year, validate_positive,
+    validate_year,
 };
 use crate::App;
 
@@ -335,14 +336,13 @@ pub async fn load_stocks(app: &App, year: i32) -> Result<StockData, Error> {
     })
 }
 
-// Up to 31.12 of the year: a year view never shows what happened later.
 pub async fn load_history(
     app: &App,
     ticker: &str,
     provider: &str,
-    year: i32,
+    year: Option<i32>,
 ) -> Result<StockHistory, Error> {
-    validate_year(year)?;
+    validate_optional_year(year)?;
     let records = app
         .db
         .stock_repo()
@@ -373,7 +373,7 @@ pub async fn preview_stock(
     let records = app
         .db
         .stock_repo()
-        .get_by_ticker_through_year(&draft.ticker, None, tax_date(draft.time).year())
+        .get_by_ticker_through_year(&draft.ticker, None, Some(tax_date(draft.time).year()))
         .await?;
     let mut instruments = app.db.instrument_repo().list().await?;
     instruments.retain(|instrument| instrument.ticker == draft.ticker);

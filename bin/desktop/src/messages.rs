@@ -6,6 +6,7 @@ use pitpls_app::use_case::{
     exchange::RefreshError as ExchangeRefreshError,
     import::Error as StatementImportError,
     interest::Error as InterestError,
+    portfolio::Error as PortfolioError,
     rate::{ApiImportError as RateApiError, CsvImportError as RateCsvError},
     stock::Error as StockError,
     tax::Error as TaxError,
@@ -49,6 +50,7 @@ impl From<&ServiceError> for SharedString {
             ServiceError::Dividend(error) => dividend_use_case_error(error),
             ServiceError::Interest(error) => interest_use_case_error(error),
             ServiceError::Stock(error) => stock_use_case_error(error),
+            ServiceError::Portfolio(error) => portfolio_use_case_error(error),
             ServiceError::ExchangeRefresh(error) => exchange_refresh_error(error),
             ServiceError::Import(error) => match error {
                 StatementImportError::Parse(error) => import_error(error),
@@ -211,6 +213,16 @@ fn stock_use_case_error(error: &StockError) -> String {
         StockError::NotFound(id) => t!("error.stock_not_found", id = id).into_owned(),
         StockError::Calculation(error) => stock_error(error),
         StockError::NothingToPreview => t!("error.nothing_to_preview").into_owned(),
+    }
+}
+
+fn portfolio_use_case_error(error: &PortfolioError) -> String {
+    match error {
+        PortfolioError::Repository(error) => repository_error(error),
+        PortfolioError::Dividend(error) => dividend_error(error),
+        PortfolioError::Interest(error) => interest_error(error),
+        PortfolioError::Crypto(error) => crypto_error(error),
+        PortfolioError::Stock(error) => stock_error(error),
     }
 }
 

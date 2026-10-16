@@ -520,6 +520,7 @@ impl HomePage {
             }
             Totals::MissingRate(error) => notice::missing_rate(
                 self.year,
+                self.year,
                 error.clone(),
                 self.disabled(),
                 cx.listener(|this, _, window, cx| this.open_nbp(window, cx)),

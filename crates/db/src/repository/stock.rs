@@ -145,13 +145,20 @@ impl StockRepository {
         &self,
         ticker: &str,
         provider: Option<&str>,
-        year: i32,
+        year: Option<i32>,
     ) -> Result<Vec<Stock>> {
-        let (_, end) = year_range(year).ok_or(RepositoryError::InvalidYear(year))?;
+        let end = year
+            .map(|year| {
+                year_range(year)
+                    .map(|(_, end)| end)
+                    .ok_or(RepositoryError::InvalidYear(year))
+            })
+            .transpose()?;
         sqlx::query(
             r"
             SELECT * FROM stocks
-            WHERE ticker = ?1 AND (?2 IS NULL OR provider = ?2 OR action = 'Split') AND time < ?3
+            WHERE ticker = ?1 AND (?2 IS NULL OR provider = ?2 OR action = 'Split')
+                AND (?3 IS NULL OR time < ?3)
             ORDER BY time, id
             ",
         )

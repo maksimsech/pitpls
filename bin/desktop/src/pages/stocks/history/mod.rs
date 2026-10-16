@@ -138,7 +138,8 @@ impl HistoryView {
             window,
             cx,
             move |app| async move {
-                let history = stock::load_history(&app, &key.ticker, &key.provider, year).await?;
+                let history =
+                    stock::load_history(&app, &key.ticker, &key.provider, Some(year)).await?;
                 Ok(HistoryDisplay::new(&history, &key, year))
             },
             |this, result, _, cx| {
