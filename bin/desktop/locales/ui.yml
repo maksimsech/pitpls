@@ -496,8 +496,8 @@ year:
     en: Years with records appear on their own. Removing a year (× or ⌫) only hides it here.
     pl: Lata z wpisami pojawiają się same. Usunięcie roku (× lub ⌫) tylko ukrywa go na tej liście.
   all_meta:
-    en: historical
-    pl: cała historia
+    en: portfolio
+    pl: portfel
   remove:
     en: Remove %{year}
     pl: Usuń %{year}
@@ -507,6 +507,18 @@ year:
   tax_year:
     en: Tax year
     pl: Rok podatkowy
+  tax_years:
+    en: Tax years
+    pl: Lata podatkowe
+  portfolio:
+    en: Portfolio
+    pl: Portfel
+  change_portfolio:
+    en: Portfolio, all years, change
+    pl: Portfel, wszystkie lata, zmień
+  portfolio_label:
+    en: Portfolio · All years
+    pl: Portfel · Wszystkie lata
   tax_year_label:
     en: Tax year %{year}
     pl: Rok podatkowy %{year}

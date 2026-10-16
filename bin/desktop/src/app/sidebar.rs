@@ -145,6 +145,21 @@ impl Desktop {
         let p = *palette(cx);
         let collapsed = self.preferences.sidebar_collapsed;
         let label = header::year_label(self.preferences.year);
+        let (icon, caption, change_label, tooltip) = if self.preferences.year.is_some() {
+            (
+                IconName::Calendar,
+                t!("year.tax_year"),
+                t!("year.change_tax_year", year = label),
+                t!("year.tax_year_label", year = label),
+            )
+        } else {
+            (
+                IconName::ChartPie,
+                t!("year.portfolio"),
+                t!("year.change_portfolio"),
+                t!("year.portfolio_label"),
+            )
+        };
         // A disabled trigger would still open a popover, so a switcher
         // locked by a page isn't wrapped in one. A year being saved keeps it,
         // since remounting the open menu would move focus out of its field;
@@ -157,7 +172,7 @@ impl Desktop {
             .pr(px(10.))
             .rounded(px(10.))
             .border_color(p.line)
-            .accessibility_label(t!("year.change_tax_year", year = label))
+            .accessibility_label(change_label.clone())
             .disabled(!enabled)
             .child(
                 h_flex()
@@ -173,19 +188,14 @@ impl Desktop {
                             .rounded(px(7.))
                             .bg(p.selected)
                             .text_color(p.muted)
-                            .child(Icon::new(IconName::Calendar).size(px(15.))),
+                            .child(Icon::new(icon).size(px(15.))),
                     )
                     .child(
                         v_flex()
                             .flex_1()
                             .min_w_0()
                             .line_height(relative(1.25))
-                            .child(
-                                div()
-                                    .text_size(px(11.5))
-                                    .text_color(p.faint)
-                                    .child(t!("year.tax_year")),
-                            )
+                            .child(div().text_size(px(11.5)).text_color(p.faint).child(caption))
                             .child(
                                 div()
                                     .text_size(BUTTON_TEXT)
@@ -205,15 +215,13 @@ impl Desktop {
             .p_0()
             .rounded(px(7.))
             .border_color(p.line)
-            .accessibility_label(t!("year.change_tax_year", year = label))
+            .accessibility_label(change_label)
             // Only in the rail. While the sidebar expands, this button slides
             // under the pointer and fades out; a tooltip it started would
             // stay once it's no longer drawn, since the kit hides tooltips on
             // hover-out.
             .when(collapsed, |button| {
-                button
-                    .tooltip(t!("year.tax_year_label", year = label))
-                    .tooltip_placement(Placement::Right)
+                button.tooltip(tooltip).tooltip_placement(Placement::Right)
             })
             .disabled(!enabled)
             .child(div().text_size(px(12.)).font_semibold().child(

@@ -156,6 +156,16 @@ impl Desktop {
             .child(self.year_item(None, cx))
             .child(divider())
             .child(
+                div()
+                    .pt(px(2.))
+                    .px(px(10.))
+                    .pb(px(4.))
+                    .text_size(px(11.))
+                    .font_medium()
+                    .text_color(p.faint)
+                    .child(t!("year.tax_years")),
+            )
+            .child(
                 // The padding leaves a row's focus ring room inside the
                 // scroll clip, and the negative margin keeps the rows where
                 // they were.
