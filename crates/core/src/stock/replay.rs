@@ -139,8 +139,9 @@ impl<'a> Position<'a> {
         rates: &NbpRateProvider,
     ) -> Result<(), CalculateStocksError> {
         let (settlement, _) = self.settlement(record.time, buy.settlement_date, buy.price.currency);
+        let value = buy.value();
         let cost = rates
-            .convert(&value(buy.number, &buy.price), &settlement)
+            .convert(&value, &settlement)
             .map_err(CalculateStocksError::PriceConversion)?;
         let fee = rates
             .convert(&buy.fee, &settlement)
@@ -150,6 +151,8 @@ impl<'a> Position<'a> {
             buy_id: &record.id,
             bought: record.time,
             price: buy.price,
+            value,
+            from_total: buy.amount.is_some(),
             shares: buy.number,
             open: buy.number,
             nbp_date: cost.date,
@@ -193,8 +196,9 @@ impl<'a> Position<'a> {
     ) -> Result<CalculatedSale, CalculateStocksError> {
         let (settlement_date, settlement_worked_out) =
             self.settlement(record.time, sell.settlement_date, sell.price.currency);
+        let value = sell.value();
         let income = rates
-            .convert(&value(sell.number, &sell.price), &settlement_date)
+            .convert(&value, &settlement_date)
             .map_err(CalculateStocksError::PriceConversion)?;
         let fee = rates
             .convert(&sell.fee, &settlement_date)
@@ -235,6 +239,8 @@ impl<'a> Position<'a> {
             settlement_worked_out,
             shares: sell.number,
             price: sell.price,
+            value,
+            from_total: sell.amount.is_some(),
             nbp_date: income.date,
             nbp_rate: income.rate,
             income: income.pln,
@@ -271,6 +277,8 @@ impl<'a> Position<'a> {
             lot_shares: lot.shares,
             open: lot.open,
             price: lot.price_after_splits(),
+            lot_value: lot.value,
+            from_total: lot.from_total,
             nbp_date: lot.nbp_date,
             nbp_rate: lot.nbp_rate,
             cost: lot.cost * lot.open / lot.shares,
@@ -287,6 +295,8 @@ struct Lot<'a> {
     buy_id: &'a str,
     bought: DateTime<Utc>,
     price: Amount,
+    value: Amount,
+    from_total: bool,
     shares: Decimal,
     open: Decimal,
     nbp_date: NaiveDate,
@@ -308,6 +318,8 @@ impl Lot<'_> {
             taken,
             after: self.open,
             price: self.price_after_splits(),
+            lot_value: self.value,
+            from_total: self.from_total,
             nbp_date: self.nbp_date,
             nbp_rate: self.nbp_rate,
             cost: self.cost * taken / self.shares,
@@ -326,12 +338,5 @@ impl Lot<'_> {
             value,
             currency: self.price.currency,
         }
-    }
-}
-
-fn value(shares: Decimal, price: &Amount) -> Amount {
-    Amount {
-        value: shares * price.value,
-        currency: price.currency,
     }
 }

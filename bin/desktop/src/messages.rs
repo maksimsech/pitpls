@@ -141,6 +141,7 @@ fn amount_field(field: AmountField) -> &'static str {
         AmountField::TaxPaid => "Tax paid",
         AmountField::Shares => "Shares",
         AmountField::Price => "Price",
+        AmountField::Amount => "Trade amount",
         AmountField::SplitBefore => "Shares before",
         AmountField::SplitAfter => "Shares after",
     }

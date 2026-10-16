@@ -55,6 +55,7 @@ fn buy(
         action: StockAction::Buy(StockBuy {
             number: shares,
             price,
+            amount: None,
             fee: Amount {
                 value: Decimal::ZERO,
                 currency: price.currency,
@@ -80,6 +81,7 @@ fn sell(
         action: StockAction::Sell(StockSell {
             number: shares,
             price,
+            amount: None,
             fee: Amount {
                 value: Decimal::ZERO,
                 currency: price.currency,

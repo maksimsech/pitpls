@@ -1,7 +1,7 @@
 use std::{collections::BTreeMap, str::FromStr};
 
 use chrono::{DateTime, NaiveDateTime, Utc};
-use rust_decimal::Decimal;
+use rust_decimal::{Decimal, dec};
 
 use pitpls_core::{
     common::{Amount, Country, Currency},
@@ -14,6 +14,7 @@ use crate::{ImportContext, ImportData, ImportError, ImportField, ImportedInstrum
 
 const PROVIDER: &str = crate::ImporterKind::T212.provider();
 const FREE_SHARES_NOTE: &str = "Free Shares Promotion";
+const CENT: Decimal = dec!(0.01);
 
 struct ColumnMap {
     common: CommonColumns,
@@ -243,14 +244,14 @@ fn parse_stock_row(
             currency: price.currency,
         },
     };
-    let (price, fee) = if free {
+    let (price, amount, fee) = if free {
         let zero = |amount: Amount| Amount {
             value: Decimal::ZERO,
             currency: amount.currency,
         };
-        (zero(price), zero(fee))
+        (zero(price), None, zero(fee))
     } else {
-        (price, fee)
+        (price, traded_total(fields, columns, number, price), fee)
     };
     let provider = PROVIDER.to_owned();
 
@@ -258,6 +259,7 @@ fn parse_stock_row(
         Side::Buy => StockAction::Buy(StockBuy {
             number,
             price,
+            amount,
             fee,
             provider,
             settlement_date: None,
@@ -265,6 +267,7 @@ fn parse_stock_row(
         Side::Sell => StockAction::Sell(StockSell {
             number,
             price,
+            amount,
             fee,
             provider,
             settlement_date: None,
@@ -278,6 +281,20 @@ fn parse_stock_row(
         ticker: ticker.to_owned(),
         action,
     })
+}
+
+// A trade paid from or credited to a balance in its own currency moves whole cents, so `Total`
+// is shares × price rounded. A PLN `Total` was converted from the unrounded shares × price, and
+// one further off includes another charge (docs/stocks/14-trade-total.md).
+fn traded_total(
+    fields: &[String],
+    columns: &ColumnMap,
+    number: Decimal,
+    price: Amount,
+) -> Option<Decimal> {
+    let total = parse_decimal(optional_field(fields, columns.total.total)?).ok()?;
+    let currency = parse_currency(optional_field(fields, columns.total.total_currency)?).ok()?;
+    (currency == price.currency && (total - number * price.value).abs() < CENT).then_some(total)
 }
 
 fn parse_interest_row(fields: &[String], columns: &ColumnMap, row: &str) -> Result<Interest> {

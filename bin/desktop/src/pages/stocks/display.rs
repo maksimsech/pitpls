@@ -230,12 +230,30 @@ pub fn rate_cell(rate: Decimal, nbp_date: NaiveDate, currency: Currency) -> Disp
     }
 }
 
-pub fn conversion(shares_value: Decimal, price: Amount, rate: Decimal) -> Vec<DisplayText> {
-    let mut parts = vec![shares(shares_value), DisplayText::plain("×"), amount(price)];
+// `total` is the provider's total with its name, when the value is that and not shares × price.
+pub fn conversion(
+    shares_value: Decimal,
+    price: Amount,
+    total: Option<(Amount, &str)>,
+    rate: Decimal,
+) -> Vec<DisplayText> {
+    let mut parts = match total {
+        Some((total, provider)) => vec![
+            amount(total),
+            DisplayText::plain(format!("({provider} total)")),
+        ],
+        None => vec![shares(shares_value), DisplayText::plain("×"), amount(price)],
+    };
     if price.currency != Currency::PLN {
         parts.push(DisplayText::plain(format!("× {rate}")));
     }
     parts
+}
+
+pub fn total_note(provider: &str, currency: Currency) -> String {
+    format!(
+        "Counts the amount {provider} actually paid or credited in {currency} (rounded to cents), not shares × price"
+    )
 }
 
 /// A fee in another currency than the price has its own rate, which the
@@ -382,16 +400,27 @@ fn sale_steps(sale: &CalculatedSale, listing: Option<&Listing>) -> Vec<Step> {
         ),
     };
 
+    let mut income = vec![
+        StepLine::Formula(conversion(
+            sale.shares,
+            sale.price,
+            sale.from_total
+                .then_some((sale.value, sale.provider.as_str())),
+            sale.nbp_rate,
+        )),
+        StepLine::Result(vec![pln(sale.income)]),
+        StepLine::Caption(format!("{settled} · {nbp} · adds to Income (C-22){counts_in}").into()),
+    ];
+    if sale.from_total {
+        income.push(StepLine::Caption(
+            total_note(&sale.provider, sale.value.currency).into(),
+        ));
+    }
+
     vec![
         Step {
             title: "Income",
-            lines: vec![
-                StepLine::Formula(conversion(sale.shares, sale.price, sale.nbp_rate)),
-                StepLine::Result(vec![pln(sale.income)]),
-                StepLine::Caption(
-                    format!("{settled} · {nbp} · adds to Income (C-22){counts_in}").into(),
-                ),
-            ],
+            lines: income,
         },
         Step {
             title: "Costs",
@@ -562,10 +591,7 @@ fn record_row(
                 DisplayText::plain(provider.clone()),
                 shares(*number),
                 amount(*price),
-                amount(Amount {
-                    value: number * price.value,
-                    currency: price.currency,
-                }),
+                record.value().map_or_else(dash, amount),
                 amount(*fee),
             ];
             let (steps, lots) = match &record.action {
@@ -631,6 +657,8 @@ fn record_row(
 }
 
 struct LotView<'a> {
+    value: Amount,
+    from_total: bool,
     nbp_rate: Decimal,
     nbp_date: NaiveDate,
     cost: Decimal,
@@ -652,6 +680,8 @@ fn buy_steps(record: &Stock, buy: &StockBuy, tax: &StockTaxData, year: i32) -> V
     let open = tax.open_lots.iter().find(|lot| lot.buy_id == record.id);
     let lot = match (open, taken.last()) {
         (Some(open), _) => Some(LotView {
+            value: open.lot_value,
+            from_total: open.from_total,
             nbp_rate: open.nbp_rate,
             nbp_date: open.nbp_date,
             cost: open.lot_cost,
@@ -659,6 +689,8 @@ fn buy_steps(record: &Stock, buy: &StockBuy, tax: &StockTaxData, year: i32) -> V
             splits: &open.splits,
         }),
         (None, Some((_, lot))) => Some(LotView {
+            value: lot.lot_value,
+            from_total: lot.from_total,
             nbp_rate: lot.nbp_rate,
             nbp_date: lot.nbp_date,
             cost: lot.lot_cost,
@@ -745,14 +777,26 @@ fn buy_steps(record: &Stock, buy: &StockBuy, tax: &StockTaxData, year: i32) -> V
         EntryStyle::Strong,
     ));
 
+    let mut cost = vec![
+        StepLine::Formula(conversion(
+            buy.number,
+            buy.price,
+            lot.from_total.then_some((lot.value, buy.provider.as_str())),
+            lot.nbp_rate,
+        )),
+        StepLine::Result(vec![pln(lot.cost)]),
+        StepLine::Caption(format!("{nbp} · a cost only when its shares are sold").into()),
+    ];
+    if lot.from_total {
+        cost.push(StepLine::Caption(
+            total_note(&buy.provider, lot.value.currency).into(),
+        ));
+    }
+
     vec![
         Step {
             title: "Cost",
-            lines: vec![
-                StepLine::Formula(conversion(buy.number, buy.price, lot.nbp_rate)),
-                StepLine::Result(vec![pln(lot.cost)]),
-                StepLine::Caption(format!("{nbp} · a cost only when its shares are sold").into()),
-            ],
+            lines: cost,
         },
         Step {
             title: "Fee",

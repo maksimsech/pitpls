@@ -2,7 +2,7 @@ use super::{
     StocksPage,
     display::{
         Action, BuyPrefill, conversion, fee_rate, lots_count, names, price_text, ratio,
-        shares_count, shares_text, trade_date,
+        shares_count, shares_text, total_note, trade_date,
     },
     exchange::{self, Catalog, ExchangeList, PickerState},
 };
@@ -74,6 +74,7 @@ pub struct StockEditor {
     shares: Entity<InputState>,
     price: Entity<InputState>,
     price_currency: Entity<ChoiceState<Currency>>,
+    kept_amount: Option<KeptAmount>,
     fee: Entity<InputState>,
     fee_currency: Entity<ChoiceState<Currency>>,
     tax_paid: Entity<InputState>,
@@ -94,9 +95,18 @@ pub struct StockEditor {
     _subscriptions: Vec<Subscription>,
 }
 
+// An imported trade's amount holds only for the shares and price it came with.
+#[derive(Clone, Copy)]
+struct KeptAmount {
+    shares: Decimal,
+    price: (Decimal, Currency),
+    amount: Decimal,
+}
+
 struct TradeValues<'a> {
     number: Decimal,
     price: Amount,
+    amount: Option<Decimal>,
     fee: Amount,
     provider: &'a str,
     settlement: Option<NaiveDate>,
@@ -108,6 +118,7 @@ fn trade_values(record: &Stock) -> Option<TradeValues<'_>> {
         StockAction::Buy(buy) => Some(TradeValues {
             number: buy.number,
             price: buy.price,
+            amount: buy.amount,
             fee: buy.fee,
             provider: &buy.provider,
             settlement: buy.settlement_date,
@@ -116,6 +127,7 @@ fn trade_values(record: &Stock) -> Option<TradeValues<'_>> {
         StockAction::Sell(sell) => Some(TradeValues {
             number: sell.number,
             price: sell.price,
+            amount: sell.amount,
             fee: sell.fee,
             provider: &sell.provider,
             settlement: sell.settlement_date,
@@ -193,6 +205,13 @@ impl StockEditor {
                 cx,
             ),
             price_currency: form::currency(currency, window, cx),
+            kept_amount: trade.as_ref().and_then(|trade| {
+                trade.amount.map(|amount| KeptAmount {
+                    shares: trade.number,
+                    price: (trade.price.value, trade.price.currency),
+                    amount,
+                })
+            }),
             fee: form::input(
                 trade
                     .as_ref()
@@ -286,6 +305,13 @@ impl StockEditor {
         (self.known_exchange(cx) != Some(picked)).then_some(picked)
     }
 
+    fn amount(&self, cx: &App) -> Option<Decimal> {
+        let kept = self.kept_amount?;
+        let shares = form::parsed_decimal(&self.shares, cx)?;
+        let price = form::parsed_amount(&self.price, &self.price_currency, cx)?;
+        (shares == kept.shares && price == kept.price).then_some(kept.amount)
+    }
+
     fn settles_key(&self, cx: &App) -> Option<SettlesKey> {
         if !self.is_trade() {
             return None;
@@ -324,6 +350,7 @@ impl StockEditor {
                     shares: form::amount(&self.shares, "Shares", cx)?,
                     price: form::amount(&self.price, "Price per share", cx)?,
                     price_currency: form::selected(&self.price_currency, "Price currency", cx)?,
+                    amount: self.amount(cx),
                     fee: form::amount(&self.fee, "Fee", cx)?,
                     fee_currency: form::selected(&self.fee_currency, "Fee currency", cx)?,
                     provider: form::required(&self.provider, "Provider", cx)?,
@@ -379,6 +406,7 @@ impl StockEditor {
                 let trade = DraftTrade {
                     shares: form::parsed_decimal(&self.shares, cx)?,
                     price: form::parsed_amount(&self.price, &self.price_currency, cx)?,
+                    amount: self.amount(cx),
                     fee: form::parsed_amount(&self.fee, &self.fee_currency, cx)?,
                     provider,
                     settlement: form::picked_day(&self.settlement, cx),
@@ -513,6 +541,7 @@ enum DraftAction {
 struct DraftTrade {
     shares: Decimal,
     price: (Decimal, Currency),
+    amount: Option<Decimal>,
     fee: (Decimal, Currency),
     provider: String,
     settlement: Option<NaiveDate>,
@@ -527,6 +556,7 @@ impl Draft {
         let trade = |trade: &DraftTrade| StockBuy {
             number: trade.shares,
             price: to_amount(trade.price),
+            amount: trade.amount,
             fee: to_amount(trade.fee),
             provider: trade.provider.clone(),
             settlement_date: trade.settlement,
@@ -537,6 +567,7 @@ impl Draft {
                 let StockBuy {
                     number,
                     price,
+                    amount,
                     fee,
                     provider,
                     settlement_date,
@@ -544,6 +575,7 @@ impl Draft {
                 StockAction::Sell(StockSell {
                     number,
                     price,
+                    amount,
                     fee,
                     provider,
                     settlement_date,
@@ -690,7 +722,13 @@ impl PreviewView {
                 Self {
                     settles: Some(sale.settlement_date),
                     rate: rate_note(sale.price.currency, sale.nbp_date),
-                    formula: conversion(sale.shares, sale.price, sale.nbp_rate),
+                    formula: conversion(
+                        sale.shares,
+                        sale.price,
+                        sale.from_total
+                            .then_some((sale.value, sale.provider.as_str())),
+                        sale.nbp_rate,
+                    ),
                     value: Some((pln(sale.income), "income")),
                     lines: vec![line(fifo_line(sale))],
                     results: vec![
@@ -707,7 +745,9 @@ impl PreviewView {
                             Some(tax_note.to_owned()),
                         ),
                     ],
-                    caption: None,
+                    caption: sale.from_total.then(|| {
+                        format!("{}.", total_note(&sale.provider, sale.value.currency)).into()
+                    }),
                 }
             }
             StockPreview::Buy { lot, holding } => {
@@ -728,7 +768,13 @@ impl PreviewView {
                 Self {
                     settles: None,
                     rate: rate_note(lot.price.currency, lot.nbp_date),
-                    formula: conversion(lot.lot_shares, lot.price, lot.nbp_rate),
+                    formula: conversion(
+                        lot.lot_shares,
+                        lot.price,
+                        lot.from_total
+                            .then_some((lot.lot_value, lot.provider.as_str())),
+                        lot.nbp_rate,
+                    ),
                     value: Some((pln(lot.lot_cost), "lot cost")),
                     lines: vec![line(format!(
                         "New lot in {}. It counts as a cost only when its shares are sold.",
@@ -746,7 +792,9 @@ impl PreviewView {
                             None,
                         ),
                     ],
-                    caption: None,
+                    caption: lot.from_total.then(|| {
+                        format!("{}.", total_note(&lot.provider, lot.lot_value.currency)).into()
+                    }),
                 }
             }
             StockPreview::Split { lots, .. } => {

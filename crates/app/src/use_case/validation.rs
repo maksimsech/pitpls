@@ -10,6 +10,7 @@ pub enum AmountField {
     TaxPaid,
     Shares,
     Price,
+    Amount,
     SplitBefore,
     SplitAfter,
 }
