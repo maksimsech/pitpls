@@ -1,6 +1,7 @@
 use super::exchange::{self, Catalog, PickerState};
 use crate::{
     components::{Status, dialog, form},
+    i18n::plural,
     services::Services,
     theme::palette,
 };
@@ -11,9 +12,7 @@ use gpui_kit::{
 };
 use pitpls_app::use_case::stock::{self, SetExchangeInput};
 use pitpls_core::common::Mic;
-
-const DESCRIPTION: &str = "PIT/ZG puts each sale in the country of its exchange. The exchange is \
-                           saved on the instrument, so every record of it uses the same one.";
+use rust_i18n::t;
 
 #[derive(Clone)]
 pub struct ExchangeRow {
@@ -31,7 +30,7 @@ pub enum ExchangeDialogEvent {
 
 pub struct ExchangeDialog {
     services: Services,
-    title: &'static str,
+    title: SharedString,
     rows: Vec<(ExchangeRow, Entity<PickerState>)>,
     catalog: Entity<Catalog>,
     filled: Option<usize>,
@@ -45,7 +44,7 @@ impl ExchangeDialog {
     pub fn open(
         services: Services,
         catalog: Entity<Catalog>,
-        title: &'static str,
+        title: impl Into<SharedString>,
         rows: Vec<ExchangeRow>,
         window: &mut Window,
         cx: &mut App,
@@ -60,7 +59,7 @@ impl ExchangeDialog {
             });
             Self {
                 services,
-                title,
+                title: title.into(),
                 rows,
                 catalog,
                 filled: None,
@@ -118,22 +117,22 @@ impl ExchangeDialog {
             self.close(cx);
             return;
         }
-        let message = if inputs.len() == 1 {
-            "Exchange saved."
-        } else {
-            "Exchanges saved."
-        };
+        let message = plural("exchange.saved", inputs.len() as u64);
         self.status.begin_save();
         self.status.task = Some(self.services.run(
             window,
             cx,
             move |app| async move {
                 stock::set_exchanges(&app, inputs).await?;
-                Ok(message.to_owned())
+                Ok(message.into_owned())
             },
             |this, result, window, cx| {
                 if this.status.saved(result) {
-                    let message = this.status.message.take().unwrap_or_default();
+                    let message = this
+                        .status
+                        .message
+                        .take()
+                        .map_or_else(SharedString::default, |message| message.text());
                     window.close_dialog(cx);
                     cx.emit(ExchangeDialogEvent::Saved(message));
                 }
@@ -176,7 +175,7 @@ impl ExchangeDialog {
                         exchange::picker(
                             picker,
                             &self.catalog,
-                            format!("Exchange for {} in {}", row.ticker, row.provider),
+                            t!("exchange.for", ticker = row.ticker, provider = row.provider),
                             busy,
                             cx,
                         )
@@ -185,25 +184,34 @@ impl ExchangeDialog {
                 )
         });
         let body = v_flex()
-            .child(div().pb(px(14.)).text_color(p.muted).child(DESCRIPTION))
+            .child(
+                div()
+                    .pb(px(14.))
+                    .text_color(p.muted)
+                    .child(t!("exchange.description")),
+            )
             .children(rows)
             .when_some(refresh_error, |body, error| {
                 body.child(form::hint(error, cx).text_color(p.warning))
             })
-            .when_some(self.status.error.clone(), |body, error| {
-                body.child(form::error(error, cx).mt(px(8.)))
+            .when_some(self.status.error.as_ref(), |body, error| {
+                body.child(form::error(error.text(), cx).mt(px(8.)))
             });
         dialog::editor(
             self,
             dialog,
             body,
-            if busy { "Saving…" } else { "Save" },
+            if busy {
+                t!("common.saving")
+            } else {
+                t!("common.save")
+            },
             |this| &this.status,
             Self::save,
             Self::close,
             cx,
         )
-        .title(div().text_size(px(15.)).child(self.title))
+        .title(div().text_size(px(15.)).child(self.title.clone()))
         .w(px(620.))
         .bg(p.popover)
         .border_color(p.strong_line)

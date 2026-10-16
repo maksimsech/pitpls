@@ -8,6 +8,7 @@ use gpui_kit::{
     prelude::FluentBuilder,
     *,
 };
+use rust_i18n::t;
 use std::time::Duration;
 
 /// The kit's `Clipboard` only swaps its icon for a check and can't add the
@@ -53,7 +54,7 @@ impl RenderOnce for CopyButton {
             .hover(cx.theme().button_hover)
             .active(cx.theme().button_active);
         let faint = p.faint;
-        let tooltip = SharedString::from(format!("Copy {}", self.value));
+        let tooltip = SharedString::from(t!("common.copy_value", value = self.value));
         let value = self.value;
         Button::new(self.id)
             .custom(variant)
@@ -63,7 +64,9 @@ impl RenderOnce for CopyButton {
             } else {
                 IconName::Copy
             })
-            .when(copied && !self.check_only, |button| button.label("Copied"))
+            .when(copied && !self.check_only, |button| {
+                button.label(t!("common.copied"))
+            })
             .when(!copied, |button| button.text_color(faint))
             .tooltip(tooltip.clone())
             .accessibility_label(tooltip)

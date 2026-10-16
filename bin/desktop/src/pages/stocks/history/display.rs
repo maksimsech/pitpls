@@ -1,13 +1,13 @@
 use crate::{
     components::records::RowDisplay,
     format::{DisplayText, amount, money, pln, shares},
+    i18n::plural,
     pages::{
         records::day,
         stocks::{
-            counted,
             display::{
-                InstrumentKey, lots_count, price_text, rate_cell, ratio, shares_count, shares_text,
-                trade_date,
+                Action, InstrumentKey, lots_count, price_text, rate_cell, ratio, shares_count,
+                shares_in_lots, shares_text, trade_date,
             },
             set_exchange::ExchangeRow,
         },
@@ -25,6 +25,7 @@ use pitpls_core::{
     time,
 };
 use rust_decimal::{Decimal, prelude::ToPrimitive};
+use rust_i18n::t;
 use std::{
     collections::{BTreeMap, BTreeSet, HashMap},
     ops::Range,
@@ -167,12 +168,12 @@ impl HistoryDisplay {
 
         let open = replay.open_lots.iter().map(|lot| lot.open).sum::<Decimal>();
         let holding = match replay.open_lots.len() {
-            0 => "No shares".to_owned(),
-            lots => format!("{} in {}", shares_count(open), lots_count(lots)),
+            0 => t!("sale.no_shares").into_owned(),
+            lots => shares_in_lots(open, lots),
         };
         let (exchange, warning) = match &history.listing {
             Some(listing) => (format!("{} · {}", listing.name, listing.country), false),
-            None => ("No exchange".to_owned(), true),
+            None => (t!("stocks.no_exchange").into_owned(), true),
         };
         let currencies = records
             .iter()
@@ -197,12 +198,12 @@ impl HistoryDisplay {
         };
         let facts = vec![
             Fact {
-                label: "Exchange · PIT/ZG country".into(),
+                label: t!("history.exchange").into(),
                 value: exchange.into(),
                 warning,
             },
             Fact {
-                label: "Currency".into(),
+                label: t!("history.currency").into(),
                 value: if currencies.is_empty() {
                     "—".into()
                 } else {
@@ -211,7 +212,7 @@ impl HistoryDisplay {
                 warning: false,
             },
             Fact {
-                label: format!("Holding on 31.12.{year}").into(),
+                label: t!("history.holding_on", year = year).into(),
                 value: holding.into(),
                 warning: false,
             },
@@ -222,18 +223,20 @@ impl HistoryDisplay {
             .filter(|record| matches!(record.action, StockAction::Split(_)))
             .count();
         let lots_caption = if splits == 0 {
-            "bar length = shares · each part says where the shares went"
+            t!("history.lots_caption")
         } else {
-            "bar length = shares after the split · each part says where the shares went"
+            t!("history.lots_caption_split")
         };
-        let and_splits = match splits {
-            0 => "",
-            1 => ", and the split",
-            _ => ", and the splits",
+        let timeline_caption = match splits {
+            0 => "history.timeline_caption",
+            1 => "history.timeline_caption_split",
+            _ => "history.timeline_caption_splits",
         };
-        let timeline_caption = format!(
-            "every record of {} in {} up to 31.12.{year}{and_splits}, oldest first",
-            key.ticker, key.provider
+        let timeline_caption = t!(
+            timeline_caption,
+            ticker = key.ticker,
+            provider = key.provider,
+            year = year
         );
 
         let mut legend = replay
@@ -241,11 +244,17 @@ impl HistoryDisplay {
             .iter()
             .filter_map(|sale| {
                 let shade = shades.get(sale.id.as_str())?;
-                Some((*shade, format!("sold {}", trade_date(sale.time)).into()))
+                Some((
+                    *shade,
+                    t!("history.sold", date = trade_date(sale.time)).into(),
+                ))
             })
             .collect::<Vec<_>>();
         if !open.is_zero() {
-            legend.push((Shade::Open, format!("open, moves into {}", year + 1).into()));
+            legend.push((
+                Shade::Open,
+                t!("history.open_moves", year = year + 1).into(),
+            ));
         }
 
         let holdings = replay
@@ -294,13 +303,13 @@ impl HistoryDisplay {
         for group in &mut years {
             let [buys, sales, splits] = counts.get(&group.year).copied().unwrap_or_default();
             group.counts = [
-                (buys, "buy", "buys"),
-                (sales, "sale", "sales"),
-                (splits, "split", "splits"),
+                (buys, "count.buys"),
+                (sales, "stocks.sales_count"),
+                (splits, "count.splits"),
             ]
             .into_iter()
-            .filter(|(count, _, _)| *count > 0)
-            .map(|(count, one, many)| counted(count, one, many))
+            .filter(|(count, _)| *count > 0)
+            .map(|(count, key)| plural(key, count as u64))
             .collect::<Vec<_>>()
             .join(" · ")
             .into();
@@ -311,18 +320,30 @@ impl HistoryDisplay {
             .open_lots
             .iter()
             .map(|lot| {
-                let fee = if lot.fee_part.is_zero() {
-                    String::new()
-                } else {
-                    format!(" + fee {} PLN", money(lot.fee_part).full)
-                };
-                format!(
-                    "{} · lot {} at {} · cost {} PLN{fee} when sold",
+                let (shares, date, price, cost) = (
                     shares_count(lot.open),
                     trade_date(lot.bought),
                     price_text(lot.price),
-                    money(lot.cost).full
-                )
+                    money(lot.cost).full,
+                );
+                if lot.fee_part.is_zero() {
+                    t!(
+                        "history.carried",
+                        shares = shares,
+                        date = date,
+                        price = price,
+                        cost = cost
+                    )
+                } else {
+                    t!(
+                        "history.carried_fee",
+                        shares = shares,
+                        date = date,
+                        price = price,
+                        cost = cost,
+                        fee = money(lot.fee_part).full
+                    )
+                }
                 .into()
             })
             .collect();
@@ -375,17 +396,27 @@ fn lot_bars(
                     let scaled = taken.taken * lot.shares / taken.lot_shares;
                     let sold = trade_date(sale.time);
                     let tooltip = if scaled == taken.taken {
-                        format!("{} sold {sold}", shares_count(taken.taken))
+                        t!(
+                            "history.part_sold",
+                            shares = shares_count(taken.taken),
+                            date = sold
+                        )
                     } else {
-                        format!(
-                            "{} sold {sold}, {} after the split",
-                            shares_count(taken.taken),
-                            shares_text(scaled)
+                        t!(
+                            "history.part_sold_split",
+                            shares = shares_count(taken.taken),
+                            date = sold,
+                            scaled = shares_text(scaled)
                         )
                     };
                     BarPart {
                         weight: weight(scaled),
-                        label: format!("{} · sold {sold}", shares_text(scaled)).into(),
+                        label: t!(
+                            "history.part_label",
+                            shares = shares_text(scaled),
+                            date = sold
+                        )
+                        .into(),
                         tooltip: tooltip.into(),
                         shade: shades
                             .get(sale.id.as_str())
@@ -397,37 +428,39 @@ fn lot_bars(
             if !lot.open.is_zero() {
                 parts.push(BarPart {
                     weight: weight(lot.open),
-                    label: format!("{} open", shares_text(lot.open)).into(),
-                    tooltip: format!(
-                        "{} open on 31.12.{year}, moving into {}",
-                        shares_count(lot.open),
-                        year + 1
+                    label: t!("history.part_open", shares = shares_text(lot.open)).into(),
+                    tooltip: t!(
+                        "history.part_open_tooltip",
+                        shares = shares_count(lot.open),
+                        year = year,
+                        next = year + 1
                     )
                     .into(),
                     shade: Shade::Open,
                 });
             }
-            let bought = format!(
-                "{} at {}",
-                shares_text(buy.number),
-                money(buy.price.value).full
+            let bought = t!(
+                "history.lot_at",
+                shares = shares_text(buy.number),
+                price = money(buy.price.value).full
             );
             let label = if lot.splits.is_empty() {
                 bought
             } else {
-                format!(
-                    "{bought} → {} at {}",
-                    shares_text(lot.shares),
-                    money(lot.price.value).full
+                t!(
+                    "history.lot_split_to",
+                    bought = bought,
+                    shares = shares_text(lot.shares),
+                    price = money(lot.price.value).full
                 )
             };
             let status = if lot.open.is_zero() {
-                format!("{} · closed", shares_text(lot.shares))
+                t!("history.lot_closed", shares = shares_text(lot.shares))
             } else {
-                format!(
-                    "{} · {} open",
-                    shares_text(lot.shares),
-                    shares_text(lot.open)
+                t!(
+                    "history.lot_open",
+                    shares = shares_text(lot.shares),
+                    open = shares_text(lot.open)
                 )
             };
             LotBar {
@@ -453,10 +486,10 @@ fn signed(sign: &str, value: DisplayText) -> DisplayText {
     }
 }
 
-fn tag(name: &str, detail: &str) -> DisplayText {
+fn tag(action: Action, detail: &str) -> DisplayText {
     DisplayText {
         extra: detail.to_owned().into(),
-        ..DisplayText::plain(name.to_owned())
+        ..DisplayText::plain(action.title())
     }
 }
 
@@ -487,7 +520,7 @@ fn event(
             let lot = replayed.lot(&record.id);
             let cells = vec![
                 day(record.time),
-                tag("Buy", "new lot"),
+                tag(Action::Buy, &t!("history.new_lot")),
                 signed("+", shares(buy.number)),
                 amount(buy.price),
                 lot.as_ref().map_or_else(dash, |lot| {
@@ -498,13 +531,13 @@ fn event(
                 holding_cell(holding),
             ];
             let fee = lot.as_ref().map_or(buy.fee.value, |lot| lot.fee);
-            ("Buy", cells, fee_note(buy, fee).into_iter().collect())
+            (Action::Buy, cells, fee_note(buy, fee).into_iter().collect())
         }
         StockAction::Sell(sell) => {
             let sale = sales.iter().find(|sale| sale.id == record.id);
             let cells = vec![
                 day(record.time),
-                tag("Sell", ""),
+                tag(Action::Sell, ""),
                 signed("−", shares(sell.number)),
                 amount(sell.price),
                 sale.map_or_else(dash, |sale| {
@@ -514,12 +547,16 @@ fn event(
                 sale.map_or_else(dash, |sale| money(sale.profit)),
                 holding_cell(holding),
             ];
-            ("Sell", cells, sale.map(sale_note).into_iter().collect())
+            (
+                Action::Sell,
+                cells,
+                sale.map(sale_note).into_iter().collect(),
+            )
         }
         StockAction::Split(split) => {
             let cells = vec![
                 day(record.time),
-                tag("Split", &ratio(split.before, split.after)),
+                tag(Action::Split, &ratio(split.before, split.after)),
                 DisplayText::plain(split_factor(split)),
                 dash(),
                 dash(),
@@ -527,14 +564,20 @@ fn event(
                 dash(),
                 holding_cell(holding),
             ];
-            ("Split", cells, split_notes(record, replayed))
+            (Action::Split, cells, split_notes(record, replayed))
         }
     };
     let row = RowDisplay {
         id: record.id.clone().into(),
         time: record.time,
         cells,
-        label: format!("{action} {} {}", record.ticker, trade_date(record.time)).into(),
+        label: format!(
+            "{} {} {}",
+            action.title(),
+            record.ticker,
+            trade_date(record.time)
+        )
+        .into(),
         ..Default::default()
     };
     (row, notes)
@@ -552,19 +595,24 @@ fn fee_note(buy: &StockBuy, fee_pln: Decimal) -> Option<SharedString> {
     if buy.fee.value.is_zero() {
         return None;
     }
-    let fee = if buy.fee.currency == Currency::PLN {
-        format!("Fee {} PLN", money(fee_pln).full)
+    let note = if buy.fee.currency == Currency::PLN {
+        t!("history.fee_note_pln", pln = money(fee_pln).full)
     } else {
-        format!("Fee {} = {} PLN", price_text(buy.fee), money(fee_pln).full)
+        t!(
+            "history.fee_note",
+            fee = price_text(buy.fee),
+            pln = money(fee_pln).full
+        )
     };
-    Some(format!("{fee}, counted when the shares are sold").into())
+    Some(note.into())
 }
 
+/// Every part, unlike `and_list`, which shortens long lists.
 fn join_and(parts: &[String]) -> String {
     match parts {
         [] => String::new(),
         [one] => one.clone(),
-        [rest @ .., last] => format!("{} and {last}", rest.join(", ")),
+        [rest @ .., last] => t!("list.and", items = rest.join(", "), last = last).into_owned(),
     }
 }
 
@@ -573,34 +621,39 @@ fn sale_note(sale: &CalculatedSale) -> SharedString {
         .matches
         .iter()
         .map(|lot| {
-            let from = format!("lot {}", trade_date(lot.bought));
+            let date = trade_date(lot.bought);
             let taken = shares_text(lot.taken);
             if !lot.after.is_zero() {
-                format!("{taken} of {} from {from}", shares_text(lot.before))
+                let before = shares_text(lot.before);
+                t!(
+                    "history.took_part",
+                    taken = taken,
+                    before = before,
+                    date = date
+                )
             } else if lot.before == lot.lot_shares {
-                format!("all {taken} of {from} (closed it)")
+                t!("history.took_all", taken = taken, date = date)
             } else {
-                format!("the last {taken} from {from} (closed it)")
+                t!("history.took_last", taken = taken, date = date)
             }
+            .into_owned()
         })
         .collect::<Vec<_>>();
     if sale.uncovered > Decimal::ZERO {
-        parts.push(format!(
-            "{} with no buy, at cost 0",
-            shares_text(sale.uncovered)
-        ));
+        parts.push(t!("history.took_no_buy", shares = shares_text(sale.uncovered)).into_owned());
     }
     let settles = sale.settlement_date.year();
-    let counts_in = if settles == time::tax_date(sale.time).year() {
-        String::new()
+    let (parts, costs) = (join_and(&parts), money(sale.costs).full);
+    if settles == time::tax_date(sale.time).year() {
+        t!("history.took", parts = parts, costs = costs)
     } else {
-        format!(" · counts in {settles}")
-    };
-    format!(
-        "Took {} · costs {} PLN{counts_in}",
-        join_and(&parts),
-        money(sale.costs).full
-    )
+        t!(
+            "history.took_counts_in",
+            parts = parts,
+            costs = costs,
+            year = settles
+        )
+    }
     .into()
 }
 
@@ -621,19 +674,19 @@ fn split_notes(record: &Stock, replayed: &Replayed) -> Vec<SharedString> {
         }
     }
     if changed.is_empty() {
-        return vec!["No open lots on that day".into()];
+        return vec![t!("sale.no_open_lots").into()];
     }
     changed
         .into_iter()
         .map(|((bought, _), (step, cost))| {
-            format!(
-                "Lot {}: {} at {} → {} at {}; its cost stays {} PLN",
-                trade_date(bought),
-                shares_text(step.lot_shares_before),
-                money(step.price_before.value).full,
-                shares_text(step.lot_shares_after),
-                price_text(step.price_after),
-                money(cost).full
+            t!(
+                "history.split_lot",
+                date = trade_date(bought),
+                before = shares_text(step.lot_shares_before),
+                price_before = money(step.price_before.value).full,
+                after = shares_text(step.lot_shares_after),
+                price_after = price_text(step.price_after),
+                cost = money(cost).full
             )
             .into()
         })

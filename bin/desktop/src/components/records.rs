@@ -17,6 +17,7 @@ use gpui_kit::{
     *,
 };
 use pitpls_core::time;
+use rust_i18n::t;
 use std::rc::Rc;
 
 pub const PADDING: f32 = 12.;
@@ -46,6 +47,7 @@ pub enum CellStyle {
     Rate,
 }
 
+/// `label` is a message key.
 pub struct RecordColumn {
     pub label: &'static str,
     pub style: CellStyle,
@@ -215,7 +217,7 @@ pub fn heading(column: &RecordColumn, width: Pixels) -> Div {
             matches!(column.style, CellStyle::Number | CellStyle::Rate),
             |cell| cell.pl(px(NUMBER_INSET)).text_right(),
         )
-        .child(column.label)
+        .child(t!(column.label))
 }
 
 /// Plain text: hundreds of selectable cells are too slow.
@@ -410,6 +412,7 @@ pub enum StepLine {
     },
 }
 
+/// `title` is a message key.
 #[derive(PartialEq)]
 pub struct Step {
     pub title: &'static str,
@@ -486,7 +489,7 @@ fn step(index: usize, step: &Step, cx: &App) -> Stateful<Div> {
                         .text_size(px(11.))
                         .child((index + 1).to_string()),
                 )
-                .child(step.title),
+                .child(t!(step.title)),
         )
         .children(step.lines.iter().enumerate().map(|(index, line)| {
             let id = ("line", index);
@@ -537,6 +540,7 @@ fn step(index: usize, step: &Step, cx: &App) -> Stateful<Div> {
         }))
 }
 
+/// The result labels are message keys.
 pub struct Preview {
     pub nbp_date: NaiveDate,
     pub formula: Vec<DisplayText>,
@@ -561,7 +565,7 @@ pub fn preview_frame(note: Option<SharedString>, cx: &App) -> Div {
                 .gap_2()
                 .text_size(px(12.))
                 .text_color(p.faint)
-                .child("Preview")
+                .child(t!("records.preview"))
                 .children(note),
         )
 }
@@ -574,7 +578,7 @@ pub fn preview_band(preview: &Result<Preview, SharedString>, cx: &App) -> Div {
     let p = *palette(cx);
     match preview {
         Ok(preview) => preview_frame(
-            Some(format!("NBP date {}", date(preview.nbp_date).main).into()),
+            Some(t!("records.nbp_date", date = date(preview.nbp_date).main).into()),
             cx,
         )
         .child(
@@ -602,7 +606,7 @@ pub fn preview_band(preview: &Result<Preview, SharedString>, cx: &App) -> Div {
                     .text_size(px(12.))
                     .text_color(p.muted)
                     .children(preview.results.iter().map(|(label, result)| {
-                        h_flex().gap(px(4.)).child(*label).child(preview_value(
+                        h_flex().gap(px(4.)).child(t!(*label)).child(preview_value(
                             *label,
                             result,
                             div().text_color(p.text),
@@ -636,6 +640,7 @@ enum LotCell {
     Rate,
 }
 
+/// `label` is a message key.
 struct LotColumn {
     label: &'static str,
     cell: LotCell,
@@ -657,31 +662,31 @@ const fn lot_column(label: &'static str, cell: LotCell, width: f32, min: f32) ->
 }
 
 const LOT_COLUMNS: [LotColumn; 9] = [
-    lot_column("Bought", LotCell::Muted, 80., 72.),
+    lot_column("lots.bought", LotCell::Muted, 80., 72.),
     LotColumn {
         hide_stacked: true,
-        ..lot_column("Lot", LotCell::Shares, 64., 44.)
+        ..lot_column("lots.lot", LotCell::Shares, 64., 44.)
     },
     LotColumn {
         hide_compact: true,
-        ..lot_column("Before", LotCell::Shares, 64., 44.)
+        ..lot_column("lots.before", LotCell::Shares, 64., 44.)
     },
-    lot_column("Taken", LotCell::Taken, 64., 44.),
+    lot_column("lots.taken", LotCell::Taken, 64., 44.),
     LotColumn {
         hide_compact: true,
-        ..lot_column("After", LotCell::Shares, 64., 44.)
+        ..lot_column("lots.after", LotCell::Shares, 64., 44.)
     },
     LotColumn {
         hide_stacked: true,
-        ..lot_column("Price", LotCell::Number, 112., 80.)
+        ..lot_column("lots.price", LotCell::Number, 112., 80.)
     },
     LotColumn {
         hide_stacked: true,
-        ..lot_column("NBP rate", LotCell::Rate, 112., 88.)
+        ..lot_column("lots.nbp_rate", LotCell::Rate, 112., 88.)
     },
     // Takes the rest of the row.
-    lot_column("Cost, PLN", LotCell::Number, 0., 88.),
-    lot_column("Buy fee, PLN", LotCell::Number, 96., 72.),
+    lot_column("lots.cost", LotCell::Number, 0., 88.),
+    lot_column("lots.buy_fee", LotCell::Number, 96., 72.),
 ];
 
 const LOT_GAP: f32 = 8.;
@@ -734,7 +739,7 @@ fn lot_table(table: &LotTable, layout: &TableLayout, link: Option<AnyElement>, c
         .border_color(p.line)
         .text_size(px(12.))
         .text_color(p.faint)
-        .children(lot_columns(layout).map(|(_, column)| lot_slot(column).child(column.label)));
+        .children(lot_columns(layout).map(|(_, column)| lot_slot(column).child(t!(column.label))));
     let rows = table.rows.iter().enumerate().map(|(row_index, row)| {
         let cells = lot_columns(layout).map(|(index, column)| {
             let value = &row.cells[index];
@@ -889,7 +894,7 @@ pub fn details(
                 .gap(px(6.))
                 .text_size(px(12.))
                 .text_color(p.faint)
-                .child(div().flex_shrink_0().child("Record ID"))
+                .child(div().flex_shrink_0().child(t!("records.record_id")))
                 .child(
                     div()
                         .min_w_0()
@@ -924,16 +929,16 @@ fn record_time(value: DateTime<Utc>, short: bool, cx: &App) -> Div {
         .ml(px(14.))
         .gap(px(6.))
         .font_features(tabular_digits())
-        .child("Time")
+        .child(t!("records.time"))
         .child(
             div()
                 .text_color(palette(cx).muted)
                 .child(local.format(DATE_TIME_FORMAT).to_string()),
         )
         .child(if short {
-            "Warsaw".to_owned()
+            t!("records.warsaw")
         } else {
-            format!("Warsaw · {} UTC", utc.format(utc_format))
+            t!("records.warsaw_utc", time = utc.format(utc_format))
         })
 }
 

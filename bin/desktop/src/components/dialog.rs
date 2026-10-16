@@ -9,6 +9,7 @@ use gpui_kit::{
     },
     *,
 };
+use rust_i18n::t;
 
 actions!(record_editor, [SaveRecord]);
 
@@ -38,7 +39,7 @@ pub fn form<V: 'static>(
     this: &V,
     dialog: Dialog,
     body: impl IntoElement,
-    submit_label: &'static str,
+    submit_label: impl Into<SharedString>,
     status: fn(&V) -> &Status,
     submit: fn(&mut V, &mut Window, &mut Context<V>),
     close: fn(&mut V, &mut Context<V>),
@@ -63,7 +64,7 @@ pub fn editor<V: 'static>(
     this: &V,
     dialog: Dialog,
     body: impl IntoElement,
-    submit_label: &'static str,
+    submit_label: impl Into<SharedString>,
     status: fn(&V) -> &Status,
     submit: fn(&mut V, &mut Window, &mut Context<V>),
     close: fn(&mut V, &mut Context<V>),
@@ -78,9 +79,9 @@ pub fn editor<V: 'static>(
         .text_size(px(12.))
         .text_color(p.faint)
         .child(key_hint("escape", cx))
-        .child("cancel")
+        .child(t!("dialog.hint_cancel"))
         .child(key_hint(SAVE_KEYS, cx).ml(px(8.)))
-        .child("save");
+        .child(t!("dialog.hint_save"));
     behaviour(this, dialog, status, submit, close, cx)
         .child(
             div()
@@ -159,25 +160,27 @@ fn behaviour<V: 'static>(
 
 /// `close` runs on any close, after `confirm` when confirmed.
 pub fn confirm<V: 'static>(
-    title: &'static str,
+    title: impl Into<SharedString>,
     message: impl Into<SharedString>,
-    label: &'static str,
+    label: impl Into<SharedString>,
     confirm: fn(&mut V, &mut Window, &mut Context<V>),
     close: fn(&mut V, &mut Context<V>),
     window: &mut Window,
     cx: &mut Context<V>,
 ) {
-    let message = message.into();
+    let (title, message, label) = (title.into(), message.into(), label.into());
     let view = cx.entity().downgrade();
     window.open_dialog(cx, move |dialog, _, _| {
         let confirm_view = view.clone();
         let close_view = view.clone();
         dialog
-            .title(title)
+            .title(title.clone())
             .child(message.clone())
             .footer(footer(
                 None,
-                Button::new("dialog-confirm").text_label(label).danger(),
+                Button::new("dialog-confirm")
+                    .text_label(label.clone())
+                    .danger(),
                 false,
             ))
             .on_ok(move |_, window, cx| {
@@ -195,11 +198,11 @@ pub fn confirm<V: 'static>(
 fn footer(hints: Option<Div>, confirm: Button, disabled: bool) -> DialogFooter {
     DialogFooter::new()
         .children(hints)
-        .child(
-            div().child(
-                DialogClose::new()
-                    .trigger(|button| button.text_label("Cancel").outline().disabled(disabled)),
-            ),
-        )
+        .child(div().child(DialogClose::new().trigger(|button| {
+            button
+                .text_label(t!("common.cancel"))
+                .outline()
+                .disabled(disabled)
+        })))
         .child(div().child(DialogAction::new().child(confirm.disabled(disabled))))
 }

@@ -13,6 +13,7 @@ use gpui_kit::{
     prelude::FluentBuilder,
     *,
 };
+use rust_i18n::t;
 use std::{ops::Range, sync::Arc};
 
 /// As wide as a tabular digit; fills the unused part of the decimals slot.
@@ -151,7 +152,7 @@ pub fn reveal_full(element: Stateful<Div>, value: &DisplayText) -> AnyElement {
             cx.set_global(ValueMenu(menu.focus_handle(cx)));
             let copied = copied.clone();
             menu.item(
-                PopupMenuItem::new("Copy full value").on_click(move |_, _, cx| {
+                PopupMenuItem::new(t!("common.copy_full")).on_click(move |_, _, cx| {
                     cx.write_to_clipboard(ClipboardItem::new_string(copied.to_string()))
                 }),
             )
@@ -260,9 +261,9 @@ pub fn card_row(
         )
 }
 
-pub fn card_row_skeleton(label: &'static str, visible: bool, cx: &App) -> Div {
+pub fn card_row_skeleton(label: impl Into<SharedString>, visible: bool, cx: &App) -> Div {
     card_row_frame(cx)
-        .child(div().flex_1().min_w_0().truncate().child(label))
+        .child(div().flex_1().min_w_0().truncate().child(label.into()))
         .child(
             div()
                 .h(px(20.))
@@ -284,7 +285,7 @@ fn card_row_frame(cx: &App) -> Div {
         .border_color(palette(cx).line)
 }
 
-pub fn stat_skeleton(label: &'static str, visible: bool, cx: &App) -> Div {
+pub fn stat_skeleton(label: impl Into<SharedString>, visible: bool, cx: &App) -> Div {
     v_flex()
         .min_w(STAT_WIDTH)
         .gap(px(2.))
@@ -292,7 +293,7 @@ pub fn stat_skeleton(label: &'static str, visible: bool, cx: &App) -> Div {
             div()
                 .text_size(px(12.))
                 .text_color(palette(cx).muted)
-                .child(label),
+                .child(label.into()),
         )
         .child(
             div()

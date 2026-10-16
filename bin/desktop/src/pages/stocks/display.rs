@@ -1,7 +1,8 @@
-use super::{counted, set_exchange::ExchangeRow};
+use super::set_exchange::ExchangeRow;
 use crate::{
     components::records::{EntryStyle, LotRow, LotTable, RowDisplay, Step, StepLine},
     format::{DisplayText, amount, date, money, pln, shares},
+    i18n::{and_list, plural, plural_key, plural_key_decimal},
     pages::records::{date_label, day},
 };
 use chrono::{DateTime, Datelike, NaiveDate, Utc};
@@ -16,7 +17,11 @@ use pitpls_core::{
     time,
 };
 use rust_decimal::Decimal;
-use std::collections::{BTreeMap, HashMap};
+use rust_i18n::t;
+use std::{
+    borrow::Cow,
+    collections::{BTreeMap, HashMap},
+};
 
 #[derive(Clone, Copy, PartialEq)]
 pub enum Action {
@@ -26,11 +31,11 @@ pub enum Action {
 }
 
 impl Action {
-    pub fn title(self) -> &'static str {
+    pub fn title(self) -> Cow<'static, str> {
         match self {
-            Self::Buy => "Buy",
-            Self::Sell => "Sell",
-            Self::Split => "Split",
+            Self::Buy => t!("action.buy"),
+            Self::Sell => t!("action.sell"),
+            Self::Split => t!("action.split"),
         }
     }
 }
@@ -87,6 +92,7 @@ impl InstrumentKey {
 }
 
 pub struct StockDisplay {
+    /// The labels are message keys.
     pub stats: Vec<(&'static str, DisplayText)>,
     pub warnings: Vec<WarningCard>,
     pub sales: Vec<RowDisplay>,
@@ -130,8 +136,8 @@ impl StockDisplay {
         let (holdings, sold_out) = holdings(tax, listings);
         Self {
             stats: vec![
-                ("Income (C-22)", pln(tax.income)),
-                ("Costs (C-23)", pln(tax.costs)),
+                ("tax.income_c22", pln(tax.income)),
+                ("tax.costs_c23", pln(tax.costs)),
             ],
             warnings: warnings(tax, year),
             sales,
@@ -168,10 +174,10 @@ fn history_keys(record: &Stock, tax: &StockTaxData) -> Vec<InstrumentKey> {
 
 fn history_links(ticker: &str, keys: &[InstrumentKey]) -> Vec<SharedString> {
     match keys {
-        [_] => vec![format!("{ticker} history").into()],
+        [_] => vec![t!("sale.history", ticker = ticker).into()],
         keys => keys
             .iter()
-            .map(|key| format!("{ticker} history · {}", key.provider).into())
+            .map(|key| t!("sale.history_in", ticker = ticker, provider = key.provider).into())
             .collect(),
     }
 }
@@ -189,19 +195,22 @@ pub fn shares_text(value: Decimal) -> String {
 }
 
 pub fn shares_count(value: Decimal) -> String {
-    let unit = if value == Decimal::ONE {
-        "share"
-    } else {
-        "shares"
-    };
-    format!("{} {unit}", shares_text(value))
+    let key = plural_key_decimal("count.shares", value);
+    t!(key, count = shares_text(value)).into_owned()
 }
 
 pub fn lots_count(lots: usize) -> String {
-    match lots {
-        1 => "1 lot".to_owned(),
-        lots => format!("{lots} lots"),
-    }
+    plural("count.lots", lots as u64).into_owned()
+}
+
+/// "5 shares in 2 lots"; Polish puts the lots in another case.
+pub fn shares_in_lots(value: Decimal, lots: usize) -> String {
+    t!(
+        "sale.shares_in_lots",
+        shares = shares_count(value),
+        lots = plural("count.in_lots", lots as u64)
+    )
+    .into_owned()
 }
 
 fn day_month(value: NaiveDate) -> String {
@@ -217,7 +226,7 @@ pub fn price_text(value: Amount) -> String {
 }
 
 pub fn ratio(before: u32, after: u32) -> String {
-    format!("{after}-for-{before}")
+    t!("sale.ratio", after = after, before = before).into_owned()
 }
 
 pub fn rate_cell(rate: Decimal, nbp_date: NaiveDate, currency: Currency) -> DisplayText {
@@ -240,7 +249,7 @@ pub fn conversion(
     let mut parts = match total {
         Some((total, provider)) => vec![
             amount(total),
-            DisplayText::plain(format!("({provider} total)")),
+            DisplayText::plain(t!("sale.provider_total", provider = provider)),
         ],
         None => vec![shares(shares_value), DisplayText::plain("×"), amount(price)],
     };
@@ -251,9 +260,7 @@ pub fn conversion(
 }
 
 pub fn total_note(provider: &str, currency: Currency) -> String {
-    format!(
-        "Counts the amount {provider} actually paid or credited in {currency} (rounded to cents), not shares × price"
-    )
+    t!("sale.total_note", provider = provider, currency = currency).into_owned()
 }
 
 /// A fee in another currency than the price has its own rate, which the
@@ -272,7 +279,7 @@ fn exchange_name(listing: Option<&Listing>) -> Option<SharedString> {
 
 fn exchange_cell(name: Option<&SharedString>) -> DisplayText {
     name.map_or_else(
-        || DisplayText::plain("Missing"),
+        || DisplayText::plain(t!("sale.missing")),
         |name| DisplayText::plain(name.clone()),
     )
 }
@@ -308,7 +315,7 @@ fn sale_row(sale: &CalculatedSale, holding: Option<&Holding>, listings: &Listing
         pln(sale.costs),
         pln(sale.profit),
     ];
-    let link = format!("Full {} history", sale.ticker);
+    let link = t!("sale.full_history", ticker = sale.ticker);
     RowDisplay {
         id: sale.id.clone().into(),
         time: sale.time,
@@ -316,8 +323,18 @@ fn sale_row(sale: &CalculatedSale, holding: Option<&Holding>, listings: &Listing
         steps: sale_steps(sale, listing),
         lots: Some(fifo_table(sale, holding, Some(link.into()))),
         flagged: if exchange.is_none() { vec![2] } else { vec![] },
-        search: search(&sale.ticker, &sale.provider, exchange.as_ref(), "sell"),
-        label: format!("{} sale {}", sale.ticker, date_label(sale.time)).into(),
+        search: search(
+            &sale.ticker,
+            &sale.provider,
+            exchange.as_ref(),
+            &t!("action.sell").to_lowercase(),
+        ),
+        label: t!(
+            "sale.label",
+            ticker = sale.ticker,
+            date = date_label(sale.time)
+        )
+        .into(),
         links: vec![],
     }
 }
@@ -329,37 +346,35 @@ fn search(ticker: &str, provider: &str, exchange: Option<&SharedString>, action:
 
 fn sale_steps(sale: &CalculatedSale, listing: Option<&Listing>) -> Vec<Step> {
     let settled = if sale.settlement_worked_out {
-        format!(
-            "Settled {}, worked out from the trade date",
-            date(sale.settlement_date).main
+        t!(
+            "sale.settled_worked_out",
+            date = date(sale.settlement_date).main
         )
     } else {
-        format!("Settled {}", date(sale.settlement_date).main)
+        t!("sale.settled", date = date(sale.settlement_date).main)
     };
     let nbp = if sale.price.currency == Currency::PLN {
-        "PLN, no conversion".to_owned()
+        t!("sale.no_conversion")
     } else {
-        format!("NBP date {}", date(sale.nbp_date).main)
+        t!("records.nbp_date", date = date(sale.nbp_date).main)
     };
-    let counts_in = counts_in(sale)
-        .map(|year| format!(" for {year}"))
-        .unwrap_or_default();
+    let counts_in = counts_in(sale);
 
     let mut costs = vec![
         entry(
-            "Lots taken (FIFO)",
+            t!("sale.lots_taken"),
             vec![pln(sale.lots_cost)],
             EntryStyle::Normal,
         ),
         entry(
-            "Buy fees, part taken",
+            t!("sale.buy_fees_taken"),
             vec![pln(sale.buy_fees)],
             EntryStyle::Normal,
         ),
     ];
     if sale.uncovered > Decimal::ZERO {
         costs.push(entry(
-            format!("{} with no buy", shares_count(sale.uncovered)),
+            t!("sale.no_buy_shares", shares = shares_count(sale.uncovered)),
             vec![pln(Decimal::ZERO)],
             EntryStyle::Warning,
         ));
@@ -367,7 +382,7 @@ fn sale_steps(sale: &CalculatedSale, listing: Option<&Listing>) -> Vec<Step> {
     costs.extend([
         entry(
             fee_label(
-                "Sale fee",
+                &t!("sale.sale_fee"),
                 sale.fee,
                 sale.fee_pln,
                 sale.price,
@@ -376,28 +391,39 @@ fn sale_steps(sale: &CalculatedSale, listing: Option<&Listing>) -> Vec<Step> {
             vec![pln(sale.fee_pln)],
             EntryStyle::Normal,
         ),
-        entry("Costs", vec![pln(sale.costs)], EntryStyle::Strong),
-        StepLine::Caption(format!("Adds to Costs (C-23){counts_in}").into()),
+        entry(
+            t!("column.costs"),
+            vec![pln(sale.costs)],
+            EntryStyle::Strong,
+        ),
+        StepLine::Caption(
+            match counts_in {
+                Some(year) => t!("sale.adds_to_costs_in", year = year),
+                None => t!("sale.adds_to_costs"),
+            }
+            .into(),
+        ),
     ]);
 
     let result = if sale.profit < Decimal::ZERO {
-        "Loss"
+        t!("home.loss")
     } else {
-        "Profit"
+        t!("home.profit")
     };
-    let tax_paid = sale
-        .tax_paid
-        .map(|_| format!(" · tax paid abroad {} PLN", money(sale.tax_paid_pln).full));
+    let tax_paid_pln = money(sale.tax_paid_pln).full;
     let pit_zg = match (sale.country, listing) {
-        (Some(country), Some(listing)) => format!(
-            "PIT/ZG · {country} ({}) · tax paid abroad {} PLN",
-            listing.name,
-            money(sale.tax_paid_pln).full
+        (Some(country), Some(listing)) => t!(
+            "sale.pit_zg",
+            country = country,
+            exchange = listing.name,
+            tax = tax_paid_pln
         ),
-        _ => format!(
-            "PIT/ZG · no country until the exchange is set{}",
-            tax_paid.unwrap_or_default()
-        ),
+        _ if sale.tax_paid.is_some() => t!("sale.pit_zg_no_country_tax", tax = tax_paid_pln),
+        _ => t!("sale.pit_zg_no_country"),
+    };
+    let adds_to_income = match counts_in {
+        Some(year) => t!("sale.adds_to_income_in", year = year),
+        None => t!("sale.adds_to_income"),
     };
 
     let mut income = vec![
@@ -409,7 +435,7 @@ fn sale_steps(sale: &CalculatedSale, listing: Option<&Listing>) -> Vec<Step> {
             sale.nbp_rate,
         )),
         StepLine::Result(vec![pln(sale.income)]),
-        StepLine::Caption(format!("{settled} · {nbp} · adds to Income (C-22){counts_in}").into()),
+        StepLine::Caption(format!("{settled} · {nbp} · {adds_to_income}").into()),
     ];
     if sale.from_total {
         income.push(StepLine::Caption(
@@ -419,15 +445,15 @@ fn sale_steps(sale: &CalculatedSale, listing: Option<&Listing>) -> Vec<Step> {
 
     vec![
         Step {
-            title: "Income",
+            title: "column.income",
             lines: income,
         },
         Step {
-            title: "Costs",
+            title: "column.costs",
             lines: costs,
         },
         Step {
-            title: "Result",
+            title: "sale.result",
             lines: vec![
                 StepLine::Formula(vec![
                     money(sale.income),
@@ -456,7 +482,7 @@ fn fee_label(name: &str, fee: Amount, fee_pln: Decimal, price: Amount, rate: Dec
     if fee.value.is_zero() {
         name.to_owned()
     } else if fee.currency == Currency::PLN {
-        format!("{name} in PLN, no conversion")
+        t!("sale.fee_in_pln", fee = name).into_owned()
     } else {
         format!(
             "{name} {} × {}",
@@ -482,21 +508,23 @@ fn fifo_table(
         .filter(|lot| lot.after.is_zero())
         .count();
     let before = match after_lots + closed {
-        0 => "No shares".to_owned(),
-        lots => format!("{} in {}", shares_count(after + taken), lots_count(lots)),
+        0 => t!("sale.no_shares").into_owned(),
+        lots => shares_in_lots(after + taken, lots),
     };
     let caption = if sale.uncovered > Decimal::ZERO {
-        format!(
-            "{before} before this sale, {} sold",
-            shares_count(sale.shares)
+        t!(
+            "sale.before_sold",
+            before = before,
+            sold = shares_count(sale.shares)
         )
     } else if after_lots == 0 {
-        format!("{before} before this sale → 0 after")
+        t!("sale.before_closed", before = before)
     } else {
-        format!(
-            "{before} before this sale → {} in {} after",
-            shares_text(after),
-            lots_count(after_lots)
+        t!(
+            "sale.before_after",
+            before = before,
+            after = shares_text(after),
+            lots = plural("count.in_lots", after_lots as u64)
         )
     };
 
@@ -505,7 +533,7 @@ fn fifo_table(
     if sale.uncovered > Decimal::ZERO {
         rows.push(LotRow {
             cells: vec![
-                DisplayText::plain("No buy"),
+                DisplayText::plain(t!("sale.no_buy")),
                 dash(),
                 dash(),
                 shares(sale.uncovered),
@@ -520,7 +548,12 @@ fn fifo_table(
         });
     }
     LotTable {
-        title: format!("FIFO · {} in {}", sale.ticker, sale.provider).into(),
+        title: t!(
+            "sale.fifo_title",
+            ticker = sale.ticker,
+            provider = sale.provider
+        )
+        .into(),
         caption: caption.into(),
         rows,
         link,
@@ -546,14 +579,14 @@ fn lot_match_row(lot: &LotMatch) -> LotRow {
 }
 
 fn split_note(split: &SplitStep) -> SharedString {
-    format!(
-        "Split {} on {}: {} at {} → {} at {}",
-        ratio(split.before, split.after),
-        trade_date(split.time),
-        shares_text(split.lot_shares_before),
-        money(split.price_before.value).full,
-        shares_text(split.lot_shares_after),
-        price_text(split.price_after),
+    t!(
+        "sale.split_note",
+        ratio = ratio(split.before, split.after),
+        date = trade_date(split.time),
+        before = shares_text(split.lot_shares_before),
+        price_before = money(split.price_before.value).full,
+        after = shares_text(split.lot_shares_after),
+        price_after = price_text(split.price_after)
     )
     .into()
 }
@@ -617,7 +650,7 @@ fn record_row(
                 DisplayText::plain(action.title()),
                 DisplayText::plain(record.ticker.clone()),
                 dash(),
-                DisplayText::plain("All providers"),
+                DisplayText::plain(t!("sale.all_providers")),
                 DisplayText::plain(format!("{} → {}", split.before, split.after)),
                 dash(),
                 dash(),
@@ -704,27 +737,27 @@ fn buy_steps(record: &Stock, buy: &StockBuy, tax: &StockTaxData, year: i32) -> V
     };
 
     let nbp = if buy.price.currency == Currency::PLN {
-        "PLN, no conversion".to_owned()
+        t!("sale.no_conversion")
     } else {
-        format!("NBP date {}", date(lot.nbp_date).main)
+        t!("records.nbp_date", date = date(lot.nbp_date).main)
     };
     let fee_formula = if buy.fee.value.is_zero() {
-        vec![DisplayText::plain("No fee")]
+        vec![DisplayText::plain(t!("sale.no_fee"))]
     } else if buy.fee.currency == Currency::PLN {
         vec![amount(buy.fee)]
     } else {
         conversion_fee(buy.fee, fee_rate(buy.fee, lot.fee, buy.price, lot.nbp_rate))
     };
     let fee_caption = if buy.fee.currency == Currency::PLN && !buy.fee.value.is_zero() {
-        "PLN, no conversion · counted in costs as the shares are sold"
+        t!("sale.fee_counted_pln")
     } else {
-        "Counted in costs as the shares are sold"
+        t!("sale.fee_counted")
     };
 
     let mut events = vec![(
         record.time,
         entry(
-            format!("Bought {}", trade_date(record.time)),
+            t!("sale.bought", date = trade_date(record.time)),
             vec![shares(buy.number)],
             EntryStyle::Normal,
         ),
@@ -733,10 +766,10 @@ fn buy_steps(record: &Stock, buy: &StockBuy, tax: &StockTaxData, year: i32) -> V
         (
             split.time,
             entry(
-                format!(
-                    "Split {} {}",
-                    ratio(split.before, split.after),
-                    trade_date(split.time)
+                t!(
+                    "sale.split_event",
+                    ratio = ratio(split.before, split.after),
+                    date = trade_date(split.time)
                 ),
                 vec![
                     shares(split.lot_shares_before),
@@ -752,12 +785,18 @@ fn buy_steps(record: &Stock, buy: &StockBuy, tax: &StockTaxData, year: i32) -> V
             sale.time,
             entry(
                 match counts_in(sale) {
-                    Some(year) => format!("Sold {} · counts in {year}", trade_date(sale.time)),
-                    None => format!("Sold {}", trade_date(sale.time)),
+                    Some(year) => {
+                        t!(
+                            "sale.sold_counts_in",
+                            date = trade_date(sale.time),
+                            year = year
+                        )
+                    }
+                    None => t!("sale.sold", date = trade_date(sale.time)),
                 },
                 vec![
                     shares(lot.taken),
-                    DisplayText::plain("→ Costs"),
+                    DisplayText::plain(t!("sale.to_costs")),
                     added(lot.cost + lot.fee_part),
                 ],
                 EntryStyle::Normal,
@@ -768,11 +807,11 @@ fn buy_steps(record: &Stock, buy: &StockBuy, tax: &StockTaxData, year: i32) -> V
     let open_shares = open.map_or(Decimal::ZERO, |lot| lot.open);
     let mut open_value = vec![shares(open_shares)];
     if !open_shares.is_zero() {
-        open_value.push(DisplayText::plain(format!("· moves into {}", year + 1)));
+        open_value.push(DisplayText::plain(t!("sale.moves_into", year = year + 1)));
     }
     let mut lines = events.into_iter().map(|(_, line)| line).collect::<Vec<_>>();
     lines.push(entry(
-        format!("Open on 31.12.{year}"),
+        t!("sale.open_on", year = year),
         open_value,
         EntryStyle::Strong,
     ));
@@ -785,7 +824,7 @@ fn buy_steps(record: &Stock, buy: &StockBuy, tax: &StockTaxData, year: i32) -> V
             lot.nbp_rate,
         )),
         StepLine::Result(vec![pln(lot.cost)]),
-        StepLine::Caption(format!("{nbp} · a cost only when its shares are sold").into()),
+        StepLine::Caption(format!("{nbp} · {}", t!("sale.cost_when_sold")).into()),
     ];
     if lot.from_total {
         cost.push(StepLine::Caption(
@@ -795,11 +834,11 @@ fn buy_steps(record: &Stock, buy: &StockBuy, tax: &StockTaxData, year: i32) -> V
 
     vec![
         Step {
-            title: "Cost",
+            title: "sale.cost",
             lines: cost,
         },
         Step {
-            title: "Fee",
+            title: "field.fee",
             lines: vec![
                 StepLine::Formula(fee_formula),
                 StepLine::Result(vec![pln(lot.fee)]),
@@ -807,7 +846,7 @@ fn buy_steps(record: &Stock, buy: &StockBuy, tax: &StockTaxData, year: i32) -> V
             ],
         },
         Step {
-            title: "What happened to the lot",
+            title: "sale.lot_history",
             lines,
         },
     ]
@@ -848,42 +887,43 @@ fn split_steps(record: &Stock, split: &StockSplit, tax: &StockTaxData) -> Vec<St
         .into_iter()
         .map(|((provider, bought, _), step)| {
             entry(
-                format!("{provider} · lot {}", trade_date(bought)),
-                vec![DisplayText::plain(format!(
-                    "{} at {} → {} at {}",
-                    shares_text(step.lot_shares_before),
-                    money(step.price_before.value).full,
-                    shares_text(step.lot_shares_after),
-                    price_text(step.price_after),
+                t!(
+                    "sale.provider_lot",
+                    provider = provider,
+                    date = trade_date(bought)
+                ),
+                vec![DisplayText::plain(t!(
+                    "sale.split_change",
+                    before = shares_text(step.lot_shares_before),
+                    price_before = money(step.price_before.value).full,
+                    after = shares_text(step.lot_shares_after),
+                    price_after = price_text(step.price_after)
                 ))],
                 EntryStyle::Normal,
             )
         })
         .collect::<Vec<_>>();
     if lots.is_empty() {
-        lots.push(StepLine::Caption("No open lots on that day".into()));
+        lots.push(StepLine::Caption(t!("sale.no_open_lots").into()));
     } else {
-        lots.push(StepLine::Caption(
-            "Lot costs in PLN don't change, only share counts and prices".into(),
-        ));
+        lots.push(StepLine::Caption(t!("sale.split_costs_note").into()));
     }
 
     vec![
         Step {
-            title: "Split",
+            title: "action.split",
             lines: vec![
-                StepLine::Formula(vec![DisplayText::plain(format!(
-                    "New shares = shares × {} ÷ {}",
-                    split.after, split.before
+                StepLine::Formula(vec![DisplayText::plain(t!(
+                    "sale.split_formula",
+                    after = split.after,
+                    before = split.before
                 ))]),
                 StepLine::Result(vec![DisplayText::plain(ratio(split.before, split.after))]),
-                StepLine::Caption(
-                    format!("Changes every {} lot, in every provider", record.ticker).into(),
-                ),
+                StepLine::Caption(t!("sale.split_scope", ticker = record.ticker).into()),
             ],
         },
         Step {
-            title: "Lots it changed",
+            title: "sale.lots_changed",
             lines: lots,
         },
     ]
@@ -951,26 +991,12 @@ fn holdings(tax: &StockTaxData, listings: &Listings) -> (Vec<HoldingBlock>, Vec<
             };
             SoldOut {
                 instrument: instrument.into(),
-                last_sale: format!("last sale {}", trade_date(sale.time)).into(),
+                last_sale: t!("sale.last_sale", date = trade_date(sale.time)).into(),
                 search: search(ticker, provider, exchange.as_ref(), ""),
             }
         })
         .collect();
     (blocks, sold_out)
-}
-
-pub fn names(names: &[&str]) -> String {
-    const SHOWN: usize = 4;
-    match names {
-        [] => String::new(),
-        [one] => (*one).to_owned(),
-        _ if names.len() > SHOWN => format!(
-            "{} and {} more",
-            names[..SHOWN - 1].join(", "),
-            names.len() - (SHOWN - 1)
-        ),
-        [rest @ .., last] => format!("{} and {last}", rest.join(", ")),
-    }
 }
 
 fn warnings(tax: &StockTaxData, year: i32) -> Vec<WarningCard> {
@@ -1013,12 +1039,13 @@ fn warnings(tax: &StockTaxData, year: i32) -> Vec<WarningCard> {
     if let [(ticker, provider, currency, shares, first_sale)] = uncovered[..] {
         cards.push(WarningCard {
             icon: IconName::TriangleAlert,
-            title: format!("{ticker} sold {} with no buy", shares_count(shares)).into(),
-            description: format!(
-                "They count with cost 0.00, so Costs (C-23) are too low. Import the earlier \
-                 {provider} statement or add the buy."
+            title: t!(
+                "sale.warning_no_buy",
+                ticker = ticker,
+                shares = shares_count(shares)
             )
             .into(),
+            description: t!("sale.warning_no_buy_detail", provider = provider).into(),
             action: WarningAction::AddBuy(Some(BuyPrefill {
                 ticker: ticker.to_owned(),
                 provider: provider.to_owned(),
@@ -1033,23 +1060,21 @@ fn warnings(tax: &StockTaxData, year: i32) -> Vec<WarningCard> {
             .collect::<Vec<_>>();
         cards.push(WarningCard {
             icon: IconName::TriangleAlert,
-            title: format!("Shares sold with no buy: {}", sold.join(" · ")).into(),
-            description: "They count with cost 0.00, so Costs (C-23) are too low. Import the \
-                          earlier statements or add the buys."
-                .into(),
+            title: t!("sale.warning_no_buys", sales = sold.join(" · ")).into(),
+            description: t!("sale.warning_no_buys_detail").into(),
             action: WarningAction::AddBuy(None),
         });
     }
     if !missing.is_empty() {
-        let (verb, pronoun) = if missing.len() == 1 {
-            ("has", "it")
-        } else {
-            ("have", "them")
-        };
+        let count = missing.len() as u64;
         cards.push(WarningCard {
             icon: IconName::MapPin,
-            title: format!("{} {verb} no exchange", names(&missing)).into(),
-            description: format!("PIT/ZG can't put {pronoun} in a country.").into(),
+            title: t!(
+                plural_key("sale.warning_no_exchange", count),
+                tickers = and_list(&missing)
+            )
+            .into(),
+            description: t!(plural_key("sale.warning_no_exchange_detail", count)).into(),
             action: WarningAction::SetExchange(rows),
         });
     }
@@ -1075,9 +1100,13 @@ fn missing_row(
         ticker: ticker.to_owned().into(),
         provider: provider.to_owned().into(),
         detail: format!(
-            "{} · {provider} · {} in {year}",
+            "{} · {provider} · {}",
             currencies.join(", "),
-            counted(sales, "sale", "sales")
+            t!(
+                "sale.sales_in_year",
+                sales = plural("stocks.sales_count", sales as u64),
+                year = year
+            )
         )
         .into(),
         exchange: None,

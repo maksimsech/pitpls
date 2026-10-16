@@ -1,8 +1,8 @@
-use super::stocks::{counted, names};
 use crate::{
     components::{self, ButtonText, Status, data, header, nbp, notice, value},
     config::LastImport,
     format::{DisplayText, pln, record_count},
+    i18n::{and_list, or_list, plural, plural_key},
     navigation::{Page, PageContext},
     services::Error as ServiceError,
     theme::{palette, tabular_digits},
@@ -23,7 +23,9 @@ use pitpls_app::use_case::{
 use pitpls_core::{stock::Warning, summary::StockTaxSummary};
 use pitpls_importers::{IMPORTERS, InputType};
 use rust_decimal::Decimal;
+use rust_i18n::t;
 
+/// The labels are message keys.
 struct Forms {
     shares: [(&'static str, DisplayText); 2],
     pit_zg: Option<PitZg>,
@@ -41,7 +43,8 @@ struct PitZg {
 struct PitZgCountry {
     code: SharedString,
     detail: SharedString,
-    // None for a country without income: no PIT/ZG, or 0 in field 29.
+    // None for a country without income: no PIT/ZG, or 0 in field 29. The
+    // labels are message keys.
     fields: Option<[(&'static str, DisplayText); 2]>,
     profit: DisplayText,
     loss: bool,
@@ -54,19 +57,19 @@ impl Forms {
         let stocks = &summary.stocks;
         Self {
             shares: [
-                ("Income (C-22)", pln(stocks.income)),
-                ("Costs (C-23)", pln(stocks.costs)),
+                ("tax.income_c22", pln(stocks.income)),
+                ("tax.costs_c23", pln(stocks.costs)),
             ],
             pit_zg: PitZg::new(stocks, &data.listings),
             foreign: [
-                ("Income (I-65)", pln(foreign.income)),
-                ("Tax to pay (G-47)", pln(foreign.tax_to_pay)),
-                ("Paid tax (G-48)", pln(foreign.tax_paid)),
+                ("tax.income_i65", pln(foreign.income)),
+                ("tax.to_pay_g47", pln(foreign.tax_to_pay)),
+                ("tax.paid_g48", pln(foreign.tax_paid)),
             ],
             difference: pln(foreign.tax_to_pay - foreign.tax_paid),
             crypto: [
-                ("Income (E-36)", pln(summary.crypto.income)),
-                ("Costs (E-37)", pln(summary.crypto.costs)),
+                ("tax.income_e36", pln(summary.crypto.income)),
+                ("tax.costs_e37", pln(summary.crypto.costs)),
             ],
         }
     }
@@ -87,16 +90,8 @@ impl PitZg {
             return None;
         }
         let no_exchange = (!missing.is_empty()).then(|| {
-            let (verb, pronoun) = if missing.len() == 1 {
-                ("has", "its")
-            } else {
-                ("have", "their")
-            };
-            format!(
-                "{} {verb} no exchange, so {pronoun} sales aren't in PIT/ZG.",
-                names(&missing)
-            )
-            .into()
+            let key = plural_key("home.no_exchange", missing.len() as u64);
+            t!(key, tickers = and_list(&missing)).into()
         });
 
         let countries = stocks
@@ -115,12 +110,15 @@ impl PitZg {
                     .join(", ");
                 PitZgCountry {
                     code: country.country.to_string().into(),
-                    detail: format!("{exchanges} · {}", counted(country.sales, "sale", "sales"))
-                        .into(),
+                    detail: format!(
+                        "{exchanges} · {}",
+                        plural("stocks.sales_count", country.sales as u64)
+                    )
+                    .into(),
                     fields: (country.income > Decimal::ZERO).then(|| {
                         [
-                            ("Income (29)", pln(country.income)),
-                            ("Tax paid abroad (30)", pln(country.tax_paid)),
+                            ("tax.income_zg29", pln(country.income)),
+                            ("tax.paid_abroad_zg30", pln(country.tax_paid)),
                         ]
                     }),
                     profit: pln(country.profit),
@@ -413,7 +411,7 @@ impl HomePage {
                     },
                 )))
                 .child(
-                    header::button("summary-import", IconName::Upload, "Import")
+                    header::button("summary-import", IconName::Upload, t!("common.import"))
                         .disabled(self.locked())
                         .on_click(
                             cx.listener(|this, _, _, cx| this.context.navigate(Page::Imports, cx)),
@@ -433,7 +431,7 @@ impl HomePage {
             // The NBP dialog shows its own errors.
             .when(
                 self.status.is_visible() && self.nbp_year.is_none(),
-                |column| column.child(self.status.render()),
+                |column| column.child(self.status.render(|this| &mut this.status, cx)),
             );
         let column = match &self.overview {
             Some(overview) => column
@@ -451,7 +449,7 @@ impl HomePage {
             None if !self.status.loading => column.child(
                 h_flex().child(
                     Button::new("retry")
-                        .text_label("Retry")
+                        .text_label(t!("common.retry"))
                         .outline()
                         .on_click(cx.listener(|this, _, window, cx| this.refresh(window, cx))),
                 ),
@@ -477,21 +475,23 @@ impl HomePage {
                     )
                     .child(
                         card(
-                            "Foreign dividends and interest",
+                            t!("home.foreign"),
                             None,
-                            Some(link("foreign-records", "Records", disabled, cx).on_click(
-                                cx.listener(move |this, _, _, cx| {
-                                    this.context.navigate(foreign_page, cx)
-                                }),
-                            )),
+                            Some(
+                                link("foreign-records", t!("home.records"), disabled, cx).on_click(
+                                    cx.listener(move |this, _, _, cx| {
+                                        this.context.navigate(foreign_page, cx)
+                                    }),
+                                ),
+                            ),
                             cx,
                         )
                         .children(forms.foreign.iter().map(|(label, value)| {
-                            value::card_row(form_id(label), *label, value, false, cx)
+                            value::card_row(form_id(label), t!(*label), value, false, cx)
                         }))
                         .child(value::card_row(
                             "form-difference",
-                            "Difference (G-47 − G-48)",
+                            t!("tax.difference_g47_g48"),
                             &forms.difference,
                             true,
                             cx,
@@ -499,18 +499,20 @@ impl HomePage {
                     )
                     .child(
                         card(
-                            "Crypto",
+                            t!("nav.crypto"),
                             None,
-                            Some(link("crypto-records", "Records", disabled, cx).on_click(
-                                cx.listener(|this, _, _, cx| {
-                                    this.context.navigate(Page::Crypto, cx)
-                                }),
-                            )),
+                            Some(
+                                link("crypto-records", t!("home.records"), disabled, cx).on_click(
+                                    cx.listener(|this, _, _, cx| {
+                                        this.context.navigate(Page::Crypto, cx)
+                                    }),
+                                ),
+                            ),
                             cx,
                         )
                         .children(forms.crypto.iter().map(
                             |(label, value)| {
-                                value::card_row(form_id(label), *label, value, false, cx)
+                                value::card_row(form_id(label), t!(*label), value, false, cx)
                             },
                         )),
                     )
@@ -530,12 +532,12 @@ impl HomePage {
                 .gap_3()
                 .child(
                     Alert::error("summary-error", error.clone())
-                        .title("Couldn't calculate the summary"),
+                        .title(t!("home.calculation_failed")),
                 )
                 .child(
                     h_flex().child(
                         Button::new("retry")
-                            .text_label("Retry")
+                            .text_label(t!("common.retry"))
                             .outline()
                             .disabled(self.disabled())
                             .on_click(cx.listener(|this, _, window, cx| this.refresh(window, cx))),
@@ -547,27 +549,33 @@ impl HomePage {
 
     fn data_card(&self, overview: &Overview, cx: &mut Context<Self>) -> Div {
         let p = *palette(cx);
-        let rates = data::rate_status("Latest NBP rate", overview.coverage, self.year, cx);
+        let rates = data::rate_status("home.latest_rate", overview.coverage, self.year, cx);
         let update = data::is_current_year(self.year).then(|| {
             header::button(
                 "update-rates",
                 None,
                 if self.updating {
-                    "Updating…"
+                    t!("home.updating")
                 } else {
-                    "Update"
+                    t!("home.update")
                 },
             )
             .when(rates.stale, |button| button.primary())
             .disabled(self.disabled())
             .on_click(cx.listener(|this, _, window, cx| this.update_rates(window, cx)))
         });
-        let rates = data_row(rates.dot, "Exchange rates", rates.detail, update, cx);
+        let rates = data_row(
+            rates.dot,
+            t!("home.exchange_rates"),
+            rates.detail,
+            update,
+            cx,
+        );
 
         let import = data::import_status(self.last_import.as_ref(), cx);
         let last_import = data_row(
             import.dot,
-            "Last import",
+            t!("home.last_import"),
             data::import_detail(&import),
             import.date.map(|date| {
                 div()
@@ -579,10 +587,10 @@ impl HomePage {
         );
 
         card(
-            "Data",
+            t!("nav.data"),
             None,
             Some(
-                link("data-imports", "Imports", self.locked(), cx).on_click(
+                link("data-imports", t!("nav.imports"), self.locked(), cx).on_click(
                     cx.listener(|this, _, _, cx| this.context.navigate(Page::Imports, cx)),
                 ),
             ),
@@ -594,20 +602,19 @@ impl HomePage {
 
     fn shares_card(&self, forms: &Forms, cx: &mut Context<Self>) -> Div {
         card(
-            "Shares and other securities",
+            t!("home.shares"),
             None,
             Some(
-                link("stock-records", "Records", self.locked(), cx).on_click(
+                link("stock-records", t!("home.records"), self.locked(), cx).on_click(
                     cx.listener(|this, _, _, cx| this.context.navigate(Page::Stocks, cx)),
                 ),
             ),
             cx,
         )
         .children(
-            forms
-                .shares
-                .iter()
-                .map(|(label, value)| value::card_row(form_id(label), *label, value, false, cx)),
+            forms.shares.iter().map(|(label, value)| {
+                value::card_row(form_id(label), t!(*label), value, false, cx)
+            }),
         )
     }
 
@@ -617,119 +624,123 @@ impl HomePage {
             .countries
             .iter()
             .partition(|country| country.fields.is_some());
-        card(
-            "PIT/ZG",
-            Some("one per country with income · country of the exchange"),
-            None,
-            cx,
-        )
-        .children(income.into_iter().flat_map(|country| {
-            let rows = country.fields.iter().flatten().map(|(label, value)| {
-                value::card_row(
-                    SharedString::from(format!("pit-zg-{}-{label}", country.code)),
-                    *label,
-                    value,
-                    false,
-                    cx,
+        card("PIT/ZG", Some(t!("home.pit_zg_caption").into()), None, cx)
+            .children(income.into_iter().flat_map(|country| {
+                let rows = country.fields.iter().flatten().map(|(label, value)| {
+                    value::card_row(
+                        SharedString::from(format!("pit-zg-{}-{label}", country.code)),
+                        t!(*label),
+                        value,
+                        false,
+                        cx,
+                    )
+                });
+                std::iter::once(
+                    h_flex()
+                        .h(px(40.))
+                        .px(px(16.))
+                        .gap(px(8.))
+                        .border_t_1()
+                        .border_color(p.line)
+                        .bg(p.hover)
+                        .child(div().font_semibold().child(country.code.clone()))
+                        .child(div().flex_1())
+                        .child(
+                            div()
+                                .text_size(px(12.))
+                                .text_color(p.faint)
+                                .child(country.detail.clone()),
+                        ),
                 )
-            });
-            std::iter::once(
+                .chain(rows)
+                .collect::<Vec<_>>()
+            }))
+            .children(losses.into_iter().map(|country| {
+                let result = if country.loss {
+                    t!("home.loss")
+                } else {
+                    t!("home.profit")
+                };
                 h_flex()
-                    .h(px(40.))
+                    .min_h(px(44.))
                     .px(px(16.))
+                    .py(px(8.))
                     .gap(px(8.))
                     .border_t_1()
                     .border_color(p.line)
-                    .bg(p.hover)
-                    .child(div().font_semibold().child(country.code.clone()))
-                    .child(div().flex_1())
+                    .text_color(p.muted)
+                    .child(
+                        div()
+                            .font_medium()
+                            .text_color(p.text)
+                            .child(country.code.clone()),
+                    )
                     .child(
                         div()
                             .text_size(px(12.))
                             .text_color(p.faint)
                             .child(country.detail.clone()),
-                    ),
-            )
-            .chain(rows)
-            .collect::<Vec<_>>()
-        }))
-        .children(losses.into_iter().map(|country| {
-            let result = if country.loss { "Loss" } else { "Profit" };
-            h_flex()
-                .min_h(px(44.))
-                .px(px(16.))
-                .py(px(8.))
-                .gap(px(8.))
-                .border_t_1()
-                .border_color(p.line)
-                .text_color(p.muted)
-                .child(
-                    div()
-                        .font_medium()
-                        .text_color(p.text)
-                        .child(country.code.clone()),
-                )
-                .child(
-                    div()
-                        .text_size(px(12.))
-                        .text_color(p.faint)
-                        .child(country.detail.clone()),
-                )
-                .child(div().flex_1())
-                .child(
-                    sentence(
-                        SharedString::from(format!("pit-zg-{}-profit", country.code)),
-                        &[
-                            Part::Text(result.to_owned()),
-                            Part::Value(&country.profit),
-                            Part::Text(" · no PIT/ZG, or 0 in field 29".to_owned()),
-                        ],
-                        cx,
                     )
-                    .justify_end(),
-                )
-        }))
-        .when_some(pit_zg.no_exchange.clone(), |card, text| {
-            card.child(
-                h_flex()
-                    .min_h(px(44.))
-                    .pl(px(16.))
-                    .pr(px(10.))
-                    .py(px(8.))
-                    .gap(px(8.))
-                    .border_t_1()
-                    .border_color(p.line)
+                    .child(div().flex_1())
                     .child(
-                        Icon::new(IconName::MapPin)
-                            .size(px(14.))
-                            .flex_shrink_0()
-                            .text_color(p.warning),
+                        sentence(
+                            SharedString::from(format!("pit-zg-{}-profit", country.code)),
+                            &[
+                                Part::Text(result.into_owned()),
+                                Part::Value(&country.profit),
+                                Part::Text(t!("home.no_pit_zg").into_owned()),
+                            ],
+                            cx,
+                        )
+                        .justify_end(),
                     )
-                    .child(div().flex_1().min_w_0().text_color(p.muted).child(text))
-                    .child(link("pit-zg-stocks", "Stocks", self.locked(), cx).on_click(
-                        cx.listener(|this, _, _, cx| this.context.navigate(Page::Stocks, cx)),
-                    )),
-            )
-        })
+            }))
+            .when_some(pit_zg.no_exchange.clone(), |card, text| {
+                card.child(
+                    h_flex()
+                        .min_h(px(44.))
+                        .pl(px(16.))
+                        .pr(px(10.))
+                        .py(px(8.))
+                        .gap(px(8.))
+                        .border_t_1()
+                        .border_color(p.line)
+                        .child(
+                            Icon::new(IconName::MapPin)
+                                .size(px(14.))
+                                .flex_shrink_0()
+                                .text_color(p.warning),
+                        )
+                        .child(div().flex_1().min_w_0().text_color(p.muted).child(text))
+                        .child(
+                            link("pit-zg-stocks", t!("nav.stocks"), self.locked(), cx).on_click(
+                                cx.listener(|this, _, _, cx| {
+                                    this.context.navigate(Page::Stocks, cx)
+                                }),
+                            ),
+                        ),
+                )
+            })
     }
 
     fn skeleton(&self, cx: &App) -> [Div; 3] {
         let rows = |labels: &[&'static str]| {
             labels
                 .iter()
-                .map(|label| value::card_row_skeleton(label, true, cx))
+                .map(|label| value::card_row_skeleton(t!(*label), true, cx))
                 .collect::<Vec<_>>()
         };
         [
-            card("Shares and other securities", None, None, cx)
-                .children(rows(&["Income (C-22)", "Costs (C-23)"])),
-            card("Foreign dividends and interest", None, None, cx).children(rows(&[
-                "Income (I-65)",
-                "Tax to pay (G-47)",
-                "Paid tax (G-48)",
-                "Difference (G-47 − G-48)",
+            card(t!("home.shares"), None, None, cx)
+                .children(rows(&["tax.income_c22", "tax.costs_c23"])),
+            card(t!("home.foreign"), None, None, cx).children(rows(&[
+                "tax.income_i65",
+                "tax.to_pay_g47",
+                "tax.paid_g48",
+                "tax.difference_g47_g48",
             ])),
-            card("Crypto", None, None, cx).children(rows(&["Income (E-36)", "Costs (E-37)"])),
+            card(t!("nav.crypto"), None, None, cx)
+                .children(rows(&["tax.income_e36", "tax.costs_e37"])),
         ]
     }
 
@@ -754,11 +765,7 @@ impl HomePage {
                 )
             })
             .collect::<Vec<_>>();
-        let statements = match statements.split_last() {
-            Some((last, [])) => last.clone(),
-            Some((last, rest)) => format!("{} or {last}", rest.join(", ")),
-            None => String::new(),
-        };
+        let statements = or_list(&statements);
         div().w_full().px(px(20.)).pt(px(56.)).pb(px(32.)).child(
             v_flex()
                 .w_full()
@@ -772,24 +779,19 @@ impl HomePage {
                             div()
                                 .text_size(px(20.))
                                 .font_semibold()
-                                .child("Welcome to pitpls"),
+                                .child(t!("home.welcome")),
                         )
-                        .child(
-                            div()
-                                .text_color(p.muted)
-                                .child("Three steps to the numbers for your PIT-38."),
-                        ),
+                        .child(div().text_color(p.muted).child(t!("home.welcome_detail"))),
                 )
                 .child(
                     data::card(cx)
                         .child(step(
                             1,
-                            "Import exchange rates",
-                            "Every amount is converted with the NBP table A rate from the \
-                             previous working day.",
+                            t!("home.step_rates"),
+                            t!("home.step_rates_detail"),
                             true,
                             Some(
-                                header::button("first-run-rates", None, "Import from NBP")
+                                header::button("first-run-rates", None, t!("nbp.import_title"))
                                     .primary()
                                     .disabled(disabled)
                                     .on_click(
@@ -802,11 +804,11 @@ impl HomePage {
                         ))
                         .child(step(
                             2,
-                            "Import a statement",
-                            format!("{statements}. You can also add records by hand."),
+                            t!("home.step_statement"),
+                            t!("home.step_statement_detail", statements = statements),
                             false,
                             Some(
-                                header::button("first-run-imports", None, "Open imports")
+                                header::button("first-run-imports", None, t!("home.open_imports"))
                                     .disabled(disabled)
                                     .on_click(cx.listener(|this, _, _, cx| {
                                         this.context.navigate(Page::Imports, cx)
@@ -816,9 +818,8 @@ impl HomePage {
                         ))
                         .child(step(
                             3,
-                            "Copy the totals",
-                            "Summary lists each form field with a copy button, ready for the \
-                             tax office site.",
+                            t!("home.step_copy"),
+                            t!("home.step_copy_detail"),
                             false,
                             None,
                             cx,
@@ -833,7 +834,12 @@ fn form_id(label: &'static str) -> SharedString {
     format!("form-{label}").into()
 }
 
-fn card(title: &'static str, caption: Option<&'static str>, link: Option<Button>, cx: &App) -> Div {
+fn card(
+    title: impl Into<SharedString>,
+    caption: Option<SharedString>,
+    link: Option<Button>,
+    cx: &App,
+) -> Div {
     let p = palette(cx);
     data::card(cx).child(
         h_flex()
@@ -841,7 +847,7 @@ fn card(title: &'static str, caption: Option<&'static str>, link: Option<Button>
             .pl(px(16.))
             .pr(px(10.))
             .gap(px(8.))
-            .child(div().font_semibold().child(title))
+            .child(div().font_semibold().child(title.into()))
             .children(caption.map(|caption| {
                 div()
                     .min_w_0()
@@ -897,14 +903,15 @@ fn sentence(id: impl Into<ElementId>, parts: &[Part], cx: &App) -> Stateful<Div>
         .children(words)
 }
 
-fn link(id: &'static str, label: &'static str, disabled: bool, cx: &App) -> Button {
+fn link(id: &'static str, label: impl Into<SharedString>, disabled: bool, cx: &App) -> Button {
+    let label = label.into();
     Button::new(id)
         .ghost()
         .text_color(palette(cx).muted)
         .h(px(28.))
         .px(px(6.))
         .rounded(px(7.))
-        .accessibility_label(label)
+        .accessibility_label(label.clone())
         .disabled(disabled)
         .child(div().text_size(px(12.)).child(label))
         .child(Icon::new(IconName::ChevronRight).size(px(13.)))
@@ -912,7 +919,7 @@ fn link(id: &'static str, label: &'static str, disabled: bool, cx: &App) -> Butt
 
 fn data_row(
     dot: Hsla,
-    label: &'static str,
+    label: impl Into<SharedString>,
     detail: impl IntoElement,
     end: Option<impl IntoElement>,
     cx: &App,
@@ -926,7 +933,13 @@ fn data_row(
         .border_t_1()
         .border_color(p.line)
         .child(div().w(px(16.)).flex_shrink_0().child(data::dot(dot)))
-        .child(div().w(px(120.)).flex_shrink_0().font_medium().child(label))
+        .child(
+            div()
+                .w(px(120.))
+                .flex_shrink_0()
+                .font_medium()
+                .child(label.into()),
+        )
         .child(
             div()
                 .flex_1()
@@ -940,7 +953,7 @@ fn data_row(
 
 fn step(
     number: u8,
-    title: &'static str,
+    title: impl Into<SharedString>,
     description: impl Into<SharedString>,
     current: bool,
     button: Option<Button>,
@@ -979,7 +992,7 @@ fn step(
                 .flex_1()
                 .min_w_0()
                 .gap(px(2.))
-                .child(div().font_medium().child(title))
+                .child(div().font_medium().child(title.into()))
                 .child(div().text_color(p.muted).child(description.into())),
         )
         .children(button.map(|button| div().flex_shrink_0().child(button)))

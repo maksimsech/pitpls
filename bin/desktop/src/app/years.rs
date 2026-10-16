@@ -11,6 +11,7 @@ use gpui_kit::{
     component::{button::*, input::Input},
 };
 use pitpls_app::use_case::year::{self, YearInfo};
+use rust_i18n::t;
 
 impl Desktop {
     pub fn load_years(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -187,11 +188,11 @@ impl Desktop {
                                 Input::new(&self.year_input)
                                     .h(CONTROL)
                                     .font_features(tabular_digits())
-                                    .aria_label("Add year"),
+                                    .aria_label(t!("year.add_label")),
                             ),
                     )
                     .child(
-                        header::button("add-year", None, "Add")
+                        header::button("add-year", None, t!("year.add"))
                             .loading(busy)
                             .on_click(cx.listener(|this, _, window, cx| this.add_year(window, cx))),
                     ),
@@ -214,10 +215,7 @@ impl Desktop {
                     .text_size(px(11.5))
                     .line_height(relative(1.35))
                     .text_color(p.faint)
-                    .child(
-                        "Years with records appear on their own. \
-                         Removing a year (× or ⌫) only hides it here.",
-                    ),
+                    .child(t!("year.menu_hint")),
             )
             .focus_trap("year-menu-trap", &self.year_menu_focus)
     }
@@ -229,7 +227,7 @@ impl Desktop {
         let selected = self.preferences.year == year;
         let meta: SharedString = match info {
             Some(info) => record_count(info.records()).into(),
-            None => "historical".into(),
+            None => t!("year.all_meta").into(),
         };
         // Years with records come back on their own, so only empty custom
         // years can be removed.
@@ -290,8 +288,8 @@ impl Desktop {
                                 .opacity(0.)
                                 .group_hover(group, |style| style.opacity(1.))
                                 .tab_stop(false)
-                                .accessibility_label(format!("Remove {year}"))
-                                .tooltip(format!("Remove {year} from the list"))
+                                .accessibility_label(t!("year.remove", year = year))
+                                .tooltip(t!("year.remove_tooltip", year = year))
                                 .disabled(self.status.busy)
                                 .on_click(cx.listener(move |this, _, window, cx| {
                                     cx.stop_propagation();

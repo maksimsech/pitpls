@@ -1,4 +1,5 @@
 use gpui_kit::*;
+use rust_i18n::t;
 
 pub fn pick<V: 'static>(
     extension: &'static str,
@@ -23,11 +24,11 @@ pub fn pick<V: 'static>(
                     .and_then(|s| s.to_str())
                     .is_some_and(|s| s.eq_ignore_ascii_case(extension))
                 {
-                    Err(format!("Select a .{extension} file."))
+                    Err(t!("file.wrong_extension", extension = extension).into_owned())
                 } else {
                     path.to_str()
                         .map(|path| Some(path.to_owned()))
-                        .ok_or_else(|| "The selected path is not valid UTF-8.".into())
+                        .ok_or_else(|| t!("file.invalid_path").into_owned())
                 }
             }
         };

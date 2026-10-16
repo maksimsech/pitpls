@@ -1,0 +1,2126 @@
+_version: 2
+
+# Overrides GPUI Component's own strings; it ships no Polish.
+gpui_component:
+  Calendar:
+    week.0:
+      pl: Nd
+    week.1:
+      pl: Pn
+    week.2:
+      pl: Wt
+    week.3:
+      pl: Śr
+    week.4:
+      pl: Cz
+    week.5:
+      pl: Pt
+    week.6:
+      pl: So
+    month.January:
+      pl: Styczeń
+    month.February:
+      pl: Luty
+    month.March:
+      pl: Marzec
+    month.April:
+      pl: Kwiecień
+    month.May:
+      pl: Maj
+    month.June:
+      pl: Czerwiec
+    month.July:
+      pl: Lipiec
+    month.August:
+      pl: Sierpień
+    month.September:
+      pl: Wrzesień
+    month.October:
+      pl: Październik
+    month.November:
+      pl: Listopad
+    month.December:
+      pl: Grudzień
+  DatePicker:
+    placeholder:
+      pl: Wybierz datę
+    time:
+      pl: Godzina
+  Select:
+    placeholder:
+      pl: Wybierz
+  ComboBox:
+    placeholder:
+      pl: Wybierz
+    search_placeholder:
+      pl: Szukaj…
+    empty:
+      pl: Brak wyników
+  DropdownButton:
+    more_options:
+      pl: Więcej opcji
+  Dialog:
+    ok:
+      pl: OK
+    cancel:
+      pl: Anuluj
+  List:
+    search_placeholder:
+      pl: Szukaj…
+  Input:
+    Decrement:
+      pl: Zmniejsz
+    Increment:
+      pl: Zwiększ
+    Cut:
+      pl: Wytnij
+    Copy:
+      pl: Kopiuj
+    Paste:
+      pl: Wklej
+    Select All:
+      pl: Zaznacz wszystko
+  Table:
+    SortBy:
+      pl: Sortuj według %{column}
+
+menu:
+  about:
+    en: About %{app}
+    pl: O programie %{app}
+  services:
+    en: Services
+    pl: Usługi
+  hide:
+    en: Hide %{app}
+    pl: Ukryj %{app}
+  hide_others:
+    en: Hide Others
+    pl: Ukryj pozostałe
+  show_all:
+    en: Show All
+    pl: Pokaż wszystkie
+  quit:
+    en: Quit %{app}
+    pl: Zakończ %{app}
+  edit:
+    en: Edit
+    pl: Edycja
+  undo:
+    en: Undo
+    pl: Cofnij
+  redo:
+    en: Redo
+    pl: Przywróć
+  cut:
+    en: Cut
+    pl: Wytnij
+  copy:
+    en: Copy
+    pl: Kopiuj
+  paste:
+    en: Paste
+    pl: Wklej
+  select_all:
+    en: Select All
+    pl: Zaznacz wszystko
+  window:
+    en: Window
+    pl: Okno
+  minimize:
+    en: Minimize
+    pl: Minimalizuj
+  zoom:
+    en: Zoom
+    pl: Powiększ
+  close_window:
+    en: Close Window
+    pl: Zamknij okno
+
+common:
+  operation_failed:
+    en: Unable to complete the operation
+    pl: Nie udało się wykonać operacji
+  refreshing:
+    en: Refreshing…
+    pl: Odświeżanie…
+  copy_value:
+    en: Copy %{value}
+    pl: Kopiuj %{value}
+  copied:
+    en: Copied
+    pl: Skopiowano
+  cancel:
+    en: Cancel
+    pl: Anuluj
+  retry:
+    en: Retry
+    pl: Ponów
+  refresh:
+    en: Refresh
+    pl: Odśwież
+  import:
+    en: Import
+    pl: Importuj
+  importing:
+    en: Importing…
+    pl: Importowanie…
+  copy_full:
+    en: Copy full value
+    pl: Kopiuj pełną wartość
+  edit:
+    en: Edit
+    pl: Edytuj
+  delete:
+    en: Delete
+    pl: Usuń
+  save:
+    en: Save
+    pl: Zapisz
+  saving:
+    en: Saving…
+    pl: Zapisywanie…
+
+data:
+  no_rates:
+    en: No NBP rates yet
+    pl: Brak kursów NBP
+  no_import:
+    en: No statement imported yet
+    pl: Nie zaimportowano jeszcze wyciągu
+  rate_today:
+    en: today
+    pl: dzisiejszy
+  rate_age:
+    one:
+      en: 1 day old
+      pl: sprzed 1 dnia
+    other:
+      en: "%{count} days old"
+    few:
+      pl: "sprzed %{count} dni"
+    many:
+      pl: "sprzed %{count} dni"
+
+records:
+  none:
+    en: no records
+    pl: brak wpisów
+  count:
+    one:
+      en: 1 record
+      pl: 1 wpis
+    other:
+      en: "%{count} records"
+    few:
+      pl: "%{count} wpisy"
+    many:
+      pl: "%{count} wpisów"
+  preview:
+    en: Preview
+    pl: Podgląd
+  nbp_date:
+    en: NBP date %{date}
+    pl: Data kursu NBP %{date}
+  record_id:
+    en: Record ID
+    pl: ID wpisu
+  time:
+    en: Time
+    pl: Czas
+  warsaw:
+    en: Warsaw
+    pl: Warszawa
+  warsaw_utc:
+    en: Warsaw · %{time} UTC
+    pl: Warszawa · %{time} UTC
+  filter:
+    en: Filter
+    pl: Filtruj
+  filter_label:
+    en: Filter records
+    pl: Filtruj wpisy
+  saved:
+    en: Record saved.
+    pl: Zapisano wpis.
+  deleted:
+    one:
+      en: Deleted 1 record.
+      pl: Usunięto 1 wpis.
+    other:
+      en: Deleted %{count} records.
+    few:
+      pl: Usunięto %{count} wpisy.
+    many:
+      pl: Usunięto %{count} wpisów.
+  delete_title:
+    en: Delete records
+    pl: Usuń wpisy
+  delete_one:
+    en: Delete this record? This cannot be undone.
+    pl: Usunąć ten wpis? Tej operacji nie można cofnąć.
+  delete_selected:
+    one:
+      en: Delete 1 selected record?
+      pl: Usunąć 1 zaznaczony wpis?
+    other:
+      en: Delete %{count} selected records?
+    few:
+      pl: Usunąć %{count} zaznaczone wpisy?
+    many:
+      pl: Usunąć %{count} zaznaczonych wpisów?
+  hidden_by_filter:
+    one:
+      en: 1 of them is hidden by the filter.
+      pl: 1 z nich jest ukryty przez filtr.
+    other:
+      en: "%{count} of them are hidden by the filter."
+    few:
+      pl: "%{count} z nich są ukryte przez filtr."
+    many:
+      pl: "%{count} z nich jest ukrytych przez filtr."
+  cannot_undo:
+    en: This cannot be undone.
+    pl: Tej operacji nie można cofnąć.
+  id_note:
+    en: · optional, generated if left blank
+    pl: · opcjonalne, generowane, jeśli puste
+  add:
+    en: Add new
+    pl: Dodaj
+  empty_detail:
+    en: Import a %{providers} statement, or add a record by hand.
+    pl: Zaimportuj wyciąg z %{providers} albo dodaj wpis ręcznie.
+  shown_short:
+    en: "%{shown} of %{total}"
+    pl: "%{shown} z %{total}"
+  shown:
+    en: Showing %{shown} of %{total}
+    pl: Pokazano %{shown} z %{total}
+  no_match:
+    en: No records match “%{query}”.
+    pl: Brak wpisów pasujących do „%{query}”.
+  select_all:
+    en: Select all records
+    pl: Zaznacz wszystkie wpisy
+  collapse_all:
+    en: Collapse all
+    pl: Zwiń wszystko
+  fold:
+    en: Fold %{month}
+    pl: Zwiń %{month}
+  unfold:
+    en: Unfold %{month}
+    pl: Rozwiń %{month}
+  select_month:
+    en: Select all in %{month}
+    pl: "Zaznacz wszystkie: %{month}"
+  hide_calculation:
+    en: Hide calculation for %{record}
+    pl: Ukryj obliczenie dla %{record}
+  show_calculation:
+    en: Show calculation for %{record}
+    pl: Pokaż obliczenie dla %{record}
+  select:
+    en: Select %{record}
+    pl: Zaznacz %{record}
+  more_actions:
+    en: More actions for %{record}
+    pl: Więcej akcji dla %{record}
+  edit_record:
+    en: Edit %{record}
+    pl: Edytuj %{record}
+  delete_record:
+    en: Delete %{record}
+    pl: Usuń %{record}
+  selected:
+    en: "%{count} selected"
+    pl: "Zaznaczone: %{count}"
+  remove_selected:
+    en: Remove selected
+    pl: Usuń zaznaczone
+  clear_selection:
+    en: Clear selection
+    pl: Wyczyść zaznaczenie
+  step_conversion:
+    en: Conversion
+    pl: Przeliczenie
+  step_polish_tax:
+    en: Polish tax
+    pl: Podatek w Polsce
+  calculated_value_nbp:
+    en: Calculated value · NBP date %{date}
+    pl: Wartość przeliczona · data kursu NBP %{date}
+  subtotal_to_pay:
+    en: to pay
+    pl: do zapłaty
+  subtotal_income:
+    en: income
+    pl: przychód
+  subtotal_costs:
+    en: costs
+    pl: koszty
+  subtotal_profit:
+    en: profit
+    pl: zysk
+
+dialog:
+  hint_cancel:
+    en: cancel
+    pl: anuluj
+  hint_save:
+    en: save
+    pl: zapisz
+
+file:
+  wrong_extension:
+    en: Select a .%{extension} file.
+    pl: Wybierz plik .%{extension}.
+  invalid_path:
+    en: The selected path is not valid UTF-8.
+    pl: Wybrana ścieżka nie jest poprawnym UTF-8.
+
+form:
+  required:
+    en: "%{field} is required"
+    pl: Pole „%{field}” jest wymagane
+  invalid_year:
+    en: Enter a valid whole year
+    pl: Wpisz poprawny rok
+  auto_id:
+    en: Leave blank to auto-generate
+    pl: Zostaw puste, aby wygenerować
+  warsaw_time:
+    en: Warsaw time
+    pl: czas warszawski
+  optional:
+    en: optional
+    pl: opcjonalnie
+
+field:
+  year:
+    en: Year
+    pl: Rok
+  date:
+    en: Date
+    pl: Data
+  id:
+    en: ID
+    pl: ID
+  ticker:
+    en: Ticker
+    pl: Ticker
+  value:
+    en: Value
+    pl: Wartość
+  value_currency:
+    en: Value currency
+    pl: Waluta wartości
+  tax_paid:
+    en: Tax paid
+    pl: Podatek zapłacony
+  tax_paid_currency:
+    en: Tax paid currency
+    pl: Waluta podatku zapłaconego
+  country_code:
+    en: Country code
+    pl: Kod kraju
+  provider:
+    en: Provider
+    pl: Platforma
+  action:
+    en: Action
+    pl: Operacja
+  fee:
+    en: Fee
+    pl: Prowizja
+  fee_currency:
+    en: Fee currency
+    pl: Waluta prowizji
+  shares_before:
+    en: Shares before
+    pl: Akcje przed
+  shares_after:
+    en: Shares after
+    pl: Akcje po
+  date_time:
+    en: Date and time
+    pl: Data i godzina
+  shares:
+    en: Shares
+    pl: Liczba akcji
+  price_per_share:
+    en: Price per share
+    pl: Cena za akcję
+  price_currency:
+    en: Price currency
+    pl: Waluta ceny
+  tax_currency:
+    en: Tax currency
+    pl: Waluta podatku
+  exchange:
+    en: Exchange
+    pl: Giełda
+  settlement_date:
+    en: Settlement date
+    pl: Data rozliczenia
+  tax_withheld:
+    en: Tax withheld abroad
+    pl: Podatek pobrany za granicą
+  price:
+    en: Price
+    pl: Cena
+  trade_amount:
+    en: Trade amount
+    pl: Kwota transakcji
+
+header:
+  back_to:
+    en: Back to %{page}
+    pl: "Wróć do: %{page}"
+
+year:
+  all:
+    en: All years
+    pl: Wszystkie lata
+  add_label:
+    en: Add year
+    pl: Dodaj rok
+  add:
+    en: Add
+    pl: Dodaj
+  add_placeholder:
+    en: Add year, e.g. 2023
+    pl: Dodaj rok, np. 2023
+  menu_hint:
+    en: Years with records appear on their own. Removing a year (× or ⌫) only hides it here.
+    pl: Lata z wpisami pojawiają się same. Usunięcie roku (× lub ⌫) tylko ukrywa go na tej liście.
+  all_meta:
+    en: historical
+    pl: cała historia
+  remove:
+    en: Remove %{year}
+    pl: Usuń %{year}
+  remove_tooltip:
+    en: Remove %{year} from the list
+    pl: Usuń %{year} z listy
+  tax_year:
+    en: Tax year
+    pl: Rok podatkowy
+  tax_year_label:
+    en: Tax year %{year}
+    pl: Rok podatkowy %{year}
+  change_tax_year:
+    en: Tax year %{year}, change
+    pl: Rok podatkowy %{year}, zmień
+  all_short:
+    en: All
+    pl: Wsz.
+
+nbp:
+  imported:
+    one:
+      en: Imported 1 rate.
+      pl: Zaimportowano 1 kurs.
+    other:
+      en: Imported %{count} rates.
+    few:
+      pl: Zaimportowano %{count} kursy.
+    many:
+      pl: Zaimportowano %{count} kursów.
+  year_range:
+    en: Enter a year between %{first} and %{last}
+    pl: Wpisz rok od %{first} do %{last}
+  import_title:
+    en: Import from NBP
+    pl: Import z NBP
+
+notice:
+  disclaimer:
+    en: For information only, not tax advice. You're responsible for checking every figure before you file.
+    pl: Wyłącznie informacyjnie, to nie jest doradztwo podatkowe. Przed złożeniem zeznania sprawdź każdą kwotę.
+  first_title:
+    en: Before you start
+    pl: Zanim zaczniesz
+  first_information:
+    en: pitpls is for information only. It is not tax, financial or legal advice, and not a guide to filing your return.
+    pl: pitpls służy wyłącznie do celów informacyjnych. Nie jest doradztwem podatkowym, finansowym ani prawnym, ani instrukcją składania zeznania.
+  first_responsibility:
+    en: "Results aren't guaranteed to be complete or correct. You are responsible for your tax return: check every figure yourself, and ask a tax adviser if you're unsure."
+    pl: "Nie gwarantujemy, że wyniki są kompletne i poprawne. Za zeznanie podatkowe odpowiadasz Ty: sprawdź każdą kwotę samodzielnie, a w razie wątpliwości zapytaj doradcę podatkowego."
+  understand:
+    en: I understand
+    pl: Rozumiem
+  cannot_calculate_year:
+    en: Can't calculate %{year} yet
+    pl: Nie można jeszcze obliczyć roku %{year}
+  cannot_calculate_all:
+    en: Can't calculate all years yet
+    pl: Nie można jeszcze obliczyć wszystkich lat
+  import_year:
+    en: Import %{year} from NBP
+    pl: Importuj rok %{year} z NBP
+  open_rates:
+    en: Open rates
+    pl: Otwórz kursy
+
+lots:
+  bought:
+    en: Bought
+    pl: Kupiono
+  lot:
+    en: Lot
+    pl: Partia
+  before:
+    en: Before
+    pl: Przed
+  taken:
+    en: Taken
+    pl: Pobrano
+  after:
+    en: After
+    pl: Po
+  price:
+    en: Price
+    pl: Cena
+  nbp_rate:
+    en: NBP rate
+    pl: Kurs NBP
+  cost:
+    en: Cost, PLN
+    pl: Koszt, PLN
+  buy_fee:
+    en: Buy fee, PLN
+    pl: Prowizja zakupu, PLN
+  open:
+    en: Open
+    pl: Otwarte
+
+nav:
+  summary:
+    en: Summary
+    pl: Podsumowanie
+  imports:
+    en: Imports
+    pl: Importy
+  dividends:
+    en: Dividends
+    pl: Dywidendy
+  interests:
+    en: Interests
+    pl: Odsetki
+  crypto:
+    en: Crypto
+    pl: Kryptowaluty
+  stocks:
+    en: Stocks
+    pl: Akcje
+  rates:
+    en: Rates
+    pl: Kursy
+  settings:
+    en: Settings
+    pl: Ustawienia
+  records:
+    en: Records
+    pl: Wpisy
+  data:
+    en: Data
+    pl: Dane
+  expand:
+    en: Expand sidebar
+    pl: Rozwiń pasek boczny
+  collapse:
+    en: Collapse sidebar
+    pl: Zwiń pasek boczny
+  light_theme:
+    en: Switch to light theme
+    pl: Przełącz na jasny motyw
+  dark_theme:
+    en: Switch to dark theme
+    pl: Przełącz na ciemny motyw
+
+app:
+  database_title:
+    en: Database connection
+    pl: Połączenie z bazą danych
+  database_waiting:
+    en: Your records will appear when the database connection is available.
+    pl: Wpisy pojawią się, gdy połączenie z bazą danych będzie dostępne.
+  database_retry:
+    en: Retry connection
+    pl: Połącz ponownie
+  database_reset:
+    en: Reset database
+    pl: Zresetuj bazę danych
+  database_reset_title:
+    en: Reset the database?
+    pl: Zresetować bazę danych?
+  database_reset_message:
+    en: This deletes the database with every record, exchange rate and setting in it, then starts with an empty one. This cannot be undone.
+    pl: Spowoduje to usunięcie bazy danych ze wszystkimi wpisami, kursami walut i ustawieniami, a następnie utworzenie pustej. Tej operacji nie można cofnąć.
+  database_reset_confirm:
+    en: Delete and reset
+    pl: Usuń i zresetuj
+  database_reset_done:
+    en: The database was reset.
+    pl: Baza danych została zresetowana.
+
+settings:
+  rounding:
+    en: Dividend rounding
+    pl: Zaokrąglanie dywidend
+  rounding_detail:
+    en: How dividend amounts and totals are rounded before they reach the form.
+    pl: Jak kwoty dywidend i sumy są zaokrąglane, zanim trafią do formularza.
+  rounding_groszy:
+    en: Sum to groszy
+    pl: Suma do groszy
+  rounding_groszy_detail:
+    en: Every record keeps full precision; totals are rounded to grosze.
+    pl: Każdy wpis zachowuje pełną dokładność; sumy są zaokrąglane do groszy.
+  rounding_to_pay:
+    en: Sum to pay to złote
+    pl: Podatek do zapłaty do złotych
+  rounding_to_pay_detail:
+    en: The tax-to-pay total is rounded to whole złote; paid tax stays in grosze.
+    pl: Suma podatku do zapłaty jest zaokrąglana do pełnych złotych; podatek zapłacony zostaje w groszach.
+  rounding_both:
+    en: Sum both to złote
+    pl: Obie sumy do złotych
+  rounding_both_detail:
+    en: Both totals are rounded to whole złote.
+    pl: Obie sumy są zaokrąglane do pełnych złotych.
+  rounding_all:
+    en: All to złote
+    pl: Wszystko do złotych
+  rounding_all_detail:
+    en: Every record is rounded to whole złote before adding up.
+    pl: Każdy wpis jest zaokrąglany do pełnych złotych przed zsumowaniem.
+  load_failed:
+    en: Couldn't load the settings
+    pl: Nie udało się wczytać ustawień
+  current:
+    en: current
+    pl: aktualne
+  save_failed:
+    en: Couldn't save the change
+    pl: Nie udało się zapisać zmiany
+  unsaved:
+    en: Unsaved change — totals will be recalculated
+    pl: Niezapisana zmiana — sumy zostaną przeliczone
+  discard:
+    en: Discard
+    pl: Odrzuć
+  save:
+    en: Save changes
+    pl: Zapisz zmiany
+  theme:
+    en: Theme
+    pl: Motyw
+  language:
+    en: Language
+    pl: Język
+  system:
+    en: System
+    pl: Systemowy
+  light:
+    en: Light
+    pl: Jasny
+  dark:
+    en: Dark
+    pl: Ciemny
+
+rates:
+  removed:
+    one:
+      en: Removed 1 rate.
+      pl: Usunięto 1 kurs.
+    other:
+      en: Removed %{count} rates.
+    few:
+      pl: Usunięto %{count} kursy.
+    many:
+      pl: Usunięto %{count} kursów.
+  reset_title:
+    en: Reset rates
+    pl: Usuń kursy
+  reset_message:
+    en: Remove all imported exchange rates? Calculations will be unavailable until rates are reimported.
+    pl: Usunąć wszystkie zaimportowane kursy walut? Obliczenia będą niedostępne, dopóki kursy nie zostaną zaimportowane ponownie.
+  reset:
+    en: Reset
+    pl: Usuń
+  coverage:
+    en: NBP table A · %{first} – %{last}
+    pl: Tabela A NBP · %{first} – %{last}
+  table_a:
+    en: NBP table A
+    pl: Tabela A NBP
+  upload_csv:
+    en: Upload CSV
+    pl: Wczytaj CSV
+  empty_title:
+    en: No exchange rates yet
+    pl: Brak kursów walut
+  empty_detail:
+    en: Import a year from NBP, or upload a CSV.
+    pl: Zaimportuj rok z NBP albo wczytaj plik CSV.
+
+list:
+  and:
+    en: "%{items} and %{last}"
+    pl: "%{items} i %{last}"
+  and_more:
+    en: "%{items} and %{count} more"
+    pl: "%{items} i %{count} innych"
+  or:
+    en: "%{items} or %{last}"
+    pl: "%{items} lub %{last}"
+
+tax:
+  income_c22:
+    en: Income (C-22)
+    pl: Przychód (C-22)
+  costs_c23:
+    en: Costs (C-23)
+    pl: Koszty (C-23)
+  income_i65:
+    en: Income (I-65)
+    pl: Przychód (I-65)
+  to_pay_g47:
+    en: Tax to pay (G-47)
+    pl: Podatek do zapłaty (G-47)
+  paid_g48:
+    en: Paid tax (G-48)
+    pl: Podatek zapłacony (G-48)
+  difference_g47_g48:
+    en: Difference (G-47 − G-48)
+    pl: Różnica (G-47 − G-48)
+  income_e36:
+    en: Income (E-36)
+    pl: Przychód (E-36)
+  costs_e37:
+    en: Costs (E-37)
+    pl: Koszty (E-37)
+  income_zg29:
+    en: Income (29)
+    pl: Dochód (29)
+  paid_abroad_zg30:
+    en: Tax paid abroad (30)
+    pl: Podatek zapłacony za granicą (30)
+  to_pay_short_g47:
+    en: To pay (G-47)
+    pl: Do zapłaty (G-47)
+  paid_short_g48:
+    en: Paid (G-48)
+    pl: Zapłacony (G-48)
+
+home:
+  latest_rate:
+    en: Latest NBP rate %{date}
+    pl: Ostatni kurs NBP %{date}
+  no_exchange:
+    one:
+      en: "%{tickers} has no exchange, so its sales aren't in PIT/ZG."
+      pl: "%{tickers} nie ma giełdy, więc jego sprzedaży nie ma w PIT/ZG."
+    other:
+      en: "%{tickers} have no exchange, so their sales aren't in PIT/ZG."
+    few:
+      pl: "%{tickers} nie mają giełdy, więc ich sprzedaży nie ma w PIT/ZG."
+    many:
+      pl: "%{tickers} nie mają giełdy, więc ich sprzedaży nie ma w PIT/ZG."
+  foreign:
+    en: Foreign dividends and interest
+    pl: Zagraniczne dywidendy i odsetki
+  records:
+    en: Records
+    pl: Wpisy
+  calculation_failed:
+    en: Couldn't calculate the summary
+    pl: Nie udało się obliczyć podsumowania
+  updating:
+    en: Updating…
+    pl: Aktualizowanie…
+  update:
+    en: Update
+    pl: Aktualizuj
+  exchange_rates:
+    en: Exchange rates
+    pl: Kursy walut
+  last_import:
+    en: Last import
+    pl: Ostatni import
+  shares:
+    en: Shares and other securities
+    pl: Akcje i inne papiery wartościowe
+  pit_zg_caption:
+    en: one per country with income · country of the exchange
+    pl: jeden na kraj z dochodem · kraj giełdy
+  loss:
+    en: Loss
+    pl: Strata
+  profit:
+    en: Profit
+    pl: Zysk
+  no_pit_zg:
+    en: " · no PIT/ZG, or 0 in field 29"
+    pl: " · bez PIT/ZG lub 0 w polu 29"
+  welcome:
+    en: Welcome to pitpls
+    pl: Witaj w pitpls
+  welcome_detail:
+    en: Three steps to the numbers for your PIT-38.
+    pl: Trzy kroki do kwot w Twoim PIT-38.
+  step_rates:
+    en: Import exchange rates
+    pl: Zaimportuj kursy walut
+  step_rates_detail:
+    en: Every amount is converted with the NBP table A rate from the previous working day.
+    pl: Każda kwota jest przeliczana po kursie z tabeli A NBP z poprzedniego dnia roboczego.
+  step_statement:
+    en: Import a statement
+    pl: Zaimportuj wyciąg
+  step_statement_detail:
+    en: "%{statements}. You can also add records by hand."
+    pl: "%{statements}. Wpisy możesz też dodać ręcznie."
+  open_imports:
+    en: Open imports
+    pl: Otwórz importy
+  step_copy:
+    en: Copy the totals
+    pl: Skopiuj sumy
+  step_copy_detail:
+    en: Summary lists each form field with a copy button, ready for the tax office site.
+    pl: Podsumowanie pokazuje każde pole formularza z przyciskiem kopiowania, gotowe do przeniesienia na stronę urzędu skarbowego.
+
+stocks:
+  sales_count:
+    one:
+      en: 1 sale
+      pl: 1 sprzedaż
+    other:
+      en: "%{count} sales"
+    few:
+      pl: "%{count} sprzedaże"
+    many:
+      pl: "%{count} sprzedaży"
+  set_exchange:
+    en: Set exchange
+    pl: Ustaw giełdę
+  add_buy:
+    en: Add buy
+    pl: Dodaj zakup
+  sales_caption:
+    en: Oldest shares first (FIFO) · NBP rate of the working day before settlement
+    pl: Najpierw najstarsze akcje (FIFO) · kurs NBP z dnia roboczego przed rozliczeniem
+  records_caption:
+    en: Everything you imported or added for %{year}, buys and splits included
+    pl: Wszystko, co zaimportowano lub dodano za %{year}, łącznie z zakupami i splitami
+  holdings_caption:
+    en: Open lots on 31.12.%{year} · check them against your broker's year-end statement
+    pl: Otwarte partie na 31.12.%{year} · porównaj je z rocznym zestawieniem od brokera
+  sales:
+    en: Sales
+    pl: Sprzedaże
+  records:
+    en: Records
+    pl: Wpisy
+  holdings:
+    en: Holdings
+    pl: Pozycje
+  view:
+    en: Stocks view
+    pl: Widok akcji
+  no_sales:
+    en: No sales in %{year}.
+    pl: Brak sprzedaży w %{year}.
+  no_records:
+    en: No records in %{year}.
+    pl: Brak wpisów w %{year}.
+  other_year:
+    one:
+      en: "%{year} has 1 stock record · switch to %{year}"
+      pl: "%{year}: 1 wpis akcji · przełącz na %{year}"
+    other:
+      en: "%{year} has %{count} stock records · switch to %{year}"
+    few:
+      pl: "%{year}: %{count} wpisy akcji · przełącz na %{year}"
+    many:
+      pl: "%{year}: %{count} wpisów akcji · przełącz na %{year}"
+  empty_year:
+    en: No stocks in %{year}
+    pl: Brak akcji w %{year}
+  pick_year:
+    en: Pick a tax year
+    pl: Wybierz rok podatkowy
+  pick_year_detail:
+    en: "Stocks are calculated one tax year at a time: its sales, its records and the lots open on 31.12."
+    pl: "Akcje są liczone osobno dla każdego roku podatkowego: jego sprzedaże, wpisy i partie otwarte na 31.12."
+  no_exchange:
+    en: No exchange
+    pl: Brak giełdy
+  history:
+    en: History
+    pl: Historia
+  history_label:
+    en: "%{ticker} history in %{provider}"
+    pl: Historia %{ticker} w %{provider}
+  no_open_lots:
+    en: No open lots on 31.12.%{year}.
+    pl: Brak otwartych partii na 31.12.%{year}.
+  no_holdings_match:
+    en: No holdings match “%{query}”.
+    pl: Brak pozycji pasujących do „%{query}”.
+  sold_out:
+    en: "Sold out in %{year}:"
+    pl: "Wyprzedane w %{year}:"
+  moves_into:
+    en: "%{holding} move into %{year}. FIFO takes from them first, oldest lot first, per provider."
+    pl: "Na %{year} przechodzi: %{holding}. FIFO pobiera najpierw z nich, od najstarszej partii, osobno na każdej platformie."
+
+count:
+  dividends:
+    one:
+      en: 1 dividend
+      pl: 1 dywidenda
+    other:
+      en: "%{count} dividends"
+    few:
+      pl: "%{count} dywidendy"
+    many:
+      pl: "%{count} dywidend"
+  interests:
+    one:
+      en: 1 interest
+      pl: 1 pozycja odsetek
+    other:
+      en: "%{count} interest"
+    few:
+      pl: "%{count} pozycje odsetek"
+    many:
+      pl: "%{count} pozycji odsetek"
+  cryptos:
+    one:
+      en: 1 crypto record
+      pl: 1 transakcja krypto
+    other:
+      en: "%{count} crypto records"
+    few:
+      pl: "%{count} transakcje krypto"
+    many:
+      pl: "%{count} transakcji krypto"
+  stocks:
+    one:
+      en: 1 stock record
+      pl: 1 transakcja akcji
+    other:
+      en: "%{count} stock records"
+    few:
+      pl: "%{count} transakcje akcji"
+    many:
+      pl: "%{count} transakcji akcji"
+  interest_records:
+    one:
+      en: 1 interest record
+      pl: 1 pozycja odsetek
+    other:
+      en: "%{count} interest records"
+    few:
+      pl: "%{count} pozycje odsetek"
+    many:
+      pl: "%{count} pozycji odsetek"
+  buys:
+    one:
+      en: 1 buy
+      pl: 1 zakup
+    other:
+      en: "%{count} buys"
+    few:
+      pl: "%{count} zakupy"
+    many:
+      pl: "%{count} zakupów"
+  splits:
+    one:
+      en: 1 split
+      pl: 1 split
+    other:
+      en: "%{count} splits"
+    few:
+      pl: "%{count} splity"
+    many:
+      pl: "%{count} splitów"
+  shares:
+    one:
+      en: "%{count} share"
+      pl: "%{count} akcja"
+    other:
+      en: "%{count} shares"
+    few:
+      pl: "%{count} akcje"
+    many:
+      pl: "%{count} akcji"
+  lots:
+    one:
+      en: 1 lot
+      pl: 1 partia
+    other:
+      en: "%{count} lots"
+    few:
+      pl: "%{count} partie"
+    many:
+      pl: "%{count} partii"
+  in_lots:
+    one:
+      en: in 1 lot
+      pl: w 1 partii
+    other:
+      en: in %{count} lots
+    few:
+      pl: w %{count} partiach
+    many:
+      pl: w %{count} partiach
+
+imports:
+  latest_rate:
+    en: NBP table A · latest rate %{date}
+    pl: Tabela A NBP · ostatni kurs %{date}
+  imported:
+    en: Imported %{counts}.
+    pl: "Zaimportowano: %{counts}."
+  providers:
+    en: Providers
+    pl: Platformy
+  interest:
+    en: Interest
+    pl: Odsetki
+  choosing:
+    en: Choosing file…
+    pl: Wybieranie pliku…
+  try_another:
+    en: Try another file
+    pl: Wybierz inny plik
+  choose:
+    en: Choose %{formats}
+    pl: Wybierz %{formats}
+  choose_for:
+    en: Choose %{formats} file for %{provider}
+    pl: Wybierz plik %{formats} z %{provider}
+  file_failed:
+    en: Couldn't import file
+    pl: Nie udało się zaimportować pliku
+  load_failed:
+    en: Couldn't load the exchange rate and import status
+    pl: Nie udało się wczytać stanu kursów i importu
+  rates_failed:
+    en: Couldn't import rates
+    pl: Nie udało się zaimportować kursów
+
+column:
+  date:
+    en: Date
+    pl: Data
+  ticker:
+    en: Ticker
+    pl: Ticker
+  provider:
+    en: Provider
+    pl: Platforma
+  country:
+    en: Country
+    pl: Kraj
+  value:
+    en: Value
+    pl: Wartość
+  tax_paid:
+    en: Tax paid
+    pl: Podatek zapłacony
+  calculated_value:
+    en: Calculated value
+    pl: Wartość przeliczona
+  to_pay:
+    en: To pay
+    pl: Do zapłaty
+  action:
+    en: Action
+    pl: Operacja
+  fee:
+    en: Fee
+    pl: Prowizja
+  calculated_fee:
+    en: Calculated fee
+    pl: Prowizja przeliczona
+  exchange:
+    en: Exchange
+    pl: Giełda
+  shares:
+    en: Shares
+    pl: Akcje
+  income:
+    en: Income
+    pl: Przychód
+  costs:
+    en: Costs
+    pl: Koszty
+  profit:
+    en: Profit
+    pl: Zysk
+  price:
+    en: Price
+    pl: Cena
+  event:
+    en: Event
+    pl: Zdarzenie
+  value_pln:
+    en: Value, PLN
+    pl: Wartość, PLN
+  profit_pln:
+    en: Profit, PLN
+    pl: Zysk, PLN
+  holding_after:
+    en: Holding after
+    pl: Stan po
+
+month:
+  january:
+    en: January
+    pl: Styczeń
+  february:
+    en: February
+    pl: Luty
+  march:
+    en: March
+    pl: Marzec
+  april:
+    en: April
+    pl: Kwiecień
+  may:
+    en: May
+    pl: Maj
+  june:
+    en: June
+    pl: Czerwiec
+  july:
+    en: July
+    pl: Lipiec
+  august:
+    en: August
+    pl: Sierpień
+  september:
+    en: September
+    pl: Wrzesień
+  october:
+    en: October
+    pl: Październik
+  november:
+    en: November
+    pl: Listopad
+  december:
+    en: December
+    pl: Grudzień
+
+dividends:
+  empty:
+    en: No dividends yet
+    pl: Brak dywidend
+  empty_year:
+    en: No dividends in %{year}
+    pl: Brak dywidend w %{year}
+  other_year:
+    one:
+      en: "%{year} has 1 dividend record · switch to %{year}"
+      pl: "%{year}: 1 wpis dywidendy · przełącz na %{year}"
+    other:
+      en: "%{year} has %{count} dividend records · switch to %{year}"
+    few:
+      pl: "%{year}: %{count} wpisy dywidend · przełącz na %{year}"
+    many:
+      pl: "%{year}: %{count} wpisów dywidend · przełącz na %{year}"
+  calculated_to_pay:
+    en: Calculated to pay
+    pl: Wyliczony do zapłaty
+  step_credit:
+    en: Foreign tax credit
+    pl: Odliczenie podatku zagranicznego
+  calculated_tax_paid:
+    en: Calculated tax paid
+    pl: Przeliczony podatek zapłacony
+  max_tax_paid:
+    en: Max tax paid
+    pl: Maks. podatek do odliczenia
+  used_tax_paid:
+    en: Used tax paid
+    pl: Odliczony podatek zapłacony
+  treaty_note:
+    en: Max = %{rate} %{country} treaty rate; the lower one is used
+    pl: Maks. = %{rate}, stawka z umowy z %{country}; stosowana jest niższa kwota
+  edit:
+    en: Edit dividend
+    pl: Edytuj dywidendę
+  add:
+    en: Add dividend
+    pl: Dodaj dywidendę
+
+interests:
+  empty:
+    en: No interest yet
+    pl: Brak odsetek
+  empty_year:
+    en: No interest in %{year}
+    pl: Brak odsetek w %{year}
+  other_year:
+    one:
+      en: "%{year} has 1 interest record · switch to %{year}"
+      pl: "%{year}: 1 wpis odsetek · przełącz na %{year}"
+    other:
+      en: "%{year} has %{count} interest records · switch to %{year}"
+    few:
+      pl: "%{year}: %{count} wpisy odsetek · przełącz na %{year}"
+    many:
+      pl: "%{year}: %{count} wpisów odsetek · przełącz na %{year}"
+  edit:
+    en: Edit interest
+    pl: Edytuj odsetki
+  add:
+    en: Add interest
+    pl: Dodaj odsetki
+
+crypto:
+  empty:
+    en: No crypto yet
+    pl: Brak kryptowalut
+  empty_year:
+    en: No crypto in %{year}
+    pl: Brak kryptowalut w %{year}
+  other_year:
+    one:
+      en: "%{year} has 1 crypto record · switch to %{year}"
+      pl: "%{year}: 1 wpis krypto · przełącz na %{year}"
+    other:
+      en: "%{year} has %{count} crypto records · switch to %{year}"
+    few:
+      pl: "%{year}: %{count} wpisy krypto · przełącz na %{year}"
+    many:
+      pl: "%{year}: %{count} wpisów krypto · przełącz na %{year}"
+  buy_formula:
+    en: Buy · value + fee
+    pl: Kupno · wartość + prowizja
+  sell_formula:
+    en: Sell · value to income, fee to costs
+    pl: Sprzedaż · wartość do przychodu, prowizja do kosztów
+  sale_note:
+    en: A sale adds its value to Income (E-36) and its fee to Costs (E-37)
+    pl: Sprzedaż dodaje wartość do przychodu (E-36), a prowizję do kosztów (E-37)
+  purchase_note:
+    en: A purchase adds its value and fee to Costs (E-37)
+    pl: Kupno dodaje wartość i prowizję do kosztów (E-37)
+  step_adds_to:
+    en: Adds to
+    pl: Trafia do
+  edit:
+    en: Edit crypto
+    pl: Edytuj transakcję krypto
+  add:
+    en: Add crypto
+    pl: Dodaj transakcję krypto
+
+action:
+  buy:
+    en: Buy
+    pl: Kupno
+  sell:
+    en: Sell
+    pl: Sprzedaż
+  split:
+    en: Split
+    pl: Split
+
+sale:
+  history:
+    en: "%{ticker} history"
+    pl: Historia %{ticker}
+  history_in:
+    en: "%{ticker} history · %{provider}"
+    pl: Historia %{ticker} · %{provider}
+  shares_in_lots:
+    en: "%{shares} %{lots}"
+    pl: "%{shares} %{lots}"
+  ratio:
+    en: "%{after}-for-%{before}"
+    pl: "%{after}:%{before}"
+  provider_total:
+    en: (%{provider} total)
+    pl: (kwota wg %{provider})
+  total_note:
+    en: Counts the amount %{provider} actually paid or credited in %{currency} (rounded to cents), not shares × price
+    pl: Liczy kwotę, którą %{provider} faktycznie wypłacił lub pobrał w %{currency} (zaokrągloną do centów), a nie akcje × cena
+  missing:
+    en: Missing
+    pl: Brak
+  full_history:
+    en: Full %{ticker} history
+    pl: Pełna historia %{ticker}
+  label:
+    en: "%{ticker} sale %{date}"
+    pl: "%{ticker} sprzedaż %{date}"
+  settled_worked_out:
+    en: Settled %{date}, worked out from the trade date
+    pl: Rozliczono %{date}, wyliczone z daty transakcji
+  settled:
+    en: Settled %{date}
+    pl: Rozliczono %{date}
+  no_conversion:
+    en: PLN, no conversion
+    pl: PLN, bez przeliczenia
+  lots_taken:
+    en: Lots taken (FIFO)
+    pl: Pobrane partie (FIFO)
+  buy_fees_taken:
+    en: Buy fees, part taken
+    pl: Prowizje zakupu, pobrana część
+  no_buy_shares:
+    en: "%{shares} with no buy"
+    pl: "%{shares} bez zakupu"
+  sale_fee:
+    en: Sale fee
+    pl: Prowizja sprzedaży
+  fee_in_pln:
+    en: "%{fee} in PLN, no conversion"
+    pl: "%{fee} w PLN, bez przeliczenia"
+  adds_to_costs:
+    en: Adds to Costs (C-23)
+    pl: Dodaje do kosztów (C-23)
+  adds_to_costs_in:
+    en: Adds to Costs (C-23) for %{year}
+    pl: Dodaje do kosztów (C-23) za %{year}
+  adds_to_income:
+    en: adds to Income (C-22)
+    pl: dodaje do przychodu (C-22)
+  adds_to_income_in:
+    en: adds to Income (C-22) for %{year}
+    pl: dodaje do przychodu (C-22) za %{year}
+  pit_zg:
+    en: PIT/ZG · %{country} (%{exchange}) · tax paid abroad %{tax} PLN
+    pl: PIT/ZG · %{country} (%{exchange}) · podatek zapłacony za granicą %{tax} PLN
+  pit_zg_no_country:
+    en: PIT/ZG · no country until the exchange is set
+    pl: PIT/ZG · brak kraju, dopóki nie ustawisz giełdy
+  pit_zg_no_country_tax:
+    en: PIT/ZG · no country until the exchange is set · tax paid abroad %{tax} PLN
+    pl: PIT/ZG · brak kraju, dopóki nie ustawisz giełdy · podatek zapłacony za granicą %{tax} PLN
+  result:
+    en: Result
+    pl: Wynik
+  no_shares:
+    en: No shares
+    pl: Brak akcji
+  before_sold:
+    en: "%{before} before this sale, %{sold} sold"
+    pl: "%{before} przed tą sprzedażą, sprzedano %{sold}"
+  before_closed:
+    en: "%{before} before this sale → 0 after"
+    pl: "%{before} przed tą sprzedażą → 0 po niej"
+  before_after:
+    en: "%{before} before this sale → %{after} %{lots} after"
+    pl: "%{before} przed tą sprzedażą → %{after} %{lots} po niej"
+  no_buy:
+    en: No buy
+    pl: Brak zakupu
+  fifo_title:
+    en: FIFO · %{ticker} in %{provider}
+    pl: FIFO · %{ticker} w %{provider}
+  split_note:
+    en: "Split %{ratio} on %{date}: %{before} at %{price_before} → %{after} at %{price_after}"
+    pl: "Split %{ratio} %{date}: %{before} po %{price_before} → %{after} po %{price_after}"
+  all_providers:
+    en: All providers
+    pl: Wszystkie platformy
+  no_fee:
+    en: No fee
+    pl: Bez prowizji
+  fee_counted_pln:
+    en: PLN, no conversion · counted in costs as the shares are sold
+    pl: PLN, bez przeliczenia · wliczana do kosztów przy sprzedaży akcji
+  fee_counted:
+    en: Counted in costs as the shares are sold
+    pl: Wliczana do kosztów przy sprzedaży akcji
+  bought:
+    en: Bought %{date}
+    pl: Kupiono %{date}
+  split_event:
+    en: Split %{ratio} %{date}
+    pl: Split %{ratio} %{date}
+  sold_counts_in:
+    en: Sold %{date} · counts in %{year}
+    pl: Sprzedano %{date} · liczy się w %{year}
+  sold:
+    en: Sold %{date}
+    pl: Sprzedano %{date}
+  to_costs:
+    en: → Costs
+    pl: → Koszty
+  moves_into:
+    en: · moves into %{year}
+    pl: · przechodzi na %{year}
+  open_on:
+    en: Open on 31.12.%{year}
+    pl: Otwarte na 31.12.%{year}
+  cost_when_sold:
+    en: a cost only when its shares are sold
+    pl: koszt dopiero przy sprzedaży akcji
+  cost:
+    en: Cost
+    pl: Koszt
+  lot_history:
+    en: What happened to the lot
+    pl: Co stało się z partią
+  provider_lot:
+    en: "%{provider} · lot %{date}"
+    pl: "%{provider} · partia %{date}"
+  split_change:
+    en: "%{before} at %{price_before} → %{after} at %{price_after}"
+    pl: "%{before} po %{price_before} → %{after} po %{price_after}"
+  no_open_lots:
+    en: No open lots on that day
+    pl: Brak otwartych partii tego dnia
+  split_costs_note:
+    en: Lot costs in PLN don't change, only share counts and prices
+    pl: Koszty partii w PLN się nie zmieniają, tylko liczba akcji i ceny
+  split_formula:
+    en: New shares = shares × %{after} ÷ %{before}
+    pl: Nowe akcje = akcje × %{after} ÷ %{before}
+  split_scope:
+    en: Changes every %{ticker} lot, in every provider
+    pl: Zmienia każdą partię %{ticker} na każdej platformie
+  lots_changed:
+    en: Lots it changed
+    pl: Zmienione partie
+  last_sale:
+    en: last sale %{date}
+    pl: ostatnia sprzedaż %{date}
+  warning_no_buy:
+    en: "%{ticker} sold %{shares} with no buy"
+    pl: "%{ticker}: sprzedano %{shares} bez zakupu"
+  warning_no_buy_detail:
+    en: They count with cost 0.00, so Costs (C-23) are too low. Import the earlier %{provider} statement or add the buy.
+    pl: Liczą się z kosztem 0.00, więc koszty (C-23) są za niskie. Zaimportuj wcześniejszy wyciąg z %{provider} albo dodaj zakup.
+  warning_no_buys:
+    en: "Shares sold with no buy: %{sales}"
+    pl: "Akcje sprzedane bez zakupu: %{sales}"
+  warning_no_buys_detail:
+    en: They count with cost 0.00, so Costs (C-23) are too low. Import the earlier statements or add the buys.
+    pl: Liczą się z kosztem 0.00, więc koszty (C-23) są za niskie. Zaimportuj wcześniejsze wyciągi albo dodaj zakupy.
+  warning_no_exchange:
+    one:
+      en: "%{tickers} has no exchange"
+      pl: "%{tickers} nie ma giełdy"
+    other:
+      en: "%{tickers} have no exchange"
+    few:
+      pl: "%{tickers} nie mają giełdy"
+    many:
+      pl: "%{tickers} nie mają giełdy"
+  warning_no_exchange_detail:
+    one:
+      en: PIT/ZG can't put it in a country.
+      pl: PIT/ZG nie może przypisać go do kraju.
+    other:
+      en: PIT/ZG can't put them in a country.
+    few:
+      pl: PIT/ZG nie może przypisać ich do kraju.
+    many:
+      pl: PIT/ZG nie może przypisać ich do kraju.
+  sales_in_year:
+    en: "%{sales} in %{year}"
+    pl: "%{sales} w %{year}"
+
+exchange:
+  description:
+    en: PIT/ZG puts each sale in the country of its exchange. The exchange is saved on the instrument, so every record of it uses the same one.
+    pl: PIT/ZG przypisuje każdą sprzedaż do kraju jej giełdy. Giełda jest zapisywana przy instrumencie, więc każdy jego wpis używa tej samej.
+  saved:
+    one:
+      en: Exchange saved.
+      pl: Zapisano giełdę.
+    other:
+      en: Exchanges saved.
+    few:
+      pl: Zapisano giełdy.
+    many:
+      pl: Zapisano giełdy.
+  for:
+    en: Exchange for %{ticker} in %{provider}
+    pl: Giełda dla %{ticker} w %{provider}
+  source_downloaded:
+    en: ISO 10383 list · downloaded %{date}
+    pl: Lista ISO 10383 · pobrana %{date}
+  source:
+    en: ISO 10383 list
+    pl: Lista ISO 10383
+  shown:
+    one:
+      en: "%{shown} of %{total} exchange"
+      pl: "%{shown} z %{total} giełdy"
+    other:
+      en: "%{shown} of %{total} exchanges"
+    few:
+      pl: "%{shown} z %{total} giełd"
+    many:
+      pl: "%{shown} z %{total} giełd"
+  refresh_label:
+    en: Refresh the exchange list
+    pl: Odśwież listę giełd
+  loading:
+    en: Loading the exchange list…
+    pl: Wczytywanie listy giełd…
+  downloading:
+    en: Downloading the ISO 10383 exchange list…
+    pl: Pobieranie listy giełd ISO 10383…
+  list_empty:
+    en: The exchange list is empty.
+    pl: Lista giełd jest pusta.
+  no_match:
+    en: No exchange matches.
+    pl: Żadna giełda nie pasuje.
+  placeholder:
+    en: Choose exchange
+    pl: Wybierz giełdę
+  search_placeholder:
+    en: Name, MIC, city or country code
+    pl: Nazwa, MIC, miasto lub kod kraju
+
+history:
+  exchange:
+    en: Exchange · PIT/ZG country
+    pl: Giełda · kraj PIT/ZG
+  currency:
+    en: Currency
+    pl: Waluta
+  holding_on:
+    en: Holding on 31.12.%{year}
+    pl: Stan na 31.12.%{year}
+  lots_caption:
+    en: bar length = shares · each part says where the shares went
+    pl: długość paska = liczba akcji · każda część pokazuje, gdzie trafiły akcje
+  lots_caption_split:
+    en: bar length = shares after the split · each part says where the shares went
+    pl: długość paska = liczba akcji po splicie · każda część pokazuje, gdzie trafiły akcje
+  timeline_caption:
+    en: every record of %{ticker} in %{provider} up to 31.12.%{year}, oldest first
+    pl: każdy wpis %{ticker} w %{provider} do 31.12.%{year}, od najstarszego
+  timeline_caption_split:
+    en: every record of %{ticker} in %{provider} up to 31.12.%{year}, and the split, oldest first
+    pl: każdy wpis %{ticker} w %{provider} do 31.12.%{year} oraz split, od najstarszego
+  timeline_caption_splits:
+    en: every record of %{ticker} in %{provider} up to 31.12.%{year}, and the splits, oldest first
+    pl: każdy wpis %{ticker} w %{provider} do 31.12.%{year} oraz splity, od najstarszego
+  sold:
+    en: sold %{date}
+    pl: sprzedano %{date}
+  open_moves:
+    en: open, moves into %{year}
+    pl: otwarte, przechodzi na %{year}
+  carried:
+    en: "%{shares} · lot %{date} at %{price} · cost %{cost} PLN when sold"
+    pl: "%{shares} · partia %{date} po %{price} · koszt %{cost} PLN przy sprzedaży"
+  carried_fee:
+    en: "%{shares} · lot %{date} at %{price} · cost %{cost} PLN + fee %{fee} PLN when sold"
+    pl: "%{shares} · partia %{date} po %{price} · koszt %{cost} PLN + prowizja %{fee} PLN przy sprzedaży"
+  part_sold:
+    en: "%{shares} sold %{date}"
+    pl: "sprzedano %{shares} %{date}"
+  part_sold_split:
+    en: "%{shares} sold %{date}, %{scaled} after the split"
+    pl: "sprzedano %{shares} %{date}, %{scaled} po splicie"
+  part_label:
+    en: "%{shares} · sold %{date}"
+    pl: "%{shares} · sprzedano %{date}"
+  part_open:
+    en: "%{shares} open"
+    pl: "otwarte: %{shares}"
+  part_open_tooltip:
+    en: "%{shares} open on 31.12.%{year}, moving into %{next}"
+    pl: "Otwarte na 31.12.%{year}: %{shares} · przejście na %{next}"
+  lot_at:
+    en: "%{shares} at %{price}"
+    pl: "%{shares} po %{price}"
+  lot_split_to:
+    en: "%{bought} → %{shares} at %{price}"
+    pl: "%{bought} → %{shares} po %{price}"
+  lot_closed:
+    en: "%{shares} · closed"
+    pl: "%{shares} · zamknięta"
+  lot_open:
+    en: "%{shares} · %{open} open"
+    pl: "%{shares} · otwarte: %{open}"
+  new_lot:
+    en: new lot
+    pl: nowa partia
+  fee_note_pln:
+    en: Fee %{pln} PLN, counted when the shares are sold
+    pl: Prowizja %{pln} PLN, liczona przy sprzedaży akcji
+  fee_note:
+    en: Fee %{fee} = %{pln} PLN, counted when the shares are sold
+    pl: Prowizja %{fee} = %{pln} PLN, liczona przy sprzedaży akcji
+  took_part:
+    en: "%{taken} of %{before} from lot %{date}"
+    pl: "%{taken} z %{before} z partii %{date}"
+  took_all:
+    en: all %{taken} of lot %{date} (closed it)
+    pl: wszystkie %{taken} z partii %{date} (zamknięta)
+  took_last:
+    en: the last %{taken} from lot %{date} (closed it)
+    pl: ostatnie %{taken} z partii %{date} (zamknięta)
+  took_no_buy:
+    en: "%{shares} with no buy, at cost 0"
+    pl: "%{shares} bez zakupu, po koszcie 0"
+  took:
+    en: Took %{parts} · costs %{costs} PLN
+    pl: Pobrano %{parts} · koszty %{costs} PLN
+  took_counts_in:
+    en: Took %{parts} · costs %{costs} PLN · counts in %{year}
+    pl: Pobrano %{parts} · koszty %{costs} PLN · liczy się w %{year}
+  split_lot:
+    en: "Lot %{date}: %{before} at %{price_before} → %{after} at %{price_after}; its cost stays %{cost} PLN"
+    pl: "Partia %{date}: %{before} po %{price_before} → %{after} po %{price_after}; jej koszt pozostaje %{cost} PLN"
+  edit_instrument:
+    en: Edit instrument
+    pl: Edytuj instrument
+  no_buys:
+    en: No buys up to 31.12.%{year}.
+    pl: Brak zakupów do 31.12.%{year}.
+  into:
+    en: Into %{year}
+    pl: Na %{year}
+  lots:
+    en: Lots
+    pl: Partie
+  timeline:
+    en: Timeline
+    pl: Oś czasu
+  loading:
+    en: Loading %{ticker} history…
+    pl: Wczytywanie historii %{ticker}…
+
+editor:
+  edit:
+    en: Edit stock record
+    pl: Edytuj wpis akcji
+  add:
+    en: Add stock record
+    pl: Dodaj wpis akcji
+  new_ticker:
+    en: New ticker
+    pl: Nowy ticker
+  held_on:
+    en: "%{exchange} · held in %{providers}"
+    pl: "%{exchange} · posiadane w %{providers}"
+  held:
+    en: Held in %{providers}
+    pl: Posiadane w %{providers}
+  held_no_exchange:
+    en: Held in %{provider} · no exchange yet
+    pl: Posiadane w %{provider} · jeszcze bez giełdy
+  held_new_in:
+    en: Held in %{providers} · new in %{provider}
+    pl: Posiadane w %{providers} · nowy w %{provider}
+  the_ticker:
+    en: the ticker
+    pl: tickerze
+  exchange_hint:
+    en: Saved with %{ticker} · its country goes to
+    pl: Zapisywana przy %{ticker} · jej kraj trafia do
+  settles_worked_out:
+    en: Warsaw time · settles %{date} (worked out)
+    pl: Czas warszawski · rozliczenie %{date} (wyliczone)
+  settles:
+    en: Warsaw time · settles %{date}
+    pl: Czas warszawski · rozliczenie %{date}
+  warsaw_time:
+    en: Warsaw time
+    pl: Czas warszawski
+  split_hint:
+    en: "%{ratio}. A reverse split is 10 → 1."
+    pl: "%{ratio}. Split odwrotny to 10 → 1."
+  split_hint_default:
+    en: 1 → 10 is a 10-for-1 split. A reverse split is 10 → 1.
+    pl: 1 → 10 to split 10:1. Split odwrotny to 10 → 1.
+  no_buy:
+    one:
+      en: "%{shares} has no buy and count at cost 0.00"
+      pl: "%{shares} nie ma zakupu i liczy się z kosztem 0.00"
+    other:
+      en: "%{shares} have no buy and count at cost 0.00"
+    few:
+      pl: "%{shares} nie mają zakupu i liczą się z kosztem 0.00"
+    many:
+      pl: "%{shares} nie ma zakupu i liczy się z kosztem 0.00"
+  from_lot:
+    en: "%{taken} from lot %{date}"
+    pl: "%{taken} z partii %{date}"
+  from_lot_closes:
+    en: "%{taken} from lot %{date} (closes it)"
+    pl: "%{taken} z partii %{date} (zamyka ją)"
+  fifo_none:
+    en: "FIFO in %{provider} finds no lot: %{no_buy}"
+    pl: "FIFO w %{provider} nie znajduje partii: %{no_buy}"
+  fifo_takes:
+    en: FIFO in %{provider} takes %{taken}
+    pl: FIFO w %{provider} pobiera %{taken}
+  fifo_takes_no_buy:
+    en: FIFO in %{provider} takes %{taken}; %{no_buy}
+    pl: FIFO w %{provider} pobiera %{taken}; %{no_buy}
+  no_pit_zg:
+    en: · no PIT/ZG until the exchange is set
+    pl: · bez PIT/ZG, dopóki nie ustawisz giełdy
+  unit_income:
+    en: income
+    pl: przychód
+  unit_lot_cost:
+    en: lot cost
+    pl: koszt partii
+  left_after:
+    en: Left after
+    pl: Pozostaje
+  tax_abroad:
+    en: Tax abroad
+    pl: Podatek za granicą
+  fee_no_conversion:
+    en: ", no conversion"
+    pl: ", bez przeliczenia"
+  new_lot:
+    en: New lot in %{provider}. It counts as a cost only when its shares are sold.
+    pl: Nowa partia w %{provider}. Staje się kosztem dopiero przy sprzedaży akcji.
+  held_after:
+    en: "%{ticker} held after"
+    pl: "%{ticker} po transakcji"
+  no_open_lots:
+    en: No open %{ticker} lots on that day.
+    pl: Brak otwartych partii %{ticker} tego dnia.
+  split_changes:
+    en: "Changes every open %{ticker} lot, in every account:"
+    pl: "Zmienia każdą otwartą partię %{ticker} na każdym koncie:"
+  split_costs_note:
+    en: Lot costs in PLN don't change. Only share counts and prices do.
+    pl: Koszty partii w PLN się nie zmieniają. Zmieniają się tylko liczba akcji i ceny.
+  selected:
+    en: "%{action}, selected"
+    pl: "%{action}, wybrane"
+  settlement_placeholder:
+    en: Worked out from the trade date
+    pl: Wyliczana z daty transakcji
+  tax_withheld_note:
+    en: if the broker shows it
+    pl: jeśli broker go podaje
+  split_day_hint:
+    en: The first trading day at the new share count
+    pl: Pierwszy dzień sesji z nową liczbą akcji
+  preview_settles:
+    en: Settles %{date}
+    pl: Rozliczenie %{date}
+  no_rate:
+    en: No rate needed
+    pl: Kurs niepotrzebny
+
+error:
+  database_directory:
+    en: "Failed to create the database directory: %{source}"
+    pl: "Nie udało się utworzyć katalogu bazy danych: %{source}"
+  database_open:
+    en: "Failed to open the database: %{source}"
+    pl: "Nie udało się otworzyć bazy danych: %{source}"
+  database_migrate:
+    en: "Failed to migrate the database: %{source}"
+    pl: "Nie udało się zaktualizować bazy danych: %{source}"
+  background:
+    en: "Background operation failed: %{source}"
+    pl: "Operacja w tle nie powiodła się: %{source}"
+  read_preferences:
+    en: "Could not read preferences: %{source}"
+    pl: "Nie udało się odczytać preferencji: %{source}"
+  save_preferences:
+    en: "Could not save preferences: %{source}"
+    pl: "Nie udało się zapisać preferencji: %{source}"
+  year_range:
+    en: Year %{year} out of range (%{min}–%{max})
+    pl: Rok %{year} poza zakresem (%{min}–%{max})
+  invalid_time:
+    en: Invalid date '%{value}' (expected YYYY-MM-DD HH:MM:SS)
+    pl: Nieprawidłowa data '%{value}' (oczekiwano RRRR-MM-DD GG:MM:SS)
+  nonexistent_time:
+    en: "%{time} doesn't exist in Warsaw: clocks skip that hour when summer time starts"
+    pl: "%{time} nie istnieje w Warszawie: przy zmianie na czas letni zegary pomijają tę godzinę"
+  invalid_amount:
+    en: "Invalid %{field_lower}: %{value}"
+    pl: "Nieprawidłowa wartość w polu „%{field}”: %{value}"
+  whole_number:
+    en: "%{field} must be a whole number: %{value}"
+    pl: "Pole „%{field}” musi być liczbą całkowitą: %{value}"
+  not_positive:
+    en: "%{field} must be more than 0"
+    pl: Pole „%{field}” musi być większe od 0
+  negative:
+    en: "%{field} can't be negative"
+    pl: Pole „%{field}” nie może być ujemne
+  crypto_exists:
+    en: Crypto with ID '%{id}' already exists
+    pl: Transakcja krypto o ID '%{id}' już istnieje
+  crypto_not_found:
+    en: Crypto with ID '%{id}' not found
+    pl: Nie znaleziono transakcji krypto o ID '%{id}'
+  dividend_exists:
+    en: Dividend with ID '%{id}' already exists
+    pl: Dywidenda o ID '%{id}' już istnieje
+  dividend_not_found:
+    en: Dividend with ID '%{id}' not found
+    pl: Nie znaleziono dywidendy o ID '%{id}'
+  interest_exists:
+    en: Interest with ID '%{id}' already exists
+    pl: Odsetki o ID '%{id}' już istnieją
+  interest_not_found:
+    en: Interest with ID '%{id}' not found
+    pl: Nie znaleziono odsetek o ID '%{id}'
+  stock_exists:
+    en: Stock record with ID '%{id}' already exists
+    pl: Wpis akcji o ID '%{id}' już istnieje
+  stock_not_found:
+    en: Stock record with ID '%{id}' not found
+    pl: Nie znaleziono wpisu akcji o ID '%{id}'
+  nothing_to_preview:
+    en: Nothing to preview
+    pl: Brak danych do podglądu
+  exchanges_download:
+    en: "Failed to download the exchange list: %{source}"
+    pl: "Nie udało się pobrać listy giełd: %{source}"
+  exchanges_status:
+    en: The exchange list download returned %{status}
+    pl: Pobieranie listy giełd zwróciło %{status}
+  exchanges_read:
+    en: "Failed to read the exchange list: %{source}"
+    pl: "Nie udało się odczytać listy giełd: %{source}"
+  exchanges_parse:
+    en: "Failed to parse the exchange list: %{source}"
+    pl: "Nie udało się przetworzyć listy giełd: %{source}"
+  invalid_mic:
+    en: Invalid MIC '%{value}' in the exchange list
+    pl: Nieprawidłowy MIC '%{value}' na liście giełd
+  invalid_mic_line:
+    en: Invalid MIC '%{value}' in the exchange list at line %{line}
+    pl: Nieprawidłowy MIC '%{value}' na liście giełd w wierszu %{line}
+  invalid_list_date:
+    en: Invalid date '%{value}' in the exchange list
+    pl: Nieprawidłowa data '%{value}' na liście giełd
+  invalid_list_date_line:
+    en: Invalid date '%{value}' in the exchange list at line %{line}
+    pl: Nieprawidłowa data '%{value}' na liście giełd w wierszu %{line}
+  database:
+    en: "Database error: %{source}"
+    pl: "Błąd bazy danych: %{source}"
+  stored_value:
+    en: A stored value has an invalid format.
+    pl: Zapisana wartość ma nieprawidłowy format.
+  stored_amount:
+    en: A stored amount has an invalid format.
+    pl: Zapisana kwota ma nieprawidłowy format.
+  year_out_of_range:
+    en: Year %{year} is out of range
+    pl: Rok %{year} jest poza zakresem
+  invalid_stock_record:
+    en: "Invalid stock record: %{reason}"
+    pl: "Nieprawidłowy wpis akcji: %{reason}"
+  invalid_exchange:
+    en: "Invalid exchange: %{reason}"
+    pl: "Nieprawidłowa giełda: %{reason}"
+  convert_crypto_value:
+    en: "Failed to convert crypto value to PLN: %{error}"
+    pl: "Nie udało się przeliczyć wartości krypto na PLN: %{error}"
+  convert_crypto_fee:
+    en: "Failed to convert crypto fee to PLN: %{error}"
+    pl: "Nie udało się przeliczyć prowizji krypto na PLN: %{error}"
+  convert_dividend_value:
+    en: "Failed to convert dividend value to PLN: %{error}"
+    pl: "Nie udało się przeliczyć wartości dywidendy na PLN: %{error}"
+  convert_dividend_tax:
+    en: "Failed to convert paid dividend tax to PLN: %{error}"
+    pl: "Nie udało się przeliczyć podatku zapłaconego od dywidendy na PLN: %{error}"
+  convert_interest_value:
+    en: "Failed to convert interest value to PLN: %{error}"
+    pl: "Nie udało się przeliczyć wartości odsetek na PLN: %{error}"
+  convert_stock_value:
+    en: "Failed to convert stock value to PLN: %{error}"
+    pl: "Nie udało się przeliczyć wartości akcji na PLN: %{error}"
+  convert_stock_fee:
+    en: "Failed to convert stock fee to PLN: %{error}"
+    pl: "Nie udało się przeliczyć prowizji od akcji na PLN: %{error}"
+  convert_stock_tax:
+    en: "Failed to convert tax paid on a stock sale to PLN: %{error}"
+    pl: "Nie udało się przeliczyć podatku zapłaconego od sprzedaży akcji na PLN: %{error}"
+  no_rates:
+    en: No exchange rates are available.
+    pl: Brak dostępnych kursów walut.
+  rate_not_found:
+    en: No %{currency} rate was found in the %{steps} days before %{date}.
+    pl: Nie znaleziono kursu %{currency} w ciągu %{steps} dni przed %{date}.
+  nbp_too_early:
+    en: NBP rates are available from %{year}
+    pl: Kursy NBP są dostępne od %{year}
+  nbp_future:
+    en: Cannot import NBP rates for a future year
+    pl: Nie można importować kursów NBP dla przyszłego roku
+  invalid_date:
+    en: Invalid date
+    pl: Nieprawidłowa data
+  nbp_date_range:
+    en: Invalid NBP date range
+    pl: Nieprawidłowy zakres dat NBP
+  nbp_currency:
+    en: "%{currency} rates are not imported from NBP"
+    pl: Kursy %{currency} nie są importowane z NBP
+  nbp_request:
+    en: "Failed to request NBP rates: %{source}"
+    pl: "Nie udało się pobrać kursów NBP: %{source}"
+  nbp_status:
+    en: NBP API returned %{status} for %{code} rates from %{start} to %{end}
+    pl: API NBP zwróciło %{status} dla kursów %{code} od %{start} do %{end}
+  nbp_response:
+    en: "Failed to parse NBP response: %{source}"
+    pl: "Nie udało się przetworzyć odpowiedzi NBP: %{source}"
+  csv_empty:
+    en: The rates CSV is empty.
+    pl: Plik CSV z kursami jest pusty.
+  csv_format:
+    en: Invalid rates CSV format
+    pl: Nieprawidłowy format pliku CSV z kursami
+  csv_read:
+    en: "Failed to read rates CSV: %{source}"
+    pl: "Nie udało się odczytać pliku CSV z kursami: %{source}"
+  csv_date:
+    en: Invalid date at line %{line}
+    pl: Nieprawidłowa data w wierszu %{line}
+  csv_unit:
+    en: Invalid rate unit in header '%{header}'
+    pl: Nieprawidłowa jednostka kursu w nagłówku '%{header}'
+  csv_rate:
+    en: Invalid rate in column '%{column}' at line %{line}
+    pl: Nieprawidłowy kurs w kolumnie '%{column}' w wierszu %{line}
+  csv_duplicate:
+    en: Duplicate rate for %{currency} on %{date} at line %{line}
+    pl: Powtórzony kurs %{currency} z dnia %{date} w wierszu %{line}
+  import_read:
+    en: "Failed to read import file: %{source}"
+    pl: "Nie udało się odczytać pliku importu: %{source}"
+  import_pdf:
+    en: "Failed to extract PDF text: %{source}"
+    pl: "Nie udało się odczytać tekstu z PDF: %{source}"
+  import_not_revolut:
+    en: Not a Revolut Profit and Loss Statement PDF
+    pl: To nie jest PDF Revolut Profit and Loss Statement
+  import_format:
+    en: Unexpected format for %{provider}
+    pl: Nieoczekiwany format pliku %{provider}
+  import_no_header:
+    en: Missing header row
+    pl: Brak wiersza nagłówka
+  import_header:
+    en: "Unexpected header: %{header}"
+    pl: "Nieoczekiwany nagłówek: %{header}"
+  import_column:
+    en: "Missing column: %{column}"
+    pl: "Brak kolumny: %{column}"
+  import_section:
+    en: "Missing section: %{context}"
+    pl: "Brak sekcji: %{context}"
+  import_missing_field:
+    en: Missing field '%{field}' in %{context}
+    pl: Brak pola '%{field}' (%{context})
+  import_invalid_field:
+    en: "Invalid field '%{field}' in %{context}: %{value}"
+    pl: "Nieprawidłowe pole '%{field}' (%{context}): %{value}"
+  import_currency:
+    en: "Currency mismatch for %{field} in %{context}: expected %{expected}, got %{actual}"
+    pl: "Niezgodna waluta pola %{field} (%{context}): oczekiwano %{expected}, jest %{actual}"
+  import_country:
+    en: "Country mismatch in %{context}: ISIN %{isin} maps to %{expected}, row has %{actual}"
+    pl: "Niezgodny kraj (%{context}): ISIN %{isin} wskazuje %{expected}, wiersz ma %{actual}"
+  import_amounts:
+    en: "Amount mismatch in %{context}: %{gross} − %{tax} does not equal %{net}"
+    pl: "Niezgodne kwoty (%{context}): %{gross} − %{tax} nie równa się %{net}"
+  import_totals:
+    en: "Total mismatch in Revolut Other income & fees table (%{currency}): rows %{rows}, total %{total}"
+    pl: "Niezgodna suma w tabeli Revolut Other income & fees (%{currency}): wiersze %{rows}, suma %{total}"
+  import_row:
+    en: "Malformed row: expected at least %{expected} fields, got %{actual}: %{row}"
+    pl: "Błędny wiersz: oczekiwano co najmniej %{expected} pól, jest %{actual}: %{row}"
+  import_timestamp:
+    en: Invalid timestamp '%{value}'
+    pl: Nieprawidłowy znacznik czasu '%{value}'
+  import_decimal:
+    en: Invalid decimal '%{value}'
+    pl: Nieprawidłowa liczba '%{value}'
+  import_currency_code:
+    en: Invalid currency '%{value}'
+    pl: Nieprawidłowa waluta '%{value}'
+  import_isin:
+    en: Invalid ISIN '%{isin}'
+    pl: Nieprawidłowy ISIN '%{isin}'
+  import_amounts_detail:
+    en: gross %{gross}, tax %{tax}, net %{net}
+    pl: brutto %{gross}, podatek %{tax}, netto %{net}
+  invalid_isin:
+    en: "Invalid ISIN: %{value}"
+    pl: "Nieprawidłowy ISIN: %{value}"
+  invalid_country:
+    en: "Invalid country code '%{value}': enter two letters, such as US or JP"
+    pl: "Nieprawidłowy kod kraju '%{value}': wpisz dwie litery, np. US lub JP"
+  database_delete:
+    en: "Could not delete the database: %{source}"
+    pl: "Nie udało się usunąć bazy danych: %{source}"
+
+import_field:
+  line:
+    en: line
+    pl: wiersz
+  total_row:
+    en: Total row
+    pl: wiersz Total
+  ticker:
+    en: ticker
+    pl: ticker
+  trailing_tokens:
+    en: trailing tokens
+    pl: końcowe elementy
+  gross_amount:
+    en: gross amount
+    pl: kwota brutto
+  withholding_tax:
+    en: withholding tax
+    pl: podatek u źródła
+  net_amount:
+    en: net amount
+    pl: kwota netto
+  local_currency_rate:
+    en: local currency rate
+    pl: kurs waluty lokalnej
+  source_currency:
+    en: source currency
+    pl: waluta źródłowa
+  total_currency:
+    en: total currency
+    pl: waluta sumy
+
+import_context:
+  revolut_other_income:
+    en: Revolut Other income & fees table
+    pl: tabela Revolut Other income & fees
+  revolut_row:
+    en: Revolut row %{ticker} on %{date}
+    pl: wiersz Revolut %{ticker} z dnia %{date}
+  revolut_dividend:
+    en: Revolut dividend on %{date}
+    pl: dywidenda Revolut z dnia %{date}
+  revolut_total:
+    en: Revolut total
+    pl: suma Revolut
+  t212_dividend:
+    en: Trading 212 dividend %{ticker} at %{time} UTC
+    pl: dywidenda Trading 212 %{ticker} z %{time} UTC

@@ -52,12 +52,27 @@ impl Database {
             .connect_with(options)
             .await
             .map_err(OpenDatabaseError::Connect)?;
-        MIGRATOR
-            .run(&pool)
-            .await
-            .map_err(OpenDatabaseError::Migrate)?;
+        if let Err(error) = MIGRATOR.run(&pool).await {
+            // Closed before returning, so the file can be deleted to start over;
+            // Windows refuses to delete an open file.
+            pool.close().await;
+            return Err(OpenDatabaseError::Migrate(error));
+        }
 
         Ok(Self::new(pool))
+    }
+
+    /// Also deletes the journal files SQLite keeps beside the database.
+    pub fn delete(path: impl AsRef<Path>) -> std::io::Result<()> {
+        for suffix in ["", "-wal", "-shm", "-journal"] {
+            let mut file = path.as_ref().as_os_str().to_owned();
+            file.push(suffix);
+            match std::fs::remove_file(file) {
+                Err(error) if error.kind() != std::io::ErrorKind::NotFound => return Err(error),
+                _ => {}
+            }
+        }
+        Ok(())
     }
 
     pub fn crypto_repo(&self) -> CryptoRepository {

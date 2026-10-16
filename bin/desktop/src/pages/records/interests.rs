@@ -24,7 +24,8 @@ use pitpls_core::{
 };
 use pitpls_importers::OutputType;
 use rust_decimal::Decimal;
-use std::sync::Arc;
+use rust_i18n::t;
+use std::{borrow::Cow, sync::Arc};
 
 pub struct Interests;
 
@@ -33,9 +34,10 @@ impl RecordKind for Interests {
     type Form = InterestForm;
 
     const PAGE: Page = Page::Interests;
-    const NAME: &'static str = "Interest";
-    const PLURAL: &'static str = "interest";
-    const TOTAL_LABELS: &'static [&'static str] = &["Income (I-65)", "To pay (G-47)"];
+    const EMPTY: &'static str = "interests.empty";
+    const EMPTY_YEAR: &'static str = "interests.empty_year";
+    const OTHER_YEAR: &'static str = "interests.other_year";
+    const TOTAL_LABELS: &'static [&'static str] = &["tax.income_i65", "tax.to_pay_short_g47"];
 
     fn id(record: &CalculatedInterest) -> &str {
         &record.id
@@ -43,11 +45,11 @@ impl RecordKind for Interests {
 
     fn columns() -> Vec<RecordColumn> {
         vec![
-            RecordColumn::new("Date", CellStyle::Time, 116., 50.),
-            RecordColumn::grow("Provider", CellStyle::Muted),
-            RecordColumn::new("Value", CellStyle::Number, 150., 104.),
-            RecordColumn::new("Calculated value", CellStyle::Number, 170., 116.),
-            RecordColumn::new("To pay", CellStyle::Number, 140., 100.),
+            RecordColumn::new("column.date", CellStyle::Time, 116., 50.),
+            RecordColumn::grow("column.provider", CellStyle::Muted),
+            RecordColumn::new("column.value", CellStyle::Number, 150., 104.),
+            RecordColumn::new("column.calculated_value", CellStyle::Number, 170., 116.),
+            RecordColumn::new("column.to_pay", CellStyle::Number, 140., 100.),
         ]
     }
 
@@ -61,25 +63,28 @@ impl RecordKind for Interests {
         ];
         let steps = vec![
             Step {
-                title: "Conversion",
+                title: "records.step_conversion",
                 lines: vec![
                     StepLine::Formula(conversion(record.value, record.nbp_rate)),
                     StepLine::Result(vec![pln(record.calculated_value)]),
                     StepLine::Caption(
-                        format!("Calculated value · NBP date {}", date(record.nbp_date).main)
-                            .into(),
+                        t!(
+                            "records.calculated_value_nbp",
+                            date = date(record.nbp_date).main
+                        )
+                        .into(),
                     ),
                 ],
             },
             Step {
-                title: "Polish tax",
+                title: "records.step_polish_tax",
                 lines: vec![
                     StepLine::Formula(vec![
                         DisplayText::plain(format!("{} ×", percent(POLAND_TAX))),
                         money(record.calculated_value),
                     ]),
                     StepLine::Result(vec![pln(record.to_pay)]),
-                    StepLine::Caption("To pay".into()),
+                    StepLine::Caption(t!("column.to_pay").into()),
                 ],
             },
         ];
@@ -97,7 +102,7 @@ impl RecordKind for Interests {
     fn subtotal(records: &[&CalculatedInterest]) -> Vec<(Option<&'static str>, Decimal)> {
         let value = records.iter().map(|record| record.calculated_value).sum();
         let to_pay = records.iter().map(|record| record.to_pay).sum();
-        vec![(None, value), (Some("to pay"), to_pay)]
+        vec![(None, value), (Some("records.subtotal_to_pay"), to_pay)]
     }
 
     fn imported(output: &OutputType) -> bool {
@@ -154,7 +159,7 @@ impl RecordKind for Interests {
             nbp_date: record.nbp_date,
             formula: conversion(record.value, record.nbp_rate),
             value: pln(record.calculated_value),
-            results: vec![("To pay", pln(record.to_pay))],
+            results: vec![("column.to_pay", pln(record.to_pay))],
         }
     }
 }
@@ -197,11 +202,11 @@ impl RecordForm for InterestForm {
         }
     }
 
-    fn title(&self) -> &'static str {
+    fn title(&self) -> Cow<'static, str> {
         if self.existing_id.is_some() {
-            "Edit interest"
+            t!("interests.edit")
         } else {
-            "Add interest"
+            t!("interests.add")
         }
     }
 
@@ -218,10 +223,10 @@ impl RecordForm for InterestForm {
     }
 
     fn submission(&self, cx: &App) -> Result<InterestSubmission, String> {
-        let time = form::selected_time(&self.date, "Date", cx)?;
-        let value = form::amount(&self.value, "Value", cx)?;
-        let value_currency = form::selected(&self.value_currency, "Value currency", cx)?;
-        let provider = form::required(&self.provider, "Provider", cx)?;
+        let time = form::selected_time(&self.date, &t!("field.date"), cx)?;
+        let value = form::amount(&self.value, &t!("field.value"), cx)?;
+        let value_currency = form::selected(&self.value_currency, &t!("field.value_currency"), cx)?;
+        let provider = form::required(&self.provider, &t!("field.provider"), cx)?;
         Ok(match self.existing_id.clone() {
             Some(id) => Submission::Update(UpdateInterestInput {
                 id,
@@ -262,15 +267,20 @@ impl RecordForm for InterestForm {
 
     fn render(&self, busy: bool, cx: &App) -> Div {
         form::grid()
-            .child(form::date_field("Date", &self.date, busy, cx))
+            .child(form::date_field(t!("field.date"), &self.date, busy, cx))
             .child(form::amount_field(
-                "Value",
-                "Value currency",
+                t!("field.value"),
+                t!("field.value_currency"),
                 &self.value,
                 &self.value_currency,
                 busy,
                 cx,
             ))
-            .child(form::input_field("Provider", &self.provider, busy, cx))
+            .child(form::input_field(
+                t!("field.provider"),
+                &self.provider,
+                busy,
+                cx,
+            ))
     }
 }

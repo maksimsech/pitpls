@@ -1,7 +1,9 @@
+use crate::i18n::plural;
 use chrono::NaiveDate;
 use gpui_kit::SharedString;
 use pitpls_core::common::Amount;
 use rust_decimal::Decimal;
+use rust_i18n::t;
 use std::fmt::Display;
 
 pub const DATE_FORMAT: &str = "%d.%m.%Y";
@@ -90,9 +92,8 @@ pub fn shares(value: Decimal) -> DisplayText {
 
 pub fn record_count(count: u32) -> String {
     match count {
-        0 => "no records".to_owned(),
-        1 => "1 record".to_owned(),
-        count => format!("{count} records"),
+        0 => t!("records.none").into_owned(),
+        count => plural("records.count", count.into()).into_owned(),
     }
 }
 

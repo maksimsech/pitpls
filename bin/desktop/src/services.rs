@@ -66,6 +66,7 @@ pub enum Error {
     Year(YearError),
     Repository(RepositoryError),
     OpenDatabase(pitpls_db::OpenDatabaseError),
+    DeleteDatabase(std::io::Error),
     Background(tokio::task::JoinError),
     ReadPreferences(std::io::Error),
     ParsePreferences(serde_json::Error),
@@ -74,6 +75,16 @@ pub enum Error {
 }
 
 impl Error {
+    /// Starting over with an empty database can fix these.
+    pub fn broken_database(&self) -> bool {
+        use pitpls_db::OpenDatabaseError::{Connect, Migrate};
+
+        matches!(
+            self,
+            Self::OpenDatabase(Connect(_) | Migrate(_)) | Self::DeleteDatabase(_)
+        )
+    }
+
     pub fn missing_rate(&self) -> bool {
         use CalculateDividendTaxError::{DividendConversion, PaidTaxConversion};
         use CalculateInterestTaxError::InterestConversion;

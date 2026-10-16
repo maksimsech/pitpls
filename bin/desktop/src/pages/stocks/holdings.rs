@@ -1,6 +1,8 @@
 use super::{
     StocksPage,
-    display::{HoldingBlock, InstrumentKey, StockDisplay, lots_count, shares_count},
+    display::{
+        HoldingBlock, InstrumentKey, StockDisplay, lots_count, shares_count, shares_in_lots,
+    },
 };
 use crate::{
     components::{
@@ -17,6 +19,7 @@ use gpui_kit::{
     *,
 };
 use rust_decimal::Decimal;
+use rust_i18n::t;
 
 pub struct Layout {
     columns: Vec<RecordColumn>,
@@ -29,13 +32,13 @@ impl Layout {
     pub fn new(width: Option<Pixels>) -> Self {
         Self {
             columns: vec![
-                RecordColumn::new("Bought", CellStyle::Time, 130., 84.),
-                RecordColumn::new("Lot", CellStyle::Number, 64., 56.),
-                RecordColumn::new("Open", CellStyle::Number, 64., 56.),
-                RecordColumn::new("Price", CellStyle::Number, 112., 96.),
-                RecordColumn::new("NBP rate", CellStyle::Rate, 112., 64.).optional(),
-                RecordColumn::grow("Cost, PLN", CellStyle::Number),
-                RecordColumn::new("Buy fee, PLN", CellStyle::Number, 104., 88.),
+                RecordColumn::new("lots.bought", CellStyle::Time, 130., 84.),
+                RecordColumn::new("lots.lot", CellStyle::Number, 64., 56.),
+                RecordColumn::new("lots.open", CellStyle::Number, 64., 56.),
+                RecordColumn::new("lots.price", CellStyle::Number, 112., 96.),
+                RecordColumn::new("lots.nbp_rate", CellStyle::Rate, 112., 64.).optional(),
+                RecordColumn::grow("lots.cost", CellStyle::Number),
+                RecordColumn::new("lots.buy_fee", CellStyle::Number, 104., 88.),
             ],
             fit: None,
             width,
@@ -123,7 +126,7 @@ impl StocksPage {
         for (block_index, block) in blocks.iter().enumerate() {
             let exchange = match &block.exchange {
                 Some(exchange) => chip(exchange.clone(), p.muted, cx),
-                None => chip("No exchange".into(), p.warning, cx),
+                None => chip(t!("stocks.no_exchange").into(), p.warning, cx),
             };
             let key = InstrumentKey {
                 ticker: block.ticker.clone(),
@@ -131,10 +134,14 @@ impl StocksPage {
             };
             let history = records::link(
                 SharedString::from(format!("history-{block_index}")),
-                "History".into(),
+                t!("stocks.history").into(),
                 cx,
             )
-            .accessibility_label(format!("{} history in {}", block.ticker, block.provider))
+            .accessibility_label(t!(
+                "stocks.history_label",
+                ticker = block.ticker,
+                provider = block.provider
+            ))
             .disabled(disabled)
             .on_click(
                 cx.listener(move |this, _, window, cx| this.open_history(key.clone(), window, cx)),
@@ -192,9 +199,9 @@ impl StocksPage {
         }
         if blocks.is_empty() {
             let text = if display.holdings.is_empty() {
-                format!("No open lots on 31.12.{year}.")
+                t!("stocks.no_open_lots", year = year)
             } else {
-                format!("No holdings match “{}”.", self.query)
+                t!("stocks.no_holdings_match", query = self.query)
             };
             rows = rows.child(
                 div()
@@ -218,7 +225,7 @@ impl StocksPage {
                         div()
                             .flex_shrink_0()
                             .when(index > 0, |label| label.invisible())
-                            .child(format!("Sold out in {year}:")),
+                            .child(t!("stocks.sold_out", year = year)),
                     )
                     .child(div().text_color(p.muted).child(sold.instrument.clone()))
                     .child(format!("· {}", sold.last_sale)),
@@ -237,12 +244,10 @@ impl StocksPage {
                     .text_size(px(12.))
                     .text_color(p.faint)
                     .child(Icon::new(IconName::Info).size(px(14.)).flex_shrink_0())
-                    .child(div().min_w_0().child(format!(
-                        "{} in {} move into {}. FIFO takes from them first, oldest lot first, \
-                         per provider.",
-                        shares_count(open),
-                        lots_count(lots),
-                        year + 1
+                    .child(div().min_w_0().child(t!(
+                        "stocks.moves_into",
+                        holding = shares_in_lots(open, lots),
+                        year = year + 1
                     ))),
             );
         }

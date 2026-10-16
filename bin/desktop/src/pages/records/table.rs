@@ -25,13 +25,18 @@ use gpui_kit::{
     *,
 };
 use pitpls_core::time;
-use std::collections::{HashMap, HashSet};
+use rust_i18n::t;
+use std::{
+    borrow::Cow,
+    collections::{HashMap, HashSet},
+};
 
 pub struct MonthGroup {
     pub key: (i32, u32),
     pub title: SharedString,
     pub records: Vec<usize>,
     pub count: SharedString,
+    /// The labels are message keys.
     pub summary: Vec<(Option<&'static str>, DisplayText)>,
 }
 
@@ -215,10 +220,21 @@ pub trait TableHost: Render {
 }
 
 pub fn month_title((year, month): (i32, u32), with_year: bool) -> SharedString {
-    let name = u8::try_from(month)
-        .ok()
-        .and_then(|month| chrono::Month::try_from(month).ok())
-        .map_or("", |month| month.name());
+    let name = match month {
+        1 => t!("month.january"),
+        2 => t!("month.february"),
+        3 => t!("month.march"),
+        4 => t!("month.april"),
+        5 => t!("month.may"),
+        6 => t!("month.june"),
+        7 => t!("month.july"),
+        8 => t!("month.august"),
+        9 => t!("month.september"),
+        10 => t!("month.october"),
+        11 => t!("month.november"),
+        12 => t!("month.december"),
+        _ => "".into(),
+    };
     if with_year {
         format!("{name} {year}").into()
     } else {
@@ -279,7 +295,7 @@ fn table_header<V: TableHost>(
             row.child(
                 control(layout.frame[0]).child(
                     Checkbox::new("select-all")
-                        .accessibility_label("Select all records")
+                        .accessibility_label(t!("records.select_all"))
                         .checked(checked)
                         .disabled(host.disabled() || visible.is_empty())
                         .on_click(cx.listener(move |this: &mut V, checked, _, cx| {
@@ -310,8 +326,8 @@ fn table_header<V: TableHost>(
                             .rounded(px(6.))
                             .text_color(p.muted)
                             .child(Icon::new(IconName::ChevronsDownUp).size(px(14.)))
-                            .accessibility_label("Collapse all")
-                            .tooltip("Collapse all")
+                            .accessibility_label(t!("records.collapse_all"))
+                            .tooltip(t!("records.collapse_all"))
                             .on_click(cx.listener(move |this: &mut V, _, _, cx| {
                                 let table = this.table_mut(which);
                                 table.expanded.clear();
@@ -347,11 +363,11 @@ fn month_row<V: TableHost>(
         .cursor_pointer()
         .hover(|row| row.bg(p.hover))
         .role(Role::Button)
-        .aria_label(format!(
-            "{} {}",
-            if open { "Fold" } else { "Unfold" },
-            group.title
-        ))
+        .aria_label(if open {
+            t!("records.fold", month = group.title)
+        } else {
+            t!("records.unfold", month = group.title)
+        })
         .aria_expanded(open)
         .when_some(focus, |row, focus| row.track_focus(focus))
         .on_click(cx.listener(move |this: &mut V, _, _, cx| {
@@ -365,7 +381,7 @@ fn month_row<V: TableHost>(
                         "select-month-{}-{}",
                         key.0, key.1
                     )))
-                    .accessibility_label(format!("Select all in {}", group.title))
+                    .accessibility_label(t!("records.select_month", month = group.title))
                     .checked(table.all_selected(group.records.iter()))
                     .disabled(host.disabled())
                     .on_click(cx.listener(
@@ -404,7 +420,9 @@ fn month_row<V: TableHost>(
                             h_flex()
                                 .flex_shrink_0()
                                 .when(counted || index > 0, |part| part.child(" · "))
-                                .when_some(*label, |part, label| part.child(format!("{label} ")))
+                                .when_some(*label, |part, label| {
+                                    part.child(format!("{} ", t!(label)))
+                                })
                                 .child(value::reveal_full(
                                     div()
                                         .id(SharedString::from(format!(
@@ -451,11 +469,11 @@ fn record_line<V: TableHost>(
         .when(selected, |row| row.bg(p.selected))
         .when(!selected, |row| row.hover(|row| row.bg(p.hover)))
         .role(Role::Button)
-        .aria_label(format!(
-            "{} calculation for {}",
-            if open { "Hide" } else { "Show" },
-            display.label
-        ))
+        .aria_label(if open {
+            t!("records.hide_calculation", record = display.label)
+        } else {
+            t!("records.show_calculation", record = display.label)
+        })
         .aria_expanded(open)
         .when_some(focus, |row, focus| row.track_focus(focus))
         .on_click(cx.listener(move |this: &mut V, _, _, cx| {
@@ -466,7 +484,7 @@ fn record_line<V: TableHost>(
             row.child(
                 control(layout.frame[0]).child(
                     Checkbox::new(SharedString::from(format!("select-{id}")))
-                        .accessibility_label(format!("Select {}", display.label))
+                        .accessibility_label(t!("records.select", record = display.label))
                         .checked(selected)
                         .disabled(disabled)
                         .on_click(cx.listener(move |this: &mut V, checked, _, cx| {
@@ -554,7 +572,7 @@ fn more_menu<V: TableHost>(
         .rounded(px(6.))
         .text_color(p.muted)
         .child(Icon::new(IconName::Ellipsis).size(px(14.)))
-        .accessibility_label(format!("More actions for {label}"))
+        .accessibility_label(t!("records.more_actions", record = label))
         .disabled(disabled)
         .when(!open, |button| {
             button
@@ -570,21 +588,25 @@ fn more_menu<V: TableHost>(
             let (edit_id, delete_id) = (id.clone(), id.clone());
             let (edit_focus, delete_focus) = (row_focus.clone(), row_focus.clone());
             menu.when(editable, |menu| {
-                menu.item(PopupMenuItem::new("Edit").on_click(move |_, window, cx| {
-                    let _ = edit.update(cx, |this: &mut V, cx| {
-                        let focus = edit_focus.clone().unwrap_or(this.page_focus().clone());
-                        window.focus(&focus, cx);
-                        this.edit(&edit_id, window, cx);
-                    });
-                }))
+                menu.item(
+                    PopupMenuItem::new(t!("common.edit")).on_click(move |_, window, cx| {
+                        let _ = edit.update(cx, |this: &mut V, cx| {
+                            let focus = edit_focus.clone().unwrap_or(this.page_focus().clone());
+                            window.focus(&focus, cx);
+                            this.edit(&edit_id, window, cx);
+                        });
+                    }),
+                )
             })
-            .item(PopupMenuItem::new("Delete").on_click(move |_, window, cx| {
-                let _ = delete.update(cx, |this: &mut V, cx| {
-                    let focus = delete_focus.clone().unwrap_or(this.page_focus().clone());
-                    window.focus(&focus, cx);
-                    this.delete_one(&delete_id, window, cx);
-                });
-            }))
+            .item(
+                PopupMenuItem::new(t!("common.delete")).on_click(move |_, window, cx| {
+                    let _ = delete.update(cx, |this: &mut V, cx| {
+                        let focus = delete_focus.clone().unwrap_or(this.page_focus().clone());
+                        window.focus(&focus, cx);
+                        this.delete_one(&delete_id, window, cx);
+                    });
+                }),
+            )
         })
 }
 
@@ -606,14 +628,14 @@ fn record_row<V: TableHost>(
     let id = display.id.to_string();
     let disabled = host.disabled();
     let p = *palette(cx);
-    let action = |name: &'static str, label: &'static str, color: Option<Hsla>| {
+    let action = |name: &'static str, label: Cow<'static, str>, accessible, color: Option<Hsla>| {
         Button::new(SharedString::from(format!("{name}-{id}")))
             .ghost()
             .h(px(26.))
             .px(px(10.))
             .rounded(px(8.))
             .text_color(p.muted)
-            .accessibility_label(format!("{label} {}", display.label))
+            .accessibility_label(accessible)
             .disabled(disabled)
             // A colour on the label, since the kit's hover colour
             // replaces the button's own.
@@ -629,13 +651,22 @@ fn record_row<V: TableHost>(
     };
     let (edit_id, delete_id) = (id.clone(), id.clone());
     let edit = host.editable().then(|| {
-        action("edit", "Edit", None)
-            .on_click(
-                cx.listener(move |this: &mut V, _, window, cx| this.edit(&edit_id, window, cx)),
-            )
-            .into_any_element()
+        action(
+            "edit",
+            t!("common.edit"),
+            t!("records.edit_record", record = display.label),
+            None,
+        )
+        .on_click(cx.listener(move |this: &mut V, _, window, cx| this.edit(&edit_id, window, cx)))
+        .into_any_element()
     });
-    let delete = action("delete", "Delete", Some(p.danger)).on_click(
+    let delete = action(
+        "delete",
+        t!("common.delete"),
+        t!("records.delete_record", record = display.label),
+        Some(p.danger),
+    )
+    .on_click(
         cx.listener(move |this: &mut V, _, window, cx| this.delete_one(&delete_id, window, cx)),
     );
     let link = |name: &str, index: usize, label: &SharedString| {
@@ -902,14 +933,14 @@ pub fn selection_bar<V: TableHost>(
                         .font_medium()
                         .font_features(tabular_digits())
                         .whitespace_nowrap()
-                        .child(format!("{} selected", selected.len())),
+                        .child(t!("records.selected", count = selected.len())),
                 )
                 .child(
                     Button::new("delete-selected")
                         .h(px(28.))
                         .px(px(11.))
                         .rounded(px(8.))
-                        .accessibility_label("Remove selected")
+                        .accessibility_label(t!("records.remove_selected"))
                         .disabled(disabled)
                         // On the children: the kit's hover colour replaces
                         // the button's own.
@@ -927,20 +958,24 @@ pub fn selection_bar<V: TableHost>(
                                 .text_size(px(13.))
                                 .font_medium()
                                 .text_color(danger)
-                                .child("Remove selected"),
+                                .child(t!("records.remove_selected")),
                         )
                         .on_click(cx.listener(move |this: &mut V, _, window, cx| {
                             delete_selected(this, window, cx)
                         })),
                 )
                 .child(
-                    header::icon_button("clear-selection", IconName::X, "Clear selection")
-                        .text_color(p.muted)
-                        .disabled(disabled)
-                        .on_click(cx.listener(move |this: &mut V, _, _, cx| {
-                            this.table_mut(which).selected.clear();
-                            cx.notify();
-                        })),
+                    header::icon_button(
+                        "clear-selection",
+                        IconName::X,
+                        t!("records.clear_selection"),
+                    )
+                    .text_color(p.muted)
+                    .disabled(disabled)
+                    .on_click(cx.listener(move |this: &mut V, _, _, cx| {
+                        this.table_mut(which).selected.clear();
+                        cx.notify();
+                    })),
                 ),
         )
 }

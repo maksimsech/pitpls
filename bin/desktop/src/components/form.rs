@@ -16,6 +16,7 @@ use gpui_kit::{
 };
 use pitpls_core::{common::Currency, time};
 use rust_decimal::Decimal;
+use rust_i18n::t;
 use std::str::FromStr;
 
 /// The format the use cases parse.
@@ -70,7 +71,7 @@ pub fn selected<T: Clone + PartialEq + 'static>(
         .read(cx)
         .selected_value()
         .cloned()
-        .ok_or_else(|| format!("{label} is required"))
+        .ok_or_else(|| t!("form.required", field = label).into_owned())
 }
 
 pub fn input(
@@ -96,7 +97,7 @@ pub fn optional_amount(state: &Entity<InputState>, cx: &App) -> Option<String> {
 pub fn required(state: &Entity<InputState>, label: &str, cx: &App) -> Result<String, String> {
     let value = text(state, cx);
     if value.is_empty() {
-        Err(format!("{label} is required"))
+        Err(t!("form.required", field = label).into_owned())
     } else {
         Ok(value)
     }
@@ -117,9 +118,9 @@ fn decimal_point(value: &str) -> String {
 }
 
 pub fn year(state: &Entity<InputState>, cx: &App) -> Result<i32, String> {
-    required(state, "Year", cx)?
+    required(state, &t!("field.year"), cx)?
         .parse()
-        .map_err(|_| "Enter a valid whole year".into())
+        .map_err(|_| t!("form.invalid_year").into_owned())
 }
 
 pub fn currency(
@@ -162,26 +163,28 @@ pub fn field(label: impl IntoElement, control: impl IntoElement, cx: &App) -> Di
 }
 
 pub fn input_field(
-    label: &'static str,
+    label: impl Into<SharedString>,
     state: &Entity<InputState>,
     disabled: bool,
     cx: &App,
 ) -> Div {
+    let label = label.into();
     field(
-        label,
+        label.clone(),
         Input::new(state).aria_label(label).disabled(disabled),
         cx,
     )
 }
 
 pub fn select_field<T: Clone + PartialEq + 'static>(
-    label: &'static str,
+    label: impl Into<SharedString>,
     state: &Entity<ChoiceState<T>>,
     disabled: bool,
     cx: &App,
 ) -> Div {
+    let label = label.into();
     field(
-        label,
+        label.clone(),
         div().w_full().h_8().flex_shrink_0().child(
             Select::new(state)
                 .accessibility_label(label)
@@ -192,33 +195,35 @@ pub fn select_field<T: Clone + PartialEq + 'static>(
 }
 
 pub fn amount_field(
-    label: &'static str,
-    currency_label: &'static str,
+    label: impl Into<SharedString>,
+    currency_label: impl Into<SharedString>,
     amount: &Entity<InputState>,
     currency: &Entity<ChoiceState<Currency>>,
     disabled: bool,
     cx: &App,
 ) -> Div {
+    let label = label.into();
     field(
-        label,
+        label.clone(),
         amount_control(label, currency_label, amount, currency, disabled, cx),
         cx,
     )
 }
 
 pub fn amount_control(
-    label: &'static str,
-    currency_label: &'static str,
+    label: impl Into<SharedString>,
+    currency_label: impl Into<SharedString>,
     amount: &Entity<InputState>,
     currency: &Entity<ChoiceState<Currency>>,
     disabled: bool,
     cx: &App,
 ) -> InputGroup {
+    let (label, currency_label) = (label.into(), currency_label.into());
     let theme = cx.theme();
-    InputGroup::new(label)
+    InputGroup::new(label.clone())
         .input(Input::new(amount).aria_label(label))
         .addon(
-            InputGroupAddon::new(currency_label)
+            InputGroupAddon::new(currency_label.clone())
                 .align(InputGroupAddonAlignment::InlineEnd)
                 .h_full()
                 .p_0()
@@ -273,7 +278,7 @@ pub fn optional_id(
     cx.new(|cx| {
         InputState::new(window, cx)
             .default_value(value)
-            .placeholder("Leave blank to auto-generate")
+            .placeholder(t!("form.auto_id"))
     })
 }
 
@@ -332,17 +337,17 @@ pub fn selected_time(
 ) -> Result<String, String> {
     picked_local(state, cx)
         .map(|time| time.format(INPUT_TIME_FORMAT).to_string())
-        .ok_or_else(|| format!("{label} is required"))
+        .ok_or_else(|| t!("form.required", field = label).into_owned())
 }
 
 pub fn date_field(
-    label: &'static str,
+    label: impl Into<SharedString>,
     state: &Entity<DatePickerState>,
     disabled: bool,
     cx: &App,
 ) -> Div {
     field(
-        noted_label(label, "Warsaw time", cx),
+        noted_label(label, t!("form.warsaw_time"), cx),
         DatePicker::new(state).disabled(disabled),
         cx,
     )
@@ -371,7 +376,7 @@ pub fn hint(text: impl Into<SharedString>, cx: &App) -> Div {
 }
 
 // GPUI may break a line at "/", so `end` moves to the next line whole instead.
-pub fn hint_ending(lead: impl Into<SharedString>, end: &'static str, cx: &App) -> Div {
+pub fn hint_ending(lead: impl Into<SharedString>, end: impl Into<SharedString>, cx: &App) -> Div {
     h_flex()
         .flex_wrap()
         .items_baseline()
@@ -380,7 +385,7 @@ pub fn hint_ending(lead: impl Into<SharedString>, end: &'static str, cx: &App) -
         .text_size(px(11.5))
         .text_color(palette(cx).faint)
         .child(div().min_w_0().child(lead.into()))
-        .child(div().flex_shrink_0().child(end))
+        .child(div().flex_shrink_0().child(end.into()))
 }
 
 pub fn error(text: impl Into<SharedString>, cx: &App) -> Div {

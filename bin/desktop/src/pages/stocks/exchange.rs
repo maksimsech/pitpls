@@ -1,6 +1,7 @@
 use crate::{
     components::{ButtonText, spinner},
     format::{date, shares},
+    i18n::plural_key,
     services::Services,
     theme::palette,
 };
@@ -19,6 +20,7 @@ use gpui_kit::{
 use pitpls_app::use_case::exchange as exchanges;
 use pitpls_core::{common::Mic, exchange::Exchange};
 use rust_decimal::Decimal;
+use rust_i18n::t;
 use std::{cell::Cell, rc::Rc};
 
 #[derive(Clone)]
@@ -180,8 +182,8 @@ impl SelectDelegate for ExchangeList {
         let p = *palette(cx);
         let shown = self.items.items_count(0);
         let source = match self.downloaded {
-            Some(day) => format!("ISO 10383 list · downloaded {}", date(day).main),
-            None => "ISO 10383 list".to_owned(),
+            Some(day) => t!("exchange.source_downloaded", date = date(day).main),
+            None => t!("exchange.source"),
         };
         let refreshing = self.refreshing.get();
         let refresh = self.refresh.clone();
@@ -193,10 +195,10 @@ impl SelectDelegate for ExchangeList {
                 .gap(px(2.))
                 .text_size(px(11.5))
                 .text_color(p.faint)
-                .child(div().font_medium().child(format!(
-                    "{} of {} exchanges",
-                    count(shown),
-                    count(self.total)
+                .child(div().font_medium().child(t!(
+                    plural_key("exchange.shown", self.total as u64),
+                    shown = count(shown),
+                    total = count(self.total)
                 )))
                 .child(
                     h_flex()
@@ -210,8 +212,8 @@ impl SelectDelegate for ExchangeList {
                                     .h(px(18.))
                                     .px(px(4.))
                                     .text_color(p.muted)
-                                    .accessibility_label("Refresh the exchange list")
-                                    .child(div().text_size(px(11.5)).child("Refresh"))
+                                    .accessibility_label(t!("exchange.refresh_label"))
+                                    .child(div().text_size(px(11.5)).child(t!("common.refresh")))
                                     .on_click(move |_, window, cx| refresh(window, cx)),
                             )
                         }),
@@ -420,11 +422,11 @@ pub fn picker(
     let retry = catalog_action(catalog, Catalog::load);
     let catalog = catalog.read(cx);
     let empty: SharedString = match &catalog.status {
-        CatalogStatus::Loading => "Loading the exchange list…".into(),
-        CatalogStatus::Downloading => "Downloading the ISO 10383 exchange list…".into(),
+        CatalogStatus::Loading => t!("exchange.loading").into(),
+        CatalogStatus::Downloading => t!("exchange.downloading").into(),
         CatalogStatus::Failed(error) => error.clone(),
-        CatalogStatus::Ready if catalog.is_empty() => "The exchange list is empty.".into(),
-        CatalogStatus::Ready => "No exchange matches.".into(),
+        CatalogStatus::Ready if catalog.is_empty() => t!("exchange.list_empty").into(),
+        CatalogStatus::Ready => t!("exchange.no_match").into(),
     };
     let busy = matches!(
         catalog.status,
@@ -433,8 +435,8 @@ pub fn picker(
     let failed = matches!(catalog.status, CatalogStatus::Failed(_));
     Select::new(state)
         .accessibility_label(label)
-        .placeholder("Choose exchange")
-        .search_placeholder("Name, MIC, city or country code")
+        .placeholder(t!("exchange.placeholder"))
+        .search_placeholder(t!("exchange.search_placeholder"))
         .menu_width(px(340.))
         .menu_max_h(px(320.))
         .disabled(disabled)
@@ -458,7 +460,7 @@ pub fn picker(
                         Button::new("exchanges-retry")
                             .outline()
                             .small()
-                            .text_label("Retry")
+                            .text_label(t!("common.retry"))
                             .on_click(move |_, window, cx| retry(window, cx)),
                     )
                 })

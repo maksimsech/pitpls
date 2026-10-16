@@ -21,6 +21,8 @@ use gpui_kit::{
     *,
 };
 use pitpls_app::use_case::stock;
+use rust_i18n::t;
+use std::borrow::Cow;
 
 pub enum HistoryEvent {
     Back,
@@ -64,14 +66,14 @@ impl HistoryView {
             catalog,
             dialog: None,
             columns: vec![
-                RecordColumn::new("Date", CellStyle::Time, 96., 50.),
-                RecordColumn::grow("Event", CellStyle::Tag),
-                RecordColumn::new("Shares", CellStyle::Number, 64., 56.),
-                RecordColumn::new("Price", CellStyle::Number, 112., 96.).optional(),
-                RecordColumn::new("NBP rate", CellStyle::Rate, 112., 64.).optional(),
-                RecordColumn::new("Value, PLN", CellStyle::Number, 120., 100.),
-                RecordColumn::new("Profit, PLN", CellStyle::Number, 120., 100.),
-                RecordColumn::new("Holding after", CellStyle::Number, 112., 96.),
+                RecordColumn::new("column.date", CellStyle::Time, 96., 50.),
+                RecordColumn::grow("column.event", CellStyle::Tag),
+                RecordColumn::new("column.shares", CellStyle::Number, 64., 56.),
+                RecordColumn::new("column.price", CellStyle::Number, 112., 96.).optional(),
+                RecordColumn::new("lots.nbp_rate", CellStyle::Rate, 112., 64.).optional(),
+                RecordColumn::new("column.value_pln", CellStyle::Number, 120., 100.),
+                RecordColumn::new("column.profit_pln", CellStyle::Number, 120., 100.),
+                RecordColumn::new("column.holding_after", CellStyle::Number, 112., 96.),
             ],
             fit: None,
             width,
@@ -101,7 +103,7 @@ impl HistoryView {
         let dialog = ExchangeDialog::open(
             self.context.services.clone(),
             self.catalog.clone(),
-            "Edit instrument",
+            t!("history.edit_instrument"),
             vec![display.instrument.clone()],
             window,
             cx,
@@ -111,7 +113,7 @@ impl HistoryView {
                 ExchangeDialogEvent::Saved(message) => {
                     this.close_dialog(cx);
                     this.refresh(window, cx);
-                    this.status.message = Some(message.clone());
+                    this.status.message = Some(message.clone().into());
                     cx.emit(HistoryEvent::Changed);
                 }
                 ExchangeDialogEvent::Closed => this.close_dialog(cx),
@@ -196,7 +198,7 @@ impl HistoryView {
                 div()
                     .py(px(8.))
                     .text_color(p.muted)
-                    .child(format!("No buys up to 31.12.{}.", self.year)),
+                    .child(t!("history.no_buys", year = self.year)),
             );
         }
         card.children(
@@ -355,7 +357,7 @@ impl HistoryView {
                     div()
                         .flex_shrink_0()
                         .font_medium()
-                        .child(format!("Into {}", self.year + 1)),
+                        .child(t!("history.into", year = self.year + 1)),
                 )
                 .child(
                     v_flex()
@@ -368,7 +370,7 @@ impl HistoryView {
     }
 }
 
-fn section(title: &'static str, caption: SharedString, cx: &App) -> Div {
+fn section(title: Cow<'static, str>, caption: SharedString, cx: &App) -> Div {
     h_flex()
         .flex_shrink_0()
         .items_baseline()
@@ -490,12 +492,14 @@ fn year_row(group: &YearGroup, table: &TableLayout, cx: &App) -> Div {
                 .font_features(tabular_digits())
                 .child(group.counts.clone())
                 .when_some(group.profit.as_ref(), |summary, profit| {
-                    summary.child(" · profit ").child(value::reveal_full(
-                        div()
-                            .id(SharedString::from(format!("year-profit-{}", group.year)))
-                            .child(value::text(profit, false, true, cx)),
-                        profit,
-                    ))
+                    summary
+                        .child(format!(" · {} ", t!("records.subtotal_profit")))
+                        .child(value::reveal_full(
+                            div()
+                                .id(SharedString::from(format!("year-profit-{}", group.year)))
+                                .child(value::text(profit, false, true, cx)),
+                            profit,
+                        ))
                 }),
         )
 }
@@ -516,16 +520,24 @@ impl Render for HistoryView {
                         .flex_shrink_0()
                         .px(px(20.))
                         .pb_3()
-                        .child(self.status.render()),
+                        .child(self.status.render(|this| &mut this.status, cx)),
                 )
             });
         let timeline = self.display.is_some().then(|| self.timeline(window, cx));
         if let (Some(display), Some(timeline)) = (&self.display, timeline) {
             body = body
                 .child(Self::facts(display, cx))
-                .child(section("Lots", display.lots_caption.clone(), cx))
+                .child(section(
+                    t!("history.lots"),
+                    display.lots_caption.clone(),
+                    cx,
+                ))
                 .child(self.lots(display, cx))
-                .child(section("Timeline", display.timeline_caption.clone(), cx))
+                .child(section(
+                    t!("history.timeline"),
+                    display.timeline_caption.clone(),
+                    cx,
+                ))
                 .child(timeline)
                 .children(self.carried(display, cx))
                 .child(div().flex_shrink_0().h(px(24.)));
@@ -538,13 +550,13 @@ impl Render for HistoryView {
                     .text_color(p.muted)
                     .when(!self.status.loading_visible, |row| row.invisible())
                     .child(spinner())
-                    .child(format!("Loading {} history…", self.key.ticker)),
+                    .child(t!("history.loading", ticker = self.key.ticker)),
             );
         } else {
             body = body.child(
                 h_flex().px(px(20.)).child(
                     Button::new("retry")
-                        .text_label("Retry")
+                        .text_label(t!("common.retry"))
                         .outline()
                         .on_click(cx.listener(|this, _, window, cx| this.refresh(window, cx))),
                 ),
@@ -569,7 +581,7 @@ impl Render for HistoryView {
                 )
                 .child(
                     header::actions().child(
-                        header::button("edit-instrument", None, "Edit instrument")
+                        header::button("edit-instrument", None, t!("history.edit_instrument"))
                             .disabled(!editable)
                             .on_click(
                                 cx.listener(|this, _, window, cx| this.edit_instrument(window, cx)),

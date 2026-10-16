@@ -24,7 +24,8 @@ use pitpls_core::{
 };
 use pitpls_importers::OutputType;
 use rust_decimal::Decimal;
-use std::sync::Arc;
+use rust_i18n::t;
+use std::{borrow::Cow, sync::Arc};
 
 pub struct Dividends;
 
@@ -33,10 +34,14 @@ impl RecordKind for Dividends {
     type Form = DividendForm;
 
     const PAGE: Page = Page::Dividends;
-    const NAME: &'static str = "Dividend";
-    const PLURAL: &'static str = "dividends";
-    const TOTAL_LABELS: &'static [&'static str] =
-        &["Income (I-65)", "To pay (G-47)", "Paid (G-48)"];
+    const EMPTY: &'static str = "dividends.empty";
+    const EMPTY_YEAR: &'static str = "dividends.empty_year";
+    const OTHER_YEAR: &'static str = "dividends.other_year";
+    const TOTAL_LABELS: &'static [&'static str] = &[
+        "tax.income_i65",
+        "tax.to_pay_short_g47",
+        "tax.paid_short_g48",
+    ];
 
     fn id(record: &CalculatedDividend) -> &str {
         &record.id
@@ -44,12 +49,12 @@ impl RecordKind for Dividends {
 
     fn columns() -> Vec<RecordColumn> {
         vec![
-            RecordColumn::new("Date", CellStyle::Time, 104., 44.),
-            RecordColumn::new("Ticker", CellStyle::Strong, 76., 56.),
-            RecordColumn::grow("Provider", CellStyle::Muted),
-            RecordColumn::new("Country", CellStyle::Muted, 64., 46.),
-            RecordColumn::new("Value", CellStyle::Number, 150., 124.),
-            RecordColumn::new("Tax paid", CellStyle::Number, 124., 104.),
+            RecordColumn::new("column.date", CellStyle::Time, 104., 44.),
+            RecordColumn::new("column.ticker", CellStyle::Strong, 76., 56.),
+            RecordColumn::grow("column.provider", CellStyle::Muted),
+            RecordColumn::new("column.country", CellStyle::Muted, 64., 46.),
+            RecordColumn::new("column.value", CellStyle::Number, 150., 124.),
+            RecordColumn::new("column.tax_paid", CellStyle::Number, 124., 104.),
         ]
     }
 
@@ -64,57 +69,60 @@ impl RecordKind for Dividends {
         ];
         let steps = vec![
             Step {
-                title: "Conversion",
+                title: "records.step_conversion",
                 lines: vec![
                     StepLine::Formula(conversion(record.value, record.nbp_rate)),
                     StepLine::Result(vec![pln(record.calculated_value)]),
                     StepLine::Caption(
-                        format!("Calculated value · NBP date {}", date(record.nbp_date).main)
-                            .into(),
+                        t!(
+                            "records.calculated_value_nbp",
+                            date = date(record.nbp_date).main
+                        )
+                        .into(),
                     ),
                 ],
             },
             Step {
-                title: "Polish tax",
+                title: "records.step_polish_tax",
                 lines: vec![
                     StepLine::Formula(vec![
                         DisplayText::plain(format!("{} ×", percent(POLAND_TAX))),
                         money(record.calculated_value),
                     ]),
                     StepLine::Result(vec![pln(record.calculated_to_pay)]),
-                    StepLine::Caption("Calculated to pay".into()),
+                    StepLine::Caption(t!("dividends.calculated_to_pay").into()),
                 ],
             },
             Step {
-                title: "Foreign tax credit",
+                title: "dividends.step_credit",
                 lines: vec![
                     StepLine::Formula(
                         [
-                            vec![DisplayText::plain("Tax paid")],
+                            vec![DisplayText::plain(t!("field.tax_paid"))],
                             conversion(record.tax_paid, record.tax_paid_nbp_rate),
                         ]
                         .concat(),
                     ),
                     StepLine::Entry {
-                        label: "Calculated tax paid".into(),
+                        label: t!("dividends.calculated_tax_paid").into(),
                         value: vec![pln(record.calculated_tax_paid)],
                         style: EntryStyle::Normal,
                     },
                     StepLine::Entry {
-                        label: "Max tax paid".into(),
+                        label: t!("dividends.max_tax_paid").into(),
                         value: vec![pln(record.max_tax_paid)],
                         style: EntryStyle::Normal,
                     },
                     StepLine::Entry {
-                        label: "Used tax paid".into(),
+                        label: t!("dividends.used_tax_paid").into(),
                         value: vec![pln(record.used_tax_paid)],
                         style: EntryStyle::Strong,
                     },
                     StepLine::Caption(
-                        format!(
-                            "Max = {} {} treaty rate; the lower one is used",
-                            percent(get_treaty_tax(&record.country)),
-                            record.country
+                        t!(
+                            "dividends.treaty_note",
+                            rate = percent(get_treaty_tax(&record.country)),
+                            country = record.country
                         )
                         .into(),
                     ),
@@ -203,8 +211,8 @@ impl RecordKind for Dividends {
             formula: conversion(record.value, record.nbp_rate),
             value: pln(record.calculated_value),
             results: vec![
-                ("Calculated to pay", pln(record.calculated_to_pay)),
-                ("Used tax paid", pln(record.used_tax_paid)),
+                ("dividends.calculated_to_pay", pln(record.calculated_to_pay)),
+                ("dividends.used_tax_paid", pln(record.used_tax_paid)),
             ],
         }
     }
@@ -270,11 +278,11 @@ impl RecordForm for DividendForm {
         }
     }
 
-    fn title(&self) -> &'static str {
+    fn title(&self) -> Cow<'static, str> {
         if self.existing_id.is_some() {
-            "Edit dividend"
+            t!("dividends.edit")
         } else {
-            "Add dividend"
+            t!("dividends.add")
         }
     }
 
@@ -291,16 +299,17 @@ impl RecordForm for DividendForm {
     }
 
     fn submission(&self, cx: &App) -> Result<DividendSubmission, String> {
-        let time = form::selected_time(&self.date, "Date", cx)?;
-        let ticker = form::required(&self.ticker, "Ticker", cx)?;
-        let value = form::amount(&self.value, "Value", cx)?;
-        let value_currency = form::selected(&self.value_currency, "Value currency", cx)?;
-        let tax_paid = form::amount(&self.tax_paid, "Tax paid", cx)?;
-        let tax_paid_currency = form::selected(&self.tax_paid_currency, "Tax paid currency", cx)?;
-        let country = form::required(&self.country, "Country code", cx)?
+        let time = form::selected_time(&self.date, &t!("field.date"), cx)?;
+        let ticker = form::required(&self.ticker, &t!("field.ticker"), cx)?;
+        let value = form::amount(&self.value, &t!("field.value"), cx)?;
+        let value_currency = form::selected(&self.value_currency, &t!("field.value_currency"), cx)?;
+        let tax_paid = form::amount(&self.tax_paid, &t!("field.tax_paid"), cx)?;
+        let tax_paid_currency =
+            form::selected(&self.tax_paid_currency, &t!("field.tax_paid_currency"), cx)?;
+        let country = form::required(&self.country, &t!("field.country_code"), cx)?
             .parse()
             .map_err(crate::messages::country_error)?;
-        let provider = form::required(&self.provider, "Provider", cx)?;
+        let provider = form::required(&self.provider, &t!("field.provider"), cx)?;
         let fields = DividendFields {
             time,
             ticker,
@@ -347,25 +356,40 @@ impl RecordForm for DividendForm {
 
     fn render(&self, busy: bool, cx: &App) -> Div {
         form::grid()
-            .child(form::date_field("Date", &self.date, busy, cx))
-            .child(form::input_field("Ticker", &self.ticker, busy, cx))
+            .child(form::date_field(t!("field.date"), &self.date, busy, cx))
+            .child(form::input_field(
+                t!("field.ticker"),
+                &self.ticker,
+                busy,
+                cx,
+            ))
             .child(form::amount_field(
-                "Value",
-                "Value currency",
+                t!("field.value"),
+                t!("field.value_currency"),
                 &self.value,
                 &self.value_currency,
                 busy,
                 cx,
             ))
             .child(form::amount_field(
-                "Tax paid",
-                "Tax paid currency",
+                t!("field.tax_paid"),
+                t!("field.tax_paid_currency"),
                 &self.tax_paid,
                 &self.tax_paid_currency,
                 busy,
                 cx,
             ))
-            .child(form::input_field("Country code", &self.country, busy, cx))
-            .child(form::input_field("Provider", &self.provider, busy, cx))
+            .child(form::input_field(
+                t!("field.country_code"),
+                &self.country,
+                busy,
+                cx,
+            ))
+            .child(form::input_field(
+                t!("field.provider"),
+                &self.provider,
+                busy,
+                cx,
+            ))
     }
 }

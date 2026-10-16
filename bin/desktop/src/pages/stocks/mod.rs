@@ -12,6 +12,7 @@ use crate::{
         value,
     },
     format::{DisplayText, pln, record_count},
+    i18n::{or_list, plural, plural_key},
     navigation::{Page, PageContext},
     pages::records::{
         RecordTable, TableHost, delete_selected_message, filter_count, filter_field, import_button,
@@ -43,10 +44,9 @@ use pitpls_app::use_case::{
 };
 use pitpls_importers::{IMPORTERS, OutputType};
 use rust_decimal::Decimal;
+use rust_i18n::t;
 use set_exchange::{ExchangeDialog, ExchangeDialogEvent, ExchangeRow};
 use std::collections::HashSet;
-
-pub use display::names;
 
 const NARROW: f32 = 600.;
 
@@ -90,37 +90,29 @@ pub struct StocksPage {
 
 fn sale_columns() -> Vec<RecordColumn> {
     vec![
-        RecordColumn::new("Date", CellStyle::Time, 96., 50.),
-        RecordColumn::new("Ticker", CellStyle::Strong, 64., 56.),
-        RecordColumn::new("Exchange", CellStyle::Muted, 80., 64.),
-        RecordColumn::grow("Provider", CellStyle::Muted),
-        RecordColumn::new("Shares", CellStyle::Number, 64., 56.),
-        RecordColumn::new("Income", CellStyle::Number, 130., 110.),
-        RecordColumn::new("Costs", CellStyle::Number, 130., 110.).optional(),
-        RecordColumn::new("Profit", CellStyle::Number, 130., 110.),
+        RecordColumn::new("column.date", CellStyle::Time, 96., 50.),
+        RecordColumn::new("column.ticker", CellStyle::Strong, 64., 56.),
+        RecordColumn::new("column.exchange", CellStyle::Muted, 80., 64.),
+        RecordColumn::grow("column.provider", CellStyle::Muted),
+        RecordColumn::new("column.shares", CellStyle::Number, 64., 56.),
+        RecordColumn::new("column.income", CellStyle::Number, 130., 110.),
+        RecordColumn::new("column.costs", CellStyle::Number, 130., 110.).optional(),
+        RecordColumn::new("column.profit", CellStyle::Number, 130., 110.),
     ]
 }
 
 fn record_columns() -> Vec<RecordColumn> {
     vec![
-        RecordColumn::new("Date", CellStyle::Time, 96., 50.),
-        RecordColumn::new("Action", CellStyle::Tag, 64., 56.),
-        RecordColumn::new("Ticker", CellStyle::Strong, 64., 56.),
-        RecordColumn::new("Exchange", CellStyle::Muted, 80., 64.).optional(),
-        RecordColumn::grow("Provider", CellStyle::Muted),
-        RecordColumn::new("Shares", CellStyle::Number, 64., 56.),
-        RecordColumn::new("Price", CellStyle::Number, 104., 90.).optional(),
-        RecordColumn::new("Value", CellStyle::Number, 120., 100.),
-        RecordColumn::new("Fee", CellStyle::Number, 90., 80.).optional(),
+        RecordColumn::new("column.date", CellStyle::Time, 96., 50.),
+        RecordColumn::new("column.action", CellStyle::Tag, 64., 56.),
+        RecordColumn::new("column.ticker", CellStyle::Strong, 64., 56.),
+        RecordColumn::new("column.exchange", CellStyle::Muted, 80., 64.).optional(),
+        RecordColumn::grow("column.provider", CellStyle::Muted),
+        RecordColumn::new("column.shares", CellStyle::Number, 64., 56.),
+        RecordColumn::new("column.price", CellStyle::Number, 104., 90.).optional(),
+        RecordColumn::new("column.value", CellStyle::Number, 120., 100.),
+        RecordColumn::new("column.fee", CellStyle::Number, 90., 80.).optional(),
     ]
-}
-
-pub fn counted(count: usize, one: &str, many: &str) -> String {
-    if count == 1 {
-        format!("1 {one}")
-    } else {
-        format!("{count} {many}")
-    }
 }
 
 impl StocksPage {
@@ -131,7 +123,7 @@ impl StocksPage {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
-        let filter = cx.new(|cx| InputState::new(window, cx).placeholder("Filter"));
+        let filter = cx.new(|cx| InputState::new(window, cx).placeholder(t!("records.filter")));
         let filter_subscription = cx.subscribe_in(&filter, window, |this, filter, event, _, cx| {
             if let InputEvent::Change = event {
                 let query = filter.read(cx).value().trim().to_lowercase();
@@ -275,13 +267,13 @@ impl StocksPage {
         };
         let mut sales = self.sales.month_groups(&self.query, false);
         for group in &mut sales {
-            group.count = counted(group.records.len(), "sale", "sales").into();
+            group.count = plural("stocks.sales_count", group.records.len() as u64).into();
             let profit = group
                 .records
                 .iter()
                 .map(|&index| display.profits[index])
                 .sum::<Decimal>();
-            group.summary = vec![(Some("profit"), pln(profit))];
+            group.summary = vec![(Some("records.subtotal_profit"), pln(profit))];
         }
         self.sales.set_groups(sales);
 
@@ -296,13 +288,13 @@ impl StocksPage {
                     .count()
             };
             let parts = [
-                (count(Action::Buy), "buy", "buys"),
-                (count(Action::Sell), "sale", "sales"),
-                (count(Action::Split), "split", "splits"),
+                (count(Action::Buy), "count.buys"),
+                (count(Action::Sell), "stocks.sales_count"),
+                (count(Action::Split), "count.splits"),
             ]
             .into_iter()
-            .filter(|(count, _, _)| *count > 0)
-            .map(|(count, one, many)| counted(count, one, many))
+            .filter(|(count, _)| *count > 0)
+            .map(|(count, key)| plural(key, count as u64))
             .collect::<Vec<_>>();
             group.summary = vec![(None, DisplayText::plain(parts.join(", ")))];
         }
@@ -321,9 +313,9 @@ impl StocksPage {
         }
         self.pending_delete = Some(ids);
         dialog::confirm(
-            "Delete records",
+            t!("records.delete_title"),
             message,
-            "Delete",
+            t!("common.delete"),
             Self::delete,
             |this, cx| {
                 this.pending_delete = None;
@@ -349,7 +341,7 @@ impl StocksPage {
             cx,
             move |app| async move {
                 let count = stock::delete_stocks(&app, ids).await?;
-                Ok(format!("Deleted {count} record(s)."))
+                Ok(plural("records.deleted", count).into_owned())
             },
             |this, result, window, cx| {
                 this.deleting.clear();
@@ -494,7 +486,7 @@ impl StocksPage {
         disabled: bool,
         cx: &mut Context<Self>,
     ) -> Button {
-        header::button(id, icon, "Add new")
+        header::button(id, icon, t!("records.add"))
             .disabled(disabled)
             .on_click(cx.listener(|this, _, window, cx| this.open_editor(None, None, window, cx)))
     }
@@ -504,7 +496,7 @@ impl StocksPage {
         totals_row(compact).children(stats.map(|(label, value)| {
             value::stat(
                 SharedString::from(format!("total-{label}")),
-                *label,
+                t!(*label),
                 value,
                 cx,
             )
@@ -523,7 +515,7 @@ impl StocksPage {
         let dialog = ExchangeDialog::open(
             self.context.services.clone(),
             self.catalog.clone(),
-            "Set exchange",
+            t!("stocks.set_exchange"),
             rows,
             window,
             cx,
@@ -534,7 +526,7 @@ impl StocksPage {
                     this.exchange_dialog = None;
                     this.notify(cx);
                     this.refresh(window, cx);
-                    this.status.message = Some(message.clone());
+                    this.status.message = Some(message.clone().into());
                 }
                 ExchangeDialogEvent::Closed => {
                     this.exchange_dialog = None;
@@ -551,8 +543,8 @@ impl StocksPage {
         let p = *palette(cx);
         let action = card.action.clone();
         let label = match action {
-            WarningAction::AddBuy(_) => "Add buy",
-            WarningAction::SetExchange(_) => "Set exchange",
+            WarningAction::AddBuy(_) => t!("stocks.add_buy"),
+            WarningAction::SetExchange(_) => t!("stocks.set_exchange"),
         };
         let button = header::button(
             SharedString::from(format!("warning-action-{index}")),
@@ -606,21 +598,29 @@ impl StocksPage {
         };
         let year = self.year.unwrap_or_default();
         let caption = match self.tab {
-            Tab::Sales => {
-                "Oldest shares first (FIFO) · NBP rate of the working day before settlement"
-                    .to_owned()
-            }
-            Tab::Records => {
-                format!("Everything you imported or added for {year}, buys and splits included")
-            }
-            Tab::Holdings => format!(
-                "Open lots on 31.12.{year} · check them against your broker's year-end statement"
-            ),
+            Tab::Sales => t!("stocks.sales_caption"),
+            Tab::Records => t!("stocks.records_caption", year = year),
+            Tab::Holdings => t!("stocks.holdings_caption", year = year),
         };
         let tabs = [
-            (Tab::Sales, "Sales", self.sales.state.rows.len()),
-            (Tab::Records, "Records", self.records.state.rows.len()),
-            (Tab::Holdings, "Holdings", display.holdings.len()),
+            (
+                Tab::Sales,
+                "sales",
+                t!("stocks.sales"),
+                self.sales.state.rows.len(),
+            ),
+            (
+                Tab::Records,
+                "records",
+                t!("stocks.records"),
+                self.records.state.rows.len(),
+            ),
+            (
+                Tab::Holdings,
+                "holdings",
+                t!("stocks.holdings"),
+                display.holdings.len(),
+            ),
         ];
         h_flex()
             .flex_shrink_0()
@@ -633,14 +633,14 @@ impl StocksPage {
                     .id("stock-tabs")
                     .flex_shrink_0()
                     .role(Role::TabList)
-                    .aria_label("Stocks view")
+                    .aria_label(t!("stocks.view"))
                     .gap(px(2.))
                     .p(px(2.))
                     .rounded(px(9.))
                     .bg(p.selected)
-                    .children(tabs.map(|(tab, label, count)| {
+                    .children(tabs.map(|(tab, id, label, count)| {
                         let selected = self.tab == tab;
-                        Button::new(SharedString::from(format!("tab-{label}")))
+                        Button::new(SharedString::from(format!("tab-{id}")))
                             .ghost()
                             .role(Role::Tab)
                             .h(px(24.))
@@ -679,7 +679,7 @@ impl StocksPage {
 
     fn tab_content(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         let year = self.year.unwrap_or_default();
-        let empty = |rows: usize, none: String, cx: &App| {
+        let empty = |rows: usize, none: SharedString, cx: &App| {
             if rows == 0 {
                 div()
                     .px(px(20.))
@@ -694,7 +694,7 @@ impl StocksPage {
             Tab::Sales => {
                 let empty = empty(
                     self.sales.state.rows.len(),
-                    format!("No sales in {year}."),
+                    t!("stocks.no_sales", year = year).into(),
                     cx,
                 );
                 table(self, Table::Sales, empty, window, cx)
@@ -702,7 +702,7 @@ impl StocksPage {
             Tab::Records => {
                 let empty = empty(
                     self.records.state.rows.len(),
-                    format!("No records in {year}."),
+                    t!("stocks.no_records", year = year).into(),
                     cx,
                 );
                 table(self, Table::Records, empty, window, cx)
@@ -719,8 +719,8 @@ impl StocksPage {
             .min_h_0()
             .child(
                 totals_row(compact).children(
-                    ["Income (C-22)", "Costs (C-23)"]
-                        .map(|label| value::stat_skeleton(label, visible, cx)),
+                    ["tax.income_c22", "tax.costs_c23"]
+                        .map(|label| value::stat_skeleton(t!(label), visible, cx)),
                 ),
             )
             .child(skeleton)
@@ -729,15 +729,17 @@ impl StocksPage {
     fn year_link(&self, cx: &mut Context<Self>) -> Option<Button> {
         let disabled = self.disabled();
         self.other_year.map(|(year, count)| {
-            let records = if count == 1 { "record" } else { "records" };
+            let key = plural_key("stocks.other_year", count.into());
             Button::new("other-year")
                 .ghost()
                 .small()
                 .text_color(cx.theme().muted_foreground)
                 .disabled(disabled)
-                .child(div().text_size(px(12.)).child(format!(
-                    "{year} has {count} stock {records} · switch to {year}"
-                )))
+                .child(
+                    div()
+                        .text_size(px(12.))
+                        .child(t!(key, year = year, count = count)),
+                )
                 .child(Icon::new(IconName::ChevronRight).size(px(12.)))
                 .on_click(
                     cx.listener(move |this, _, _, cx| this.context.select_year(Some(year), cx)),
@@ -746,7 +748,7 @@ impl StocksPage {
     }
 
     fn import_action(&self, cx: &mut Context<Self>) -> Button {
-        header::button("empty-import", None, "Import")
+        header::button("empty-import", None, t!("common.import"))
             .primary()
             .disabled(self.disabled())
             .on_click(cx.listener(|this, _, _, cx| this.context.navigate(Page::Imports, cx)))
@@ -762,15 +764,14 @@ impl StocksPage {
                     .iter()
                     .any(|output| matches!(output, OutputType::Stock))
             })
-            .map(|importer| crate::messages::importer_name(importer.kind))
-            .collect::<Vec<_>>()
-            .join(" or ");
+            .map(|importer| crate::messages::importer_name(importer.kind).to_owned())
+            .collect::<Vec<_>>();
         let disabled = self.disabled();
         notice::notice(
             Page::Stocks.icon(),
             false,
-            format!("No stocks in {year}"),
-            format!("Import a {providers} statement, or add a record by hand."),
+            t!("stocks.empty_year", year = year),
+            t!("records.empty_detail", providers = or_list(&providers)),
             cx,
         )
         .content(
@@ -792,9 +793,8 @@ impl StocksPage {
         notice::notice(
             Page::Stocks.icon(),
             false,
-            "Pick a tax year".into(),
-            "Stocks are calculated one tax year at a time: its sales, its records and the lots \
-             open on 31.12.",
+            t!("stocks.pick_year"),
+            t!("stocks.pick_year_detail"),
             cx,
         )
         .content(EmptyContent::new().children(self.year_link(cx)))
@@ -846,7 +846,7 @@ impl StocksPage {
                     .is_some_and(|error| error.missing_rate());
                 let loaded = this.status.loaded(result);
                 this.missing_rate = if missing_rate {
-                    this.status.error.take()
+                    this.status.error.take().map(|error| error.text())
                 } else {
                     None
                 };
@@ -925,7 +925,7 @@ impl TableHost for StocksPage {
     fn delete_one(&mut self, id: &str, window: &mut Window, cx: &mut Context<Self>) {
         self.confirm_delete(
             vec![id.to_owned()],
-            "Delete this record? This cannot be undone.".into(),
+            t!("records.delete_one").into_owned(),
             window,
             cx,
         );
@@ -984,7 +984,7 @@ impl Render for StocksPage {
                             .flex_shrink_0()
                             .px(px(20.))
                             .pb_3()
-                            .child(self.status.render()),
+                            .child(self.status.render(|this| &mut this.status, cx)),
                     )
                 },
             );
@@ -1021,7 +1021,7 @@ impl Render for StocksPage {
             body = body.child(
                 h_flex().px(px(20.)).gap_2().child(
                     Button::new("retry")
-                        .text_label("Retry")
+                        .text_label(t!("common.retry"))
                         .outline()
                         .disabled(disabled)
                         .on_click(cx.listener(|this, _, window, cx| this.refresh(window, cx))),

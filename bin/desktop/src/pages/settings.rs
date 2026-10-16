@@ -1,5 +1,6 @@
 use crate::{
     components::{self, ButtonText, Status, data, header},
+    i18n::{Language, language_choice},
     navigation::{Page, PageContext},
     theme::{palette, theme_choice},
 };
@@ -15,35 +16,48 @@ use gpui_kit::{
 };
 use pitpls_app::use_case::settings;
 use pitpls_core::settings::{DividendRounding, Settings};
+use rust_i18n::t;
+use std::borrow::Cow;
 
+/// Titles and details are message keys.
 const ROUNDINGS: [(DividendRounding, &str, &str); 4] = [
     (
         DividendRounding::SumToGroszy,
-        "Sum to groszy",
-        "Every record keeps full precision; totals are rounded to grosze.",
+        "settings.rounding_groszy",
+        "settings.rounding_groszy_detail",
     ),
     (
         DividendRounding::SumToPayToZlote,
-        "Sum to pay to złote",
-        "The tax-to-pay total is rounded to whole złote; paid tax stays in grosze.",
+        "settings.rounding_to_pay",
+        "settings.rounding_to_pay_detail",
     ),
     (
         DividendRounding::SumBothToZlote,
-        "Sum both to złote",
-        "Both totals are rounded to whole złote.",
+        "settings.rounding_both",
+        "settings.rounding_both_detail",
     ),
     (
         DividendRounding::AllToZlote,
-        "All to złote",
-        "Every record is rounded to whole złote before adding up.",
+        "settings.rounding_all",
+        "settings.rounding_all_detail",
     ),
 ];
 
-const THEMES: [(Option<bool>, &str); 3] = [
-    (None, "System"),
-    (Some(false), "Light"),
-    (Some(true), "Dark"),
-];
+const THEMES: [Option<bool>; 3] = [None, Some(false), Some(true)];
+
+const LANGUAGES: [Option<Language>; 3] = [None, Some(Language::English), Some(Language::Polish)];
+
+fn theme_label(dark: Option<bool>) -> Cow<'static, str> {
+    match dark {
+        None => t!("settings.system"),
+        Some(false) => t!("settings.light"),
+        Some(true) => t!("settings.dark"),
+    }
+}
+
+fn language_label(language: Option<Language>) -> Cow<'static, str> {
+    language.map_or_else(|| t!("settings.system"), |language| language.name().into())
+}
 
 pub struct SettingsPage {
     context: PageContext,
@@ -51,6 +65,7 @@ pub struct SettingsPage {
     saved: Option<DividendRounding>,
     picked: Option<DividendRounding>,
     theme_focus: [FocusHandle; 3],
+    language_focus: [FocusHandle; 3],
     /// Around the rounding options, so the arrow keys stay among them.
     rounding_focus: FocusHandle,
 }
@@ -63,6 +78,7 @@ impl SettingsPage {
             saved: None,
             picked: None,
             theme_focus: [cx.focus_handle(), cx.focus_handle(), cx.focus_handle()],
+            language_focus: [cx.focus_handle(), cx.focus_handle(), cx.focus_handle()],
             rounding_focus: cx.focus_handle(),
         };
         page.refresh(window, cx);
@@ -143,7 +159,12 @@ impl SettingsPage {
         }
     }
 
-    fn step_theme(&mut self, event: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
+    fn step_segment(
+        focus: &[FocusHandle],
+        event: &KeyDownEvent,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         let step: isize = match event.keystroke.key.as_str() {
             "right" => 1,
             "left" => -1,
@@ -152,16 +173,12 @@ impl SettingsPage {
         if event.keystroke.modifiers.modified() {
             return;
         }
-        let Some(index) = self
-            .theme_focus
-            .iter()
-            .position(|focus| focus.is_focused(window))
-        else {
+        let Some(index) = focus.iter().position(|focus| focus.is_focused(window)) else {
             return;
         };
         cx.stop_propagation();
-        let next = index.saturating_add_signed(step).min(THEMES.len() - 1);
-        window.focus(&self.theme_focus[next], cx);
+        let next = index.saturating_add_signed(step).min(focus.len() - 1);
+        window.focus(&focus[next], cx);
     }
 
     fn refresh(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -203,7 +220,7 @@ impl Render for SettingsPage {
                         .pb(px(32.))
                         .gap(px(16.))
                         .child(self.rounding_card(cx))
-                        .child(self.theme_card(window, cx)),
+                        .child(self.appearance_card(window, cx)),
                 ),
             ))
     }
@@ -219,30 +236,37 @@ impl SettingsPage {
                 .pt(px(14.))
                 .pb(px(10.))
                 .px(px(16.))
-                .child(div().font_semibold().child("Dividend rounding"))
-                .child(div().text_color(p.muted).child(
-                    "How dividend amounts and totals are rounded before they reach the form.",
-                )),
+                .child(div().font_semibold().child(t!("settings.rounding")))
+                .child(
+                    div()
+                        .text_color(p.muted)
+                        .child(t!("settings.rounding_detail")),
+                ),
         );
         if self.saved.is_none() {
-            return match self.status.error.clone() {
+            return match self.status.error.as_ref() {
                 Some(error) if !self.status.loading => card.child(
                     v_flex()
                         .gap_3()
                         .px(px(16.))
                         .pb(px(16.))
                         .child(
-                            Alert::error("settings-load-error", error)
-                                .title("Couldn't load the settings"),
+                            Alert::error("settings-load-error", error.text())
+                                .title(t!("settings.load_failed")),
                         )
-                        .child(h_flex().child(
-                            Button::new("retry").text_label("Retry").outline().on_click(
-                                cx.listener(|this, _, window, cx| this.refresh(window, cx)),
+                        .child(
+                            h_flex().child(
+                                Button::new("retry")
+                                    .text_label(t!("common.retry"))
+                                    .outline()
+                                    .on_click(
+                                        cx.listener(|this, _, window, cx| this.refresh(window, cx)),
+                                    ),
                             ),
-                        )),
+                        ),
                 ),
                 _ if self.status.loading_visible => {
-                    card.children(ROUNDINGS.map(|(_, title, _)| option_skeleton(title, cx)))
+                    card.children(ROUNDINGS.map(|(_, title, _)| option_skeleton(t!(title), cx)))
                 }
                 _ => card,
             };
@@ -265,7 +289,7 @@ impl SettingsPage {
                     .map(|(index, (rounding, title, detail))| {
                         let checked = Some(*rounding) == self.picked;
                         Radio::new(index)
-                            .accessibility_label(*title)
+                            .accessibility_label(t!(*title))
                             .w_full()
                             .gap_x(px(12.))
                             .px(px(16.))
@@ -287,17 +311,22 @@ impl SettingsPage {
                             .child(
                                 h_flex()
                                     .gap(px(8.))
-                                    .child(div().flex_1().font_medium().child(*title))
+                                    .child(div().flex_1().font_medium().child(t!(*title)))
                                     .when(Some(*rounding) == self.saved, |row| {
                                         row.child(
                                             div()
                                                 .text_size(px(12.))
                                                 .text_color(p.faint)
-                                                .child("current"),
+                                                .child(t!("settings.current")),
                                         )
                                     }),
                             )
-                            .child(div().text_size(px(12.)).text_color(p.muted).child(*detail))
+                            .child(
+                                div()
+                                    .text_size(px(12.))
+                                    .text_color(p.muted)
+                                    .child(t!(*detail)),
+                            )
                     }),
             );
         card.child(
@@ -313,15 +342,13 @@ impl SettingsPage {
     fn save_bar(&self, cx: &mut Context<Self>) -> Div {
         let p = *palette(cx);
         let busy = self.status.busy;
-        let note = match self.status.error.clone() {
+        let note = match self.status.error.as_ref() {
             Some(error) => v_flex()
                 .gap(px(2.))
                 .text_color(p.danger)
-                .child(div().font_medium().child("Couldn't save the change"))
-                .child(div().text_size(px(12.)).child(error)),
-            None => div()
-                .text_color(p.muted)
-                .child("Unsaved change — totals will be recalculated"),
+                .child(div().font_medium().child(t!("settings.save_failed")))
+                .child(div().text_size(px(12.)).child(error.text())),
+            None => div().text_color(p.muted).child(t!("settings.unsaved")),
         };
         h_flex()
             .gap(px(8.))
@@ -334,7 +361,7 @@ impl SettingsPage {
             .bg(p.surface)
             .child(note.flex_1().min_w_0())
             .child(
-                header::button("discard-rounding", None, "Discard")
+                header::button("discard-rounding", None, t!("settings.discard"))
                     .ghost()
                     .text_color(p.muted)
                     .disabled(busy)
@@ -344,11 +371,45 @@ impl SettingsPage {
                 header::button(
                     "save-rounding",
                     None,
-                    if busy { "Saving…" } else { "Save changes" },
+                    if busy {
+                        t!("common.saving")
+                    } else {
+                        t!("settings.save")
+                    },
                 )
                 .primary()
                 .disabled(busy)
                 .on_click(cx.listener(|this, _, window, cx| this.save(window, cx))),
+            )
+    }
+
+    fn appearance_card(&self, window: &Window, cx: &mut Context<Self>) -> Div {
+        let theme = THEMES.map(|dark| (dark, theme_label(dark)));
+        let language = LANGUAGES.map(|language| (language, language_label(language)));
+        data::card(cx)
+            .child(self.segmented(
+                "theme",
+                t!("settings.theme"),
+                theme,
+                theme_choice(cx),
+                |this| &this.theme_focus,
+                PageContext::set_theme,
+                window,
+                cx,
+            ))
+            .child(
+                self.segmented(
+                    "language",
+                    t!("settings.language"),
+                    language,
+                    language_choice(cx),
+                    |this| &this.language_focus,
+                    PageContext::set_language,
+                    window,
+                    cx,
+                )
+                .border_t_1()
+                .border_color(palette(cx).line),
             )
     }
 
@@ -357,64 +418,72 @@ impl SettingsPage {
     /// handler. The base toggle draws nothing, so the page draws the chosen
     /// fill, a hover that only changes the text colour, and the kit's ring
     /// while a segment has keyboard focus.
-    fn theme_card(&self, window: &Window, cx: &mut Context<Self>) -> Div {
+    #[allow(clippy::too_many_arguments)]
+    fn segmented<T: Copy + PartialEq + 'static>(
+        &self,
+        id: &'static str,
+        label: Cow<'static, str>,
+        options: [(T, Cow<'static, str>); 3],
+        current: T,
+        focus: fn(&Self) -> &[FocusHandle; 3],
+        pick: fn(&PageContext, T, &mut App),
+        window: &Window,
+        cx: &mut Context<Self>,
+    ) -> Div {
         let p = *palette(cx);
-        let current = theme_choice(cx);
         let chosen = cx.theme().tokens.accent;
-        data::card(cx).child(
-            h_flex()
-                .min_h(px(52.))
-                .gap(px(12.))
-                .pl(px(16.))
-                .pr(px(12.))
-                .child(div().flex_1().font_medium().child("Theme"))
-                .child(
-                    h_flex()
-                        .gap(px(2.))
-                        .p(px(3.))
-                        .rounded(px(9.))
-                        .bg(cx.theme().button)
-                        .border_1()
-                        .border_color(p.line)
-                        .on_key_down(cx.listener(Self::step_theme))
-                        .children(THEMES.iter().zip(&self.theme_focus).map(
-                            |((dark, label), focus)| {
-                                let dark = *dark;
-                                let checked = dark == current;
-                                let context = self.context.clone();
-                                base::Toggle::new(*label)
-                                    .track_focus(focus)
-                                    .pressed(checked)
-                                    .accessibility_label(*label)
-                                    .h(px(24.))
-                                    .px(px(12.))
-                                    .rounded(px(6.))
-                                    .text_size(px(12.5))
-                                    .font_medium()
-                                    .text_color(if checked { p.text } else { p.muted })
-                                    .when(checked, |segment| segment.bg(chosen))
-                                    .when(!checked, |segment| {
-                                        segment.hover(|style| style.text_color(p.text))
-                                    })
-                                    .when(
-                                        window.last_input_was_keyboard()
-                                            && focus.is_focused(window),
-                                        |segment| segment.focus_ring_style(window, cx),
-                                    )
-                                    .on_change(move |_, _, _, cx| {
-                                        if theme_choice(cx) != dark {
-                                            context.set_theme(dark, cx);
-                                        }
-                                    })
-                                    .child(*label)
-                            },
-                        )),
-                ),
-        )
+        h_flex()
+            .min_h(px(52.))
+            .gap(px(12.))
+            .pl(px(16.))
+            .pr(px(12.))
+            .child(div().flex_1().font_medium().child(label))
+            .child(
+                h_flex()
+                    .gap(px(2.))
+                    .p(px(3.))
+                    .rounded(px(9.))
+                    .bg(cx.theme().button)
+                    .border_1()
+                    .border_color(p.line)
+                    .on_key_down(cx.listener(move |this, event, window, cx| {
+                        Self::step_segment(focus(this), event, window, cx)
+                    }))
+                    .children(options.into_iter().zip(focus(self)).enumerate().map(
+                        |(index, ((value, label), focus))| {
+                            let checked = value == current;
+                            let context = self.context.clone();
+                            base::Toggle::new((id, index))
+                                .track_focus(focus)
+                                .pressed(checked)
+                                .accessibility_label(label.clone())
+                                .h(px(24.))
+                                .px(px(12.))
+                                .rounded(px(6.))
+                                .text_size(px(12.5))
+                                .font_medium()
+                                .text_color(if checked { p.text } else { p.muted })
+                                .when(checked, |segment| segment.bg(chosen))
+                                .when(!checked, |segment| {
+                                    segment.hover(|style| style.text_color(p.text))
+                                })
+                                .when(
+                                    window.last_input_was_keyboard() && focus.is_focused(window),
+                                    |segment| segment.focus_ring_style(window, cx),
+                                )
+                                .on_change(move |_, _, _, cx| {
+                                    if !checked {
+                                        pick(&context, value, cx);
+                                    }
+                                })
+                                .child(label)
+                        },
+                    )),
+            )
     }
 }
 
-fn option_skeleton(title: &'static str, cx: &App) -> Div {
+fn option_skeleton(title: Cow<'static, str>, cx: &App) -> Div {
     h_flex()
         .items_start()
         .gap(px(12.))
