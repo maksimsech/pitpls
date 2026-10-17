@@ -2,13 +2,15 @@ use super::{StocksPage, display::trade_date};
 use crate::{
     components::{
         chart::{BarChart, chart_tooltip},
-        measure_width, notice, value,
+        measure_width, notice, records, value,
     },
     format::{DisplayText, money, pln, shares},
+    pages::records::TableHost,
     theme::{palette, tabular_digits},
 };
 use chrono::{Datelike, Utc};
 use gpui_kit::{
+    assets::IconName,
     component::{scroll::ScrollableElement, tag::Tag, tooltip::Tooltip, *},
     prelude::FluentBuilder,
     *,
@@ -17,10 +19,12 @@ use pitpls_app::use_case::portfolio::StockPortfolio;
 use pitpls_core::time::tax_date;
 use rust_decimal::Decimal;
 use rust_i18n::t;
+use std::collections::BTreeSet;
 
 pub struct Layout {
     pub width: Option<Pixels>,
     pan: ScrollHandle,
+    open: BTreeSet<(SharedString, SharedString)>,
 }
 
 impl Layout {
@@ -28,6 +32,7 @@ impl Layout {
         Self {
             width,
             pan: ScrollHandle::default(),
+            open: BTreeSet::new(),
         }
     }
 }
@@ -37,7 +42,7 @@ struct Instrument {
     exchange: Option<SharedString>,
     provider: SharedString,
     search: String,
-    sales: usize,
+    sales: BTreeSet<SharedString>,
     shares: DisplayText,
     amounts: [Decimal; 3],
     held: bool,
@@ -82,7 +87,16 @@ impl Display {
                         )
                         .to_lowercase(),
                         exchange,
-                        sales: instrument.sales,
+                        sales: data
+                            .replay
+                            .sales
+                            .iter()
+                            .filter(|sale| {
+                                sale.ticker == instrument.ticker
+                                    && sale.provider == instrument.provider
+                            })
+                            .map(|sale| sale.id.clone().into())
+                            .collect(),
                         shares: shares(instrument.shares),
                         amounts: [instrument.income, instrument.costs, instrument.profit],
                         held: instrument.held,
@@ -211,7 +225,14 @@ impl StocksPage {
             return div().into_any_element();
         };
         let p = *palette(cx);
-        let width = self.realized.width.unwrap_or(px(940.)).max(px(940.));
+        let width = self.realized.width.unwrap_or(px(964.)).max(px(964.));
+        let detail_layout = records::TableLayout {
+            width,
+            frame: [px(0.), px(24.), px(0.)],
+            columns: vec![],
+            compact: false,
+            stacked: false,
+        };
         let instruments = display
             .instruments
             .iter()
@@ -225,6 +246,7 @@ impl StocksPage {
                 .text_size(px(12.))
                 .text_color(p.faint)
                 .whitespace_nowrap()
+                .child(div().w(px(16.)).flex_shrink_0())
                 .children(
                     [
                         "column.ticker",
@@ -244,14 +266,27 @@ impl StocksPage {
         );
         for (index, instrument) in instruments.iter().enumerate() {
             let tooltip = instrument.tooltip.clone();
-            rows = rows.child(
-                row(cx)
-                    .id(("realized-instrument", index))
-                    .hover(move |style| style.bg(p.hover))
-                    .tooltip(move |window, cx| Tooltip::new(tooltip.clone()).build(window, cx))
-                    .child(slot(0).font_semibold().child(instrument.ticker.clone()))
-                    .child(
-                        slot(1).children(instrument.exchange.clone().map(|exchange| {
+            let key = (instrument.ticker.clone(), instrument.provider.clone());
+            let expanded = self.realized.open.contains(&key);
+            let instrument_row = row(cx)
+                .id(("realized-instrument", index))
+                .tooltip(move |window, cx| Tooltip::new(tooltip.clone()).build(window, cx))
+                .child(
+                    div().w(px(16.)).flex_shrink_0().text_color(p.faint).child(
+                        Icon::new(if expanded {
+                            IconName::ChevronDown
+                        } else {
+                            IconName::ChevronRight
+                        })
+                        .size(px(14.)),
+                    ),
+                )
+                .child(slot(0).font_semibold().child(instrument.ticker.clone()))
+                .child(
+                    slot(1)
+                        .flex()
+                        .items_center()
+                        .children(instrument.exchange.clone().map(|exchange| {
                             Tag::custom(transparent_black(), p.muted, p.strong_line)
                                 .h(px(20.))
                                 .px(px(7.))
@@ -260,50 +295,100 @@ impl StocksPage {
                                 .text_size(px(12.))
                                 .child(exchange)
                         })),
-                    )
-                    .child(
-                        slot(2)
-                            .truncate()
-                            .text_color(p.muted)
-                            .child(instrument.provider.clone()),
-                    )
-                    .child(slot(3).child(instrument.sales.to_string()))
-                    .child(slot(4).child(number(
-                        ("realized-shares", index),
-                        &instrument.shares,
-                        cx,
-                    )))
-                    .children(
-                        instrument
-                            .amounts
-                            .iter()
-                            .enumerate()
-                            .map(|(column, amount)| {
-                                slot(column + 5)
-                                    .when(column == 2, |cell| cell.font_medium())
-                                    .child(number(
-                                        SharedString::from(format!("realized-{index}-{column}")),
-                                        &pln(*amount),
-                                        cx,
-                                    ))
+                )
+                .child(
+                    slot(2)
+                        .truncate()
+                        .text_color(p.muted)
+                        .child(instrument.provider.clone()),
+                )
+                .child(slot(3).child(instrument.sales.len().to_string()))
+                .child(slot(4).child(number(("realized-shares", index), &instrument.shares, cx)))
+                .children(
+                    instrument
+                        .amounts
+                        .iter()
+                        .enumerate()
+                        .map(|(column, amount)| {
+                            slot(column + 5)
+                                .when(column == 2, |cell| cell.font_medium())
+                                .child(number(
+                                    SharedString::from(format!("realized-{index}-{column}")),
+                                    &pln(*amount),
+                                    cx,
+                                ))
+                        }),
+                )
+                .child(
+                    slot(8).flex().items_center().child(
+                        Tag::custom(transparent_black(), p.muted, p.strong_line)
+                            .h(px(20.))
+                            .px(px(7.))
+                            .py_0()
+                            .rounded(px(6.))
+                            .text_size(px(12.))
+                            .child(if instrument.held {
+                                t!("stocks.held")
+                            } else {
+                                t!("stocks.closed")
                             }),
-                    )
-                    .child(
-                        slot(8).child(
-                            Tag::custom(transparent_black(), p.muted, p.strong_line)
-                                .h(px(20.))
-                                .px(px(7.))
-                                .py_0()
-                                .rounded(px(6.))
-                                .text_size(px(12.))
-                                .child(if instrument.held {
-                                    t!("stocks.held")
-                                } else {
-                                    t!("stocks.closed")
-                                }),
-                        ),
                     ),
+                );
+            rows = rows.child(
+                gpui_kit::base::Button::new(("realized-toggle", index))
+                    .role(Role::Button)
+                    .accessibility_label(t!(
+                        "stocks.toggle_realized",
+                        ticker = instrument.ticker,
+                        provider = instrument.provider
+                    ))
+                    .aria_expanded(expanded)
+                    .w_full()
+                    .text_color(p.text)
+                    .when(expanded, |row| row.bg(p.raised))
+                    .hover(move |style| style.bg(p.hover))
+                    .focus(move |style| style.bg(p.hover))
+                    .child(instrument_row)
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        if this.disabled() {
+                            return;
+                        }
+                        if !this.realized.open.remove(&key) {
+                            this.realized.open.insert(key.clone());
+                        }
+                        cx.notify();
+                    })),
             );
+            if expanded {
+                rows = rows.children(
+                    self.records
+                        .state
+                        .rows
+                        .iter()
+                        .filter(|sale| instrument.sales.contains(&sale.id))
+                        .map(|sale| {
+                            v_flex()
+                                .id(SharedString::from(format!("realized-sale-{}", sale.id)))
+                                .child(
+                                    row(cx)
+                                        .h(px(32.))
+                                        .pl(detail_layout.indent())
+                                        .bg(p.raised)
+                                        .font_medium()
+                                        .child(t!("sale.sold", date = trade_date(sale.time))),
+                                )
+                                .child(records::details(
+                                    sale,
+                                    &detail_layout,
+                                    vec![],
+                                    None,
+                                    [],
+                                    false,
+                                    cx,
+                                ))
+                        }),
+                );
+            }
         }
         if instruments.is_empty() {
             rows = rows.child(div().px(px(12.)).py(px(24.)).text_color(p.muted).child(
@@ -314,7 +399,7 @@ impl StocksPage {
                 },
             ));
         }
-        let sales = instruments.iter().map(|row| row.sales).sum::<usize>();
+        let sales = instruments.iter().map(|row| row.sales.len()).sum::<usize>();
         let amounts: [Decimal; 3] =
             std::array::from_fn(|column| instruments.iter().map(|row| row.amounts[column]).sum());
         rows = rows.child(

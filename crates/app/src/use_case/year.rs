@@ -73,5 +73,26 @@ pub async fn add_year(app: &App, year: i32) -> Result<(), Error> {
 
 pub async fn delete_year(app: &App, year: i32) -> Result<u64, Error> {
     validate_year(year)?;
-    app.db.year_repo().delete(year).await.map_err(Error::from)
+    // A year may exist only because a sale from the previous year settles in it.
+    // Use the same settlement rules as the year list, without requiring NBP rates.
+    let records = app.db.stock_repo().get_through_year(year).await?;
+    let exchanges = stock::load_listings(app).await?.exchanges();
+    let settled = records
+        .iter()
+        .filter(|record| pitpls_core::stock::sale_year(record, &exchanges) == Some(year))
+        .map(|record| record.id.clone())
+        .collect::<Vec<_>>();
+    app.db
+        .year_repo()
+        .delete(Some(year), &settled)
+        .await
+        .map_err(Error::from)
+}
+
+pub async fn delete_all_years(app: &App) -> Result<u64, Error> {
+    app.db
+        .year_repo()
+        .delete(None, &[])
+        .await
+        .map_err(Error::from)
 }

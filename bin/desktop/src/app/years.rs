@@ -13,6 +13,12 @@ use gpui_kit::{
 use pitpls_app::use_case::year::{self, YearInfo};
 use rust_i18n::t;
 
+#[derive(Clone, Copy)]
+pub(super) enum Removal {
+    Year(i32),
+    All,
+}
+
 impl Desktop {
     pub fn load_years(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let Some(context) = &self.context else {
@@ -39,6 +45,9 @@ impl Desktop {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        if open && self.locked() {
+            return;
+        }
         self.year_menu_open = open;
         self.year_error = None;
         if open {
@@ -67,11 +76,11 @@ impl Desktop {
     }
 
     pub(super) fn add_year(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if self.status.busy {
+        if self.locked() {
             return;
         }
         match form::year(&self.year_input, cx) {
-            Ok(year) => self.change_year(year, false, window, cx),
+            Ok(year) => self.save_year(year, window, cx),
             Err(error) => {
                 self.year_error = Some(error.into());
                 cx.notify();
@@ -79,14 +88,8 @@ impl Desktop {
         }
     }
 
-    fn change_year(
-        &mut self,
-        year: i32,
-        remove: bool,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        if self.status.busy {
+    fn save_year(&mut self, year: i32, window: &mut Window, cx: &mut Context<Self>) {
+        if self.locked() {
             return;
         }
         let Some(context) = &self.context else {
@@ -97,24 +100,13 @@ impl Desktop {
         self.status.task = Some(context.services.run(
             window,
             cx,
-            move |app| async move {
-                if remove {
-                    year::delete_year(&app, year).await?;
-                } else {
-                    year::add_year(&app, year).await?;
-                }
-                Ok(())
-            },
+            move |app| async move { Ok(year::add_year(&app, year).await?) },
             move |this, result, window, cx| {
                 this.status.busy = false;
                 match result {
                     Ok(()) => {
-                        let selected = if remove {
-                            this.preferences.year.filter(|selected| *selected != year)
-                        } else {
-                            this.year_menu_open = false;
-                            Some(year)
-                        };
+                        this.year_menu_open = false;
+                        let selected = Some(year);
                         if selected != this.preferences.year {
                             this.preferences.year = selected;
                             this.save_preferences(window, cx);
@@ -125,6 +117,86 @@ impl Desktop {
                     Err(error) if this.year_menu_open => this.year_error = Some(error.into()),
                     Err(error) => this.status.error = Some(error.into()),
                 }
+                cx.notify();
+            },
+        ));
+        cx.notify();
+    }
+
+    fn confirm_year_removal(
+        &mut self,
+        removal: Removal,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.locked() || self.context.is_none() {
+            return;
+        }
+        self.year_menu_open = false;
+        self.year_error = None;
+        self.pending_year_removal = Some(removal);
+        let (title, message, label) = match removal {
+            Removal::Year(year) => (
+                t!("year.remove_title", year = year),
+                t!("year.remove_message", year = year),
+                t!("year.remove", year = year),
+            ),
+            Removal::All => (
+                t!("year.remove_all_title"),
+                t!("year.remove_all_message"),
+                t!("year.remove_all"),
+            ),
+        };
+        window.focus(&self.focus, cx);
+        dialog::confirm(
+            title,
+            message,
+            label,
+            Self::remove_years,
+            |this, cx| {
+                this.pending_year_removal = None;
+                cx.notify();
+            },
+            window,
+            cx,
+        );
+        cx.notify();
+    }
+
+    fn remove_years(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.status.busy || self.page_locked {
+            return;
+        }
+        let (Some(removal), Some(context)) = (self.pending_year_removal, &self.context) else {
+            return;
+        };
+        self.status.begin_save();
+        // A pre-deletion year load must not restore stale counts afterward.
+        self.years_task = None;
+        self.status.task = Some(context.services.run(
+            window,
+            cx,
+            move |app| async move {
+                let count = match removal {
+                    Removal::Year(year) => year::delete_year(&app, year).await?,
+                    Removal::All => year::delete_all_years(&app).await?,
+                };
+                Ok(crate::i18n::plural("records.deleted", count).into_owned())
+            },
+            move |this, result, window, cx| {
+                if this.status.saved(result) {
+                    this.preferences.year = match removal {
+                        Removal::Year(year) => this.preferences.year.filter(|value| *value != year),
+                        Removal::All => None,
+                    };
+                    // The previous import summary no longer describes the stored records.
+                    this.preferences.last_import = None;
+                    this.save_preferences(window, cx);
+                    // Deleting another year can change holdings and FIFO costs on this page too.
+                    this.mount_page(window, cx);
+                    window.focus(&this.focus, cx);
+                }
+                this.load_years(window, cx);
                 cx.notify();
             },
         ));
@@ -227,10 +299,25 @@ impl Desktop {
                     .text_color(p.faint)
                     .child(t!("year.menu_hint")),
             )
+            .child(divider())
+            .child(
+                header::button(
+                    "remove-all-years",
+                    Some(IconName::Trash),
+                    t!("year.remove_all"),
+                )
+                .ghost()
+                .w_full()
+                .text_color(p.danger)
+                .disabled(self.locked())
+                .on_click(cx.listener(|this, _, window, cx| {
+                    this.confirm_year_removal(Removal::All, window, cx);
+                })),
+            )
             .focus_trap("year-menu-trap", &self.year_menu_focus)
     }
 
-    fn year_item(&self, info: Option<YearInfo>, cx: &mut Context<Self>) -> Button {
+    fn year_item(&self, info: Option<YearInfo>, cx: &mut Context<Self>) -> Div {
         let p = *palette(cx);
         let year = info.map(|info| info.year);
         let label = header::year_label(year);
@@ -239,18 +326,14 @@ impl Desktop {
             Some(info) => record_count(info.records()).into(),
             None => t!("year.all_meta").into(),
         };
-        // Years with records come back on their own, so only empty custom
-        // years can be removed.
-        let removable = info.filter(|info| info.custom && info.records() == 0);
-        let group = SharedString::from(format!("year-row-{label}"));
-        Button::new(SharedString::from(format!("year-{label}")))
+        let select = Button::new(SharedString::from(format!("year-{label}")))
             .ghost()
-            .w_full()
+            .flex_1()
+            .min_w_0()
             .h(px(32.))
             .pl(px(10.))
             .pr(px(6.))
             .rounded(px(7.))
-            .group(group.clone())
             .role(Role::MenuItemRadio)
             .accessibility_label(format!("{label}, {meta}"))
             .disabled(self.locked())
@@ -283,45 +366,42 @@ impl Desktop {
                             .text_color(p.faint)
                             .font_features(tabular_digits())
                             .child(meta),
-                    )
-                    .when_some(removable, |row, info| {
-                        let year = info.year;
-                        row.child(
-                            Button::new(("remove-year", year as u64))
-                                .ghost()
-                                .size(px(22.))
-                                .p_0()
-                                .ml(px(4.))
-                                .rounded(px(6.))
-                                .text_color(p.muted)
-                                .child(Icon::new(IconName::X).size(px(13.)))
-                                .opacity(0.)
-                                .group_hover(group, |style| style.opacity(1.))
-                                .tab_stop(false)
-                                .accessibility_label(t!("year.remove", year = year))
-                                .tooltip(t!("year.remove_tooltip", year = year))
-                                .disabled(self.status.busy)
-                                .on_click(cx.listener(move |this, _, window, cx| {
-                                    cx.stop_propagation();
-                                    this.change_year(year, true, window, cx);
-                                })),
-                        )
-                    }),
+                    ),
             )
-            // The × shows only on hover, so it's no Tab stop. Backspace or
-            // Delete on the row removes the year instead.
-            .when_some(removable, |row, info| {
-                let year = info.year;
+            .when_some(year, |row, year| {
                 row.on_key_down(cx.listener(move |this, event: &KeyDownEvent, window, cx| {
                     let key = &event.keystroke;
                     if matches!(key.key.as_str(), "backspace" | "delete")
                         && !key.modifiers.modified()
                     {
                         cx.stop_propagation();
-                        this.change_year(year, true, window, cx);
+                        this.confirm_year_removal(Removal::Year(year), window, cx);
                     }
                 }))
             })
-            .on_click(cx.listener(move |this, _, window, cx| this.select_year(year, window, cx)))
+            .on_click(cx.listener(move |this, _, window, cx| this.select_year(year, window, cx)));
+        h_flex()
+            .w_full()
+            .gap(px(2.))
+            .child(select)
+            .when_some(year, |row, year| {
+                row.child(
+                    Button::new(("remove-year", year as u64))
+                        .ghost()
+                        .size(px(24.))
+                        .flex_shrink_0()
+                        .p_0()
+                        .rounded(px(6.))
+                        .text_color(p.muted)
+                        .hover(|style| style.text_color(p.danger))
+                        .child(Icon::new(IconName::X).size(px(14.)))
+                        .accessibility_label(t!("year.remove_tooltip", year = year))
+                        .tooltip(t!("year.remove_tooltip", year = year))
+                        .disabled(self.locked())
+                        .on_click(cx.listener(move |this, _, window, cx| {
+                            this.confirm_year_removal(Removal::Year(year), window, cx);
+                        })),
+                )
+            })
     }
 }

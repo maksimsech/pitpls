@@ -48,6 +48,7 @@ pub struct Desktop {
     years: Vec<YearInfo>,
     years_task: Option<Task<()>>,
     year_menu_open: bool,
+    pending_year_removal: Option<years::Removal>,
     year_input: Entity<InputState>,
     year_error: Option<SharedString>,
     year_menu_focus: FocusHandle,
@@ -143,6 +144,7 @@ impl Desktop {
             years: vec![],
             years_task: None,
             year_menu_open: false,
+            pending_year_removal: None,
             year_input,
             year_error: None,
             year_menu_focus: cx.focus_handle(),
@@ -161,7 +163,7 @@ impl Desktop {
     }
 
     fn locked(&self) -> bool {
-        self.status.busy || self.page_locked
+        self.status.busy || self.page_locked || self.pending_year_removal.is_some()
     }
 
     /// `reset` deletes the database first, so it opens empty.
@@ -416,9 +418,12 @@ impl Desktop {
                             |this: &mut Self| &mut this.page_width,
                             cx,
                         ))
-                        .when(self.incoming.is_some(), |slot| {
-                            slot.child(div().absolute().inset_0().occlude())
-                        }),
+                        .when(
+                            self.incoming.is_some()
+                                || self.status.busy
+                                || self.pending_year_removal.is_some(),
+                            |slot| slot.child(div().absolute().inset_0().occlude()),
+                        ),
                 )
             })
             .when(self.status.is_visible(), |panel| {

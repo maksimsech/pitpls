@@ -505,8 +505,8 @@ year:
     en: Add year, e.g. 2023
     pl: Dodaj rok, np. 2023
   menu_hint:
-    en: Years with records appear on their own. Removing a year (× or ⌫) only hides it here.
-    pl: Lata z wpisami pojawiają się same. Usunięcie roku (× lub ⌫) tylko ukrywa go na tej liście.
+    en: Removing a year (× or ⌫) deletes its records after confirmation. NBP exchange rates are kept.
+    pl: Usunięcie roku (× lub ⌫) usuwa jego wpisy po potwierdzeniu. Kursy NBP zostają zachowane.
   all_meta:
     en: portfolio
     pl: portfel
@@ -514,8 +514,23 @@ year:
     en: Remove %{year}
     pl: Usuń %{year}
   remove_tooltip:
-    en: Remove %{year} from the list
-    pl: Usuń %{year} z listy
+    en: Remove %{year} and its records
+    pl: Usuń %{year} i jego wpisy
+  remove_title:
+    en: Remove %{year} and its records?
+    pl: Usunąć %{year} i jego wpisy?
+  remove_message:
+    en: Delete all dividends, interest, crypto and stock records dated in %{year}, including manual entries. Stock sales settling in %{year} are also deleted, even if traded earlier. This can change holdings and calculations in other years. NBP exchange rates and settings are kept. This cannot be undone.
+    pl: Wszystkie wpisy dywidend, odsetek, kryptowalut i akcji z datą w %{year} zostaną usunięte, także dodane ręcznie. Usunięte zostaną również sprzedaże akcji rozliczone w %{year}, nawet jeśli zawarto je wcześniej. Może to zmienić stan portfela i obliczenia w innych latach. Kursy NBP i ustawienia zostaną zachowane. Tej operacji nie można cofnąć.
+  remove_all:
+    en: Clear all years
+    pl: Wyczyść wszystkie lata
+  remove_all_title:
+    en: Clear all years and records?
+    pl: Wyczyścić wszystkie lata i wpisy?
+  remove_all_message:
+    en: Delete all dividends, interest, crypto and stock records across all years, including manual entries, saved years and stock instrument details. NBP exchange rates and settings are kept. This cannot be undone.
+    pl: Wszystkie wpisy dywidend, odsetek, kryptowalut i akcji ze wszystkich lat zostaną usunięte, także dodane ręcznie, wraz z zapisanymi latami i danymi instrumentów giełdowych. Kursy NBP i ustawienia zostaną zachowane. Tej operacji nie można cofnąć.
   tax_year:
     en: Tax year
     pl: Rok podatkowy
@@ -1067,6 +1082,9 @@ stocks:
   first_last_sale:
     en: First sale %{first} · last %{last}
     pl: Pierwsza sprzedaż %{first} · ostatnia %{last}
+  toggle_realized:
+    en: Show or hide FIFO for %{ticker} at %{provider}
+    pl: Pokaż lub ukryj FIFO dla %{ticker} u %{provider}
   all:
     en: All
     pl: Razem
@@ -1080,8 +1098,8 @@ stocks:
     en: No realized instruments match “%{query}”.
     pl: Brak instrumentów ze sprzedażami pasujących do „%{query}”.
   realized_note:
-    en: The same FIFO as the tax view, run once over every record. Each sale's own steps open in its tax year (Sales tab there).
-    pl: To samo FIFO co w widoku podatkowym, obliczone raz dla wszystkich wpisów. Obliczenia każdej sprzedaży znajdziesz w jej roku podatkowym, na karcie Sprzedaże.
+    en: The same FIFO as the tax view, run once over every record. Click an instrument to see each sale's calculations and FIFO lots.
+    pl: To samo FIFO co w widoku podatkowym, obliczone raz dla wszystkich wpisów. Kliknij instrument, aby zobaczyć obliczenia i partie FIFO każdej sprzedaży.
   all_records_note:
     en: Same table as a tax year, every year at once. Opening a buy shows its whole lot, later sales included; in a tax year it stops at 31.12.
     pl: Ta sama tabela co w roku podatkowym, ale ze wszystkich lat. Po otwarciu zakupu zobaczysz całą historię partii, także późniejsze sprzedaże; w roku podatkowym kończy się ona na 31.12.

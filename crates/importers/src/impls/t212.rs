@@ -110,7 +110,10 @@ enum Side {
 
 impl RowKind {
     fn from_action(action: &str) -> Self {
-        if action.starts_with("Dividend") {
+        if action == "Dividend adjustment" {
+            // Skip cash adjustments until they have separate import handling.
+            Self::Unknown
+        } else if action.starts_with("Dividend") {
             Self::Dividend
         } else if action.starts_with("Interest on cash") {
             Self::Interest
@@ -407,10 +410,11 @@ fn row_id(fields: &[String], id: Option<usize>) -> String {
 }
 
 fn parse_time(timestamp: &str) -> Result<DateTime<Utc>> {
-    DateTime::parse_from_str(timestamp, "%Y-%m-%d %H:%M:%S%:z")
+    DateTime::parse_from_str(timestamp, "%Y-%m-%d %H:%M:%S%.f%:z")
         .map(|time| time.with_timezone(&Utc))
         .or_else(|_| {
-            NaiveDateTime::parse_from_str(timestamp, "%Y-%m-%d %H:%M:%S").map(|time| time.and_utc())
+            NaiveDateTime::parse_from_str(timestamp, "%Y-%m-%d %H:%M:%S%.f")
+                .map(|time| time.and_utc())
         })
         .map_err(|source| ImportError::invalid_timestamp(timestamp, source))
 }
