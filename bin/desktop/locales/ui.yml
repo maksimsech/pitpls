@@ -1100,16 +1100,26 @@ stocks:
   positions:
     en: Positions
     pl: Pozycje
-  open_closed:
+  open_positions:
     one:
-      en: open · 1 closed
-      pl: otwarte · 1 zamknięta
+      en: open
+      pl: otwarta
     other:
-      en: open · %{count} closed
+      en: open
     few:
-      pl: otwarte · %{count} zamknięte
+      pl: otwarte
     many:
-      pl: otwarte · %{count} zamkniętych
+      pl: otwartych
+  closed_positions:
+    one:
+      en: 1 closed
+      pl: 1 zamknięta
+    other:
+      en: "%{count} closed"
+    few:
+      pl: "%{count} zamknięte"
+    many:
+      pl: "%{count} zamkniętych"
   since_year:
     en: since %{year}
     pl: od %{year}
@@ -1135,8 +1145,8 @@ stocks:
     en: Since
     pl: Od
   toggle_position:
-    en: Open lots of %{ticker} in %{provider}
-    pl: Otwarte partie %{ticker} w %{provider}
+    en: Open lots of %{ticker} in %{provider} (%{currency})
+    pl: Otwarte partie %{ticker} w %{provider} (%{currency})
   open_lots_note:
     one:
       en: One open lot · every buy and sale of %{ticker} in %{provider} is in its history

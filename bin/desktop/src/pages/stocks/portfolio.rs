@@ -20,19 +20,23 @@ use gpui_kit::{
     *,
 };
 use pitpls_app::use_case::portfolio::StockPortfolio;
-use pitpls_core::{common::Amount, time::tax_date};
+use pitpls_core::{
+    common::{Amount, Currency},
+    time::tax_date,
+};
 use rust_decimal::Decimal;
 use rust_i18n::t;
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet};
 
 #[derive(Default)]
 pub struct Layout {
-    open: HashSet<(SharedString, SharedString)>,
+    open: BTreeSet<(SharedString, SharedString, Currency)>,
     pan: ScrollHandle,
 }
 
 pub struct PositionRow {
     key: InstrumentKey,
+    currency: Currency,
     exchange: Option<SharedString>,
     search: String,
     shares: DisplayText,
@@ -85,6 +89,7 @@ impl PortfolioDisplay {
                         ticker: position.ticker.clone().into(),
                         provider: position.provider.clone().into(),
                     },
+                    currency: position.currency,
                     search: format!(
                         "{} {} {}",
                         position.ticker,
@@ -174,7 +179,14 @@ impl PortfolioDisplay {
                 t!("stocks.positions"),
                 &DisplayText::plain(self.positions.len().to_string()),
                 None,
-                Some(plural("stocks.open_closed", self.closed.len() as u64).into()),
+                Some(
+                    format!(
+                        "{} · {}",
+                        plural("stocks.open_positions", self.positions.len() as u64),
+                        plural("stocks.closed_positions", self.closed.len() as u64)
+                    )
+                    .into(),
+                ),
                 cx,
             ))
             .child(value::plain_stat(
@@ -305,12 +317,17 @@ impl StocksPage {
                 ),
         );
         for (index, position) in positions.iter().enumerate() {
-            let key = (position.key.ticker.clone(), position.key.provider.clone());
+            let key = (
+                position.key.ticker.clone(),
+                position.key.provider.clone(),
+                position.currency,
+            );
             let expanded = self.portfolio.open.contains(&key);
             let label = t!(
                 "stocks.toggle_position",
                 ticker = position.key.ticker,
-                provider = position.key.provider
+                provider = position.key.provider,
+                currency = position.currency
             );
             rows = rows.child(
                 gpui_kit::base::Button::new(("position", index))
