@@ -92,6 +92,7 @@ pub trait RecordKind: 'static {
     const TOTAL_LABELS: &'static [&'static str];
 
     fn id(record: &Self::Record) -> &str;
+    fn time(record: &Self::Record) -> DateTime<Utc>;
     fn columns() -> Vec<RecordColumn>;
     fn display(record: &Self::Record) -> RowDisplay;
     /// Information only: summed here at full precision, never by the
@@ -107,14 +108,8 @@ pub trait RecordKind: 'static {
     ) -> impl Future<Output = Result<(Vec<Decimal>, Vec<Self::Record>), ServiceError>> + Send;
     fn load_portfolio(
         app: Arc<pitpls_app::App>,
-        _today: NaiveDate,
-    ) -> impl Future<Output = Result<(Self::Portfolio, Vec<Self::Record>), ServiceError>> + Send
-    {
-        async move {
-            let (_, records) = Self::load(app, None).await?;
-            Ok((Self::Portfolio::default(), records))
-        }
-    }
+        today: NaiveDate,
+    ) -> impl Future<Output = Result<(Self::Portfolio, Vec<Self::Record>), ServiceError>> + Send;
     fn portfolio_columns() -> Vec<RecordColumn> {
         Self::columns()
     }
@@ -240,7 +235,7 @@ impl<K: RecordKind> RecordsPage<K> {
                 window.focus(&this.focus, cx);
             }
         });
-        let portfolio = year.is_none() && !K::Portfolio::LABELS.is_empty();
+        let portfolio = year.is_none();
         let mut view = Self {
             context,
             year,
@@ -278,7 +273,7 @@ impl<K: RecordKind> RecordsPage<K> {
     }
 
     fn is_portfolio(&self) -> bool {
-        self.year.is_none() && !K::Portfolio::LABELS.is_empty()
+        self.year.is_none()
     }
 
     fn locked(&self) -> bool {
@@ -629,8 +624,8 @@ impl<K: RecordKind> RecordsPage<K> {
             return;
         }
         let year = self
-            .year
-            .or(self.missing_rate_year)
+            .missing_rate_year
+            .or(self.year)
             .unwrap_or_else(|| time::tax_date(Utc::now()).year());
         self.nbp_year = Some(nbp::open(year, Self::nbp_dialog, window, cx));
         self.status.error = None;
@@ -709,32 +704,37 @@ impl<K: RecordKind> RecordsPage<K> {
             .filter(|_| !self.query.is_empty())
             .map(|(shown, total)| filter_count(shown, total, narrow));
         let import = import_button(narrow);
-        header::page(
-            K::PAGE.title(),
-            Some(header::year_label(self.year)),
-            window,
-            cx,
-        )
-        .when(filterable, |row| {
-            row.child(filter_field(&self.filter, count, filter_disabled, cx))
-        })
-        .child(
-            header::actions()
-                .child(self.status.refreshing(cx))
-                .child(header::refresh(disabled, cx).on_click(cx.listener(
-                    |this, _, window, cx| {
-                        this.context.years_changed(cx);
-                        this.refresh(window, cx);
-                    },
-                )))
-                .child(import.disabled(disabled).on_click(
-                    cx.listener(|this, _, _, cx| this.context.navigate(Page::Imports, cx)),
-                ))
-                .child(
-                    self.add_button("add-record", Some(IconName::Plus), disabled, cx)
-                        .primary(),
-                ),
-        )
+        let meta = if self.is_portfolio() && self.status.ready {
+            format!(
+                "{} · {}",
+                header::year_label(None),
+                record_count(self.records.len() as u32)
+            )
+            .into()
+        } else {
+            header::year_label(self.year)
+        };
+        header::page(K::PAGE.title(), Some(meta), window, cx)
+            .when(filterable, |row| {
+                row.child(filter_field(&self.filter, count, filter_disabled, cx))
+            })
+            .child(
+                header::actions()
+                    .child(self.status.refreshing(cx))
+                    .child(header::refresh(disabled, cx).on_click(cx.listener(
+                        |this, _, window, cx| {
+                            this.context.years_changed(cx);
+                            this.refresh(window, cx);
+                        },
+                    )))
+                    .child(import.disabled(disabled).on_click(
+                        cx.listener(|this, _, _, cx| this.context.navigate(Page::Imports, cx)),
+                    ))
+                    .child(
+                        self.add_button("add-record", Some(IconName::Plus), disabled, cx)
+                            .primary(),
+                    ),
+            )
     }
 
     fn add_button(
@@ -849,7 +849,7 @@ impl<K: RecordKind> RecordsPage<K> {
     fn missing_rate_state(&self, error: &SharedString, cx: &mut Context<Self>) -> Empty {
         notice::missing_rate(
             self.year,
-            self.year.or(self.missing_rate_year),
+            self.missing_rate_year.or(self.year),
             error.clone(),
             self.disabled(),
             cx.listener(|this, _, window, cx| this.open_nbp(window, cx)),
@@ -1041,7 +1041,12 @@ impl<K: RecordKind> RecordsPage<K> {
             cx,
             move |app| async move {
                 let (totals, portfolio, records) = if portfolio {
-                    let (portfolio, records) = K::load_portfolio(app.clone(), today).await?;
+                    let (portfolio, mut records) = K::load_portfolio(app.clone(), today).await?;
+                    records.sort_unstable_by(|a, b| {
+                        K::time(b)
+                            .cmp(&K::time(a))
+                            .then_with(|| K::id(a).cmp(K::id(b)))
+                    });
                     (Vec::new(), Some(portfolio), records)
                 } else {
                     let (totals, records) = K::load(app.clone(), year).await?;
@@ -1140,7 +1145,7 @@ impl<K: RecordKind> Render for RecordsPage<K> {
                     .collect::<Vec<_>>();
                 items.push(TabItem {
                     key: None,
-                    label: t!("records.tab_records").into(),
+                    label: t!("stocks.records").into(),
                     count: self.records.len(),
                 });
                 body = body.child(tabs(

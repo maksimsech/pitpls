@@ -4,18 +4,18 @@ use super::{
 };
 use crate::{
     components::{
-        measure_width, notice, records,
+        measure_width, notice, records, scroll_table,
         tabs::{self, TabItem},
         value,
     },
-    format::{DisplayText, amount, date, pln, shares},
+    format::{DisplayText, amount, count, date, pln, shares},
     i18n::{plural, plural_key},
     pages::records::{TableHost, totals_row},
     theme::{palette, tabular_digits},
 };
 use gpui_kit::{
     assets::IconName,
-    component::{scroll::ScrollableElement, tag::Tag, tooltip::Tooltip, *},
+    component::{tooltip::Tooltip, *},
     prelude::FluentBuilder,
     *,
 };
@@ -160,7 +160,7 @@ impl PortfolioDisplay {
         totals_row(compact)
             .child(value::plain_stat(
                 "holdings-cost",
-                t!("stocks.portfolio_cost"),
+                t!("home.holdings_cost"),
                 &self.cost,
                 Some("PLN".into()),
                 None,
@@ -168,7 +168,7 @@ impl PortfolioDisplay {
             ))
             .child(value::plain_stat(
                 "realized-profit",
-                t!("stocks.realized_profit"),
+                t!("home.realized_profit"),
                 &self.profit,
                 Some("PLN".into()),
                 None,
@@ -177,7 +177,7 @@ impl PortfolioDisplay {
             .child(value::plain_stat(
                 "positions",
                 t!("stocks.positions"),
-                &DisplayText::plain(self.positions.len().to_string()),
+                &count(self.positions.len()),
                 None,
                 Some(
                     format!(
@@ -192,7 +192,7 @@ impl PortfolioDisplay {
             .child(value::plain_stat(
                 "sales",
                 t!("stocks.sales"),
-                &DisplayText::plain(self.sales.to_string()),
+                &count(self.sales),
                 None,
                 self.first_sale
                     .map(|year| t!("stocks.since_year", year = year).into()),
@@ -288,7 +288,7 @@ impl StocksPage {
             .iter()
             .filter(|position| position.search.contains(&self.query))
             .collect::<Vec<_>>();
-        let mut rows = v_flex().w(width).text_size(px(13.)).child(
+        let mut rows = v_flex().text_size(px(13.)).child(
             row(cx)
                 .h(px(32.))
                 .border_t_1()
@@ -353,15 +353,14 @@ impl StocksPage {
                                 ),
                             )
                             .child(slot(1).font_semibold().child(position.key.ticker.clone()))
-                            .child(slot(2).children(position.exchange.clone().map(|exchange| {
-                                Tag::custom(transparent_black(), p.muted, p.strong_line)
-                                    .h(px(20.))
-                                    .px(px(7.))
-                                    .py_0()
-                                    .rounded(px(6.))
-                                    .text_size(px(12.))
-                                    .child(exchange)
-                            })))
+                            .child(
+                                slot(2).children(
+                                    position
+                                        .exchange
+                                        .clone()
+                                        .map(|exchange| value::chip(exchange, false, cx)),
+                                ),
+                            )
                             .child(
                                 slot(3)
                                     .truncate()
@@ -518,28 +517,12 @@ impl StocksPage {
                 .mt(px(14.))
                 .mb(px(24.)),
         );
-        div()
-            .id("portfolio-holdings")
-            .w_full()
-            .min_w_0()
-            .relative()
-            .flex_shrink_0()
-            .overflow_hidden()
+        scroll_table("portfolio-holdings", rows, width, &self.portfolio.pan)
             .child(measure_width(
                 self.holdings.width,
                 |page: &mut Self| &mut page.holdings.width,
                 cx,
             ))
-            .child(
-                div()
-                    .id("portfolio-holdings-pan")
-                    .w_full()
-                    .overflow_x_scroll()
-                    .lock_scroll_axis()
-                    .track_scroll(&self.portfolio.pan)
-                    .child(rows),
-            )
-            .horizontal_scrollbar(&self.portfolio.pan)
             .into_any_element()
     }
 }

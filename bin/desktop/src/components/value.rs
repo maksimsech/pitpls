@@ -7,6 +7,7 @@ use gpui_kit::{
     component::{
         ActiveTheme, StyledExt, h_flex,
         menu::{ContextMenuExt, PopupMenuItem},
+        tag::Tag,
         tooltip::Tooltip,
         v_flex,
     },
@@ -158,6 +159,20 @@ pub fn reveal_full(element: Stateful<Div>, value: &DisplayText) -> AnyElement {
             )
         })
         .into_any_element()
+}
+
+pub fn chip(label: impl Into<SharedString>, small: bool, cx: &App) -> Tag {
+    let p = palette(cx);
+    Tag::custom(transparent_black(), p.muted, p.strong_line)
+        .py_0()
+        .map(|tag| {
+            if small {
+                tag.h(px(18.)).px(px(5.)).rounded(px(5.)).text_size(px(10.))
+            } else {
+                tag.h(px(20.)).px(px(7.)).rounded(px(6.)).text_size(px(12.))
+            }
+        })
+        .child(label.into())
 }
 
 pub fn reveal(element: Stateful<Div>, value: &DisplayText, copy: bool) -> AnyElement {

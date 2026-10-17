@@ -20,13 +20,14 @@ pub enum RateConverterError {
         steps: u8,
         currency: Currency,
         date: NaiveDate,
+        missing_year: i32,
     },
 }
 
 impl RateConverterError {
     pub fn missing_year(&self) -> Option<i32> {
         match self {
-            Self::StepLimitReached { date, .. } => date.pred_opt().map(|date| date.year()),
+            Self::StepLimitReached { missing_year, .. } => Some(*missing_year),
             Self::NoRatesAvailable => None,
         }
     }
@@ -116,7 +117,30 @@ impl NbpRateProvider {
             steps: MAX_LOOKUP_STEPS,
             currency: *currency,
             date: *date,
+            missing_year: self.missing_year(*date, currency),
         })
+    }
+
+    // NBP has no table on 01.01, so a lookup early in January steps back into December. When the
+    // later year already has rates, the gap is in the earlier one.
+    fn missing_year(&self, date: NaiveDate, currency: &Currency) -> i32 {
+        let (oldest, newest) = Self::lookup_window(date);
+        [newest.year(), oldest.year()]
+            .into_iter()
+            .find(|year| !self.has_year(*year, currency))
+            .unwrap_or(newest.year())
+    }
+
+    fn has_year(&self, year: i32, currency: &Currency) -> bool {
+        let (Some(start), Some(end)) = (
+            NaiveDate::from_ymd_opt(year, 1, 1),
+            NaiveDate::from_ymd_opt(year, 12, 31),
+        ) else {
+            return false;
+        };
+        self.rates_by_date
+            .range(start..=end)
+            .any(|(_, rates)| rates.contains_key(currency))
     }
 }
 

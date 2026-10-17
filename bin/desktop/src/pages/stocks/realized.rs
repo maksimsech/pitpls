@@ -1,17 +1,17 @@
 use super::{StocksPage, display::trade_date};
 use crate::{
     components::{
-        chart::{BarChart, chart_tooltip},
-        measure_width, notice, records, value,
+        chart::{BarChart, chart_tooltip, section, so_far},
+        measure_width, notice, records, scroll_table, value,
     },
-    format::{DisplayText, money, pln, shares},
+    format::{DisplayText, count, money, pln, shares},
     pages::records::TableHost,
     theme::{palette, tabular_digits},
 };
 use chrono::{Datelike, Utc};
 use gpui_kit::{
     assets::IconName,
-    component::{scroll::ScrollableElement, tag::Tag, tooltip::Tooltip, *},
+    component::{tooltip::Tooltip, *},
     prelude::FluentBuilder,
     *,
 };
@@ -128,62 +128,35 @@ impl Display {
 
     fn chart(&self, cx: &App) -> Div {
         let current = tax_date(Utc::now()).year();
-        v_flex()
-            .flex_shrink_0()
-            .child(
-                h_flex()
-                    .px(px(20.))
-                    .pt(px(6.))
-                    .pb(px(8.))
-                    .gap(px(8.))
-                    .flex_wrap()
-                    .child(
-                        div()
-                            .text_size(px(12.5))
-                            .font_semibold()
-                            .child(t!("stocks.realized_by_year")),
+        section(
+            t!("stocks.realized_by_year"),
+            t!("stocks.realized_by_year_caption"),
+            BarChart::new(
+                "realized-chart",
+                self.years.clone(),
+                |row| row.0.to_string().into(),
+                |row| row.2[2],
+                move |row, _, cx| {
+                    chart_tooltip(
+                        so_far(row.0.to_string(), row.0 == current),
+                        vec![
+                            (t!("stocks.sales").into(), count(row.1)),
+                            (t!("column.income").into(), money(row.2[0])),
+                            (t!("column.costs").into(), money(row.2[1])),
+                        ],
+                        Some((t!("column.profit").into(), pln(row.2[2]))),
+                        cx,
                     )
-                    .child(
-                        div()
-                            .text_size(px(12.))
-                            .text_color(palette(cx).faint)
-                            .child(t!("stocks.realized_by_year_caption")),
-                    ),
+                    .into_any_element()
+                },
             )
-            .child(
-                BarChart::new(
-                    "realized-chart",
-                    self.years.clone(),
-                    |row| row.0.to_string().into(),
-                    |row| row.2[2],
-                    move |row, _, cx| {
-                        let title = if row.0 == current {
-                            format!("{} · {}", row.0, t!("year.so_far"))
-                        } else {
-                            row.0.to_string()
-                        };
-                        chart_tooltip(
-                            title,
-                            vec![
-                                (
-                                    t!("stocks.sales").into(),
-                                    DisplayText::plain(row.1.to_string()),
-                                ),
-                                (t!("column.income").into(), money(row.2[0])),
-                                (t!("column.costs").into(), money(row.2[1])),
-                            ],
-                            Some((t!("column.profit").into(), pln(row.2[2]))),
-                            cx,
-                        )
-                        .into_any_element()
-                    },
-                )
-                .height(px(140.)),
-            )
+            .height(px(140.)),
+            cx,
+        )
     }
 }
 
-const WIDTHS: [f32; 9] = [64., 84., 0., 64., 96., 124., 124., 124., 88.];
+const WIDTHS: [f32; 9] = [64., 84., 0., 64., 96., 112., 112., 112., 108.];
 
 fn row(cx: &App) -> Div {
     h_flex()
@@ -225,7 +198,7 @@ impl StocksPage {
             return div().into_any_element();
         };
         let p = *palette(cx);
-        let width = self.realized.width.unwrap_or(px(964.)).max(px(964.));
+        let width = self.realized.width.unwrap_or(px(940.)).max(px(940.));
         let detail_layout = records::TableLayout {
             width,
             frame: [px(0.), px(24.), px(0.)],
@@ -238,7 +211,7 @@ impl StocksPage {
             .iter()
             .filter(|row| row.search.contains(&self.query))
             .collect::<Vec<_>>();
-        let mut rows = v_flex().w(width).text_size(px(13.)).child(
+        let mut rows = v_flex().text_size(px(13.)).child(
             row(cx)
                 .h(px(32.))
                 .border_t_1()
@@ -283,18 +256,12 @@ impl StocksPage {
                 )
                 .child(slot(0).font_semibold().child(instrument.ticker.clone()))
                 .child(
-                    slot(1)
-                        .flex()
-                        .items_center()
-                        .children(instrument.exchange.clone().map(|exchange| {
-                            Tag::custom(transparent_black(), p.muted, p.strong_line)
-                                .h(px(20.))
-                                .px(px(7.))
-                                .py_0()
-                                .rounded(px(6.))
-                                .text_size(px(12.))
-                                .child(exchange)
-                        })),
+                    slot(1).flex().items_center().children(
+                        instrument
+                            .exchange
+                            .clone()
+                            .map(|exchange| value::chip(exchange, false, cx)),
+                    ),
                 )
                 .child(
                     slot(2)
@@ -319,21 +286,15 @@ impl StocksPage {
                                 ))
                         }),
                 )
-                .child(
-                    slot(8).flex().items_center().child(
-                        Tag::custom(transparent_black(), p.muted, p.strong_line)
-                            .h(px(20.))
-                            .px(px(7.))
-                            .py_0()
-                            .rounded(px(6.))
-                            .text_size(px(12.))
-                            .child(if instrument.held {
-                                t!("stocks.held")
-                            } else {
-                                t!("stocks.closed")
-                            }),
-                    ),
-                );
+                .child(slot(8).flex().items_center().child(value::chip(
+                    if instrument.held {
+                        t!("stocks.held")
+                    } else {
+                        t!("stocks.closed")
+                    },
+                    false,
+                    cx,
+                )));
             rows = rows.child(
                 gpui_kit::base::Button::new(("realized-toggle", index))
                     .role(Role::Button)
@@ -418,28 +379,12 @@ impl StocksPage {
                 }))
                 .child(slot(8)),
         );
-        let table = div()
-            .id("realized-table")
-            .w_full()
-            .min_w_0()
-            .relative()
-            .flex_shrink_0()
-            .overflow_hidden()
-            .child(measure_width(
+        let table =
+            scroll_table("realized-table", rows, width, &self.realized.pan).child(measure_width(
                 self.realized.width,
                 |page: &mut Self| &mut page.realized.width,
                 cx,
-            ))
-            .child(
-                div()
-                    .id("realized-pan")
-                    .w_full()
-                    .overflow_x_scroll()
-                    .lock_scroll_axis()
-                    .track_scroll(&self.realized.pan)
-                    .child(rows),
-            )
-            .horizontal_scrollbar(&self.realized.pan);
+            ));
         v_flex()
             .flex_shrink_0()
             .gap(px(8.))

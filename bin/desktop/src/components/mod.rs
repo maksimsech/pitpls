@@ -15,7 +15,13 @@ pub mod year_table;
 use crate::services::Error as ServiceError;
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::{
-    component::{alert::Alert, spinner::Spinner, *},
+    base::InteractiveElementExt,
+    component::{
+        alert::Alert,
+        scroll::{Scrollbar, ScrollbarMode},
+        spinner::Spinner,
+        *,
+    },
     *,
 };
 use rust_i18n::t;
@@ -200,6 +206,32 @@ pub fn measure_width<V: 'static>(
     )
     .absolute()
     .size_full()
+}
+
+pub fn scroll_table(
+    id: impl Into<SharedString>,
+    rows: Div,
+    width: Pixels,
+    scroll: &ScrollHandle,
+) -> Stateful<Div> {
+    let id = id.into();
+    div()
+        .id(id.clone())
+        .relative()
+        .w_full()
+        .min_w_0()
+        .flex_shrink_0()
+        .overflow_hidden()
+        .child(
+            h_flex()
+                .id(SharedString::from(format!("{id}-pan")))
+                .w_full()
+                .overflow_x_scroll()
+                .lock_scroll_axis()
+                .track_scroll(scroll)
+                .child(rows.w(width).flex_none()),
+        )
+        .child(Scrollbar::horizontal(scroll).mode(ScrollbarMode::Hover))
 }
 
 pub fn spinner() -> Spinner {

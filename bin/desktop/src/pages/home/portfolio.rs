@@ -1,7 +1,7 @@
 use super::{card, link};
 use crate::{
     components::{
-        chart::{BarChart, chart_tooltip},
+        chart::{BarChart, chart_tooltip, fraction, share_bar, share_tooltip, so_far},
         data, notice, value,
         year_table::{ColumnWidth, YearTable},
     },
@@ -10,12 +10,7 @@ use crate::{
     navigation::{Page, PageContext},
     theme::{palette, tabular_digits},
 };
-use gpui_kit::{
-    assets::IconName,
-    component::{tag::Tag, tooltip::Tooltip, *},
-    prelude::FluentBuilder,
-    *,
-};
+use gpui_kit::{assets::IconName, component::*, prelude::FluentBuilder, *};
 use pitpls_app::use_case::portfolio::PortfolioSummary;
 use pitpls_core::portfolio::Position;
 use rust_decimal::{Decimal, prelude::ToPrimitive};
@@ -25,7 +20,7 @@ const TOTAL_LABELS: [&str; 4] = [
     "home.holdings_cost",
     "home.realized_profit",
     "nav.dividends",
-    "home.interest",
+    "imports.interest",
 ];
 
 pub fn cards(summary: &PortfolioSummary, context: &PageContext, disabled: bool, cx: &App) -> Div {
@@ -129,7 +124,7 @@ fn total_cell(index: usize, label: &'static str, cx: &App) -> Div {
 
 fn by_year(summary: &PortfolioSummary, context: &PageContext, disabled: bool, cx: &App) -> Div {
     let table = YearTable::new(vec![
-        ColumnWidth::Fixed(px(76.)),
+        ColumnWidth::Fixed(px(128.)),
         ColumnWidth::Flexible,
         ColumnWidth::Flexible,
         ColumnWidth::Flexible,
@@ -151,14 +146,9 @@ fn by_year(summary: &PortfolioSummary, context: &PageContext, disabled: bool, cx
         |row| row.0.to_string().into(),
         |row| row.1[3],
         move |row, _, cx| {
-            let title = if row.0 == current_year {
-                format!("{} · {}", row.0, t!("year.so_far"))
-            } else {
-                row.0.to_string()
-            };
             chart_tooltip(
-                title,
-                ["home.realized_profit", "nav.dividends", "home.interest"]
+                so_far(row.0.to_string(), row.0 == current_year),
+                ["home.realized_profit", "nav.dividends", "imports.interest"]
                     .into_iter()
                     .zip(row.1)
                     .map(|(label, amount)| (t!(label).into(), money(amount)))
@@ -181,7 +171,7 @@ fn by_year(summary: &PortfolioSummary, context: &PageContext, disabled: bool, cx
         div().mt(px(12.)).child(
             table.header(
                 [
-                    "home.year",
+                    "field.year",
                     "home.realized_pln",
                     "home.dividends_pln",
                     "home.interest_pln",
@@ -248,7 +238,7 @@ fn holdings(
         .first()
         .map_or(Decimal::ZERO, |position| position.cost);
     card(
-        t!("home.holdings"),
+        t!("stocks.holdings"),
         Some(t!("home.holdings_caption").into()),
         Some(
             link("portfolio-stocks", t!("nav.stocks"), disabled, cx)
@@ -263,7 +253,7 @@ fn holdings(
             .text_color(palette(cx).faint)
             .child(div().flex_1().min_w_0().child(t!("home.position")))
             .child(numeric_cell(110.).child(t!("column.shares")))
-            .child(numeric_cell(150.).child(t!("home.cost_pln")))
+            .child(numeric_cell(150.).child(t!("lots.cost")))
             .child(
                 div()
                     .w(px(150.))
@@ -287,7 +277,19 @@ fn holdings(
             plural("home.more_positions", remaining.len() as u64),
             remaining
                 .iter()
-                .map(|position| position.ticker.as_str())
+                .map(|position| {
+                    // A ticker held in two providers would read as a duplicate.
+                    let providers = summary
+                        .positions
+                        .iter()
+                        .filter(|other| other.ticker == position.ticker)
+                        .count();
+                    if providers > 1 {
+                        format!("{} ({})", position.ticker, position.provider)
+                    } else {
+                        position.ticker.clone()
+                    }
+                })
                 .collect::<Vec<_>>()
                 .join(", "),
         )
@@ -362,15 +364,7 @@ fn position_row(
                         .child(position.ticker.clone()),
                 )
                 .when_some(exchange, |row, exchange| {
-                    row.child(
-                        Tag::custom(transparent_black(), p.muted, p.strong_line)
-                            .rounded(px(5.))
-                            .h(px(18.))
-                            .px(px(5.))
-                            .py_0()
-                            .text_size(px(10.))
-                            .child(exchange.name.clone()),
-                    )
+                    row.child(value::chip(exchange.name.clone(), true, cx))
                 })
                 .child(
                     div()
@@ -399,71 +393,18 @@ fn position_row(
                 &amount,
             )),
         )
-        .child(share_tooltip(
-            h_flex()
-                .id(("holding-share", index))
-                .w(px(150.))
-                .h(px(20.))
-                .flex_shrink_0()
-                .child(
-                    div()
-                        .w(relative(
-                            fraction(position.cost, largest)
-                                .to_f32()
-                                .unwrap_or_default(),
-                        ))
-                        .h(px(8.))
-                        .rounded(px(3.))
-                        .bg(p.series),
-                ),
-            None,
-            position.cost,
-            cost,
-        ))
-}
-
-fn fraction(value: Decimal, total: Decimal) -> Decimal {
-    if total.is_zero() {
-        Decimal::ZERO
-    } else {
-        value / total
-    }
-}
-
-fn share_tooltip(
-    element: Stateful<Div>,
-    currency: Option<String>,
-    cost: Decimal,
-    total: Decimal,
-) -> Stateful<Div> {
-    let percentage = money(fraction(cost, total) * Decimal::ONE_HUNDRED);
-    let label = format!(
-        "{}{}{}",
-        currency
-            .as_ref()
-            .map_or(String::new(), |currency| format!("{currency} · ")),
-        percentage.full,
-        t!("home.cost_percentage")
-    );
-    element
-        .role(Role::Image)
-        .aria_label(label)
-        .tooltip(move |window, cx| {
-            let currency = currency.clone();
-            let percentage = percentage.clone();
-            Tooltip::element(move |_, cx| {
-                h_flex()
-                    .text_size(px(12.))
-                    .font_features(tabular_digits())
-                    .when_some(currency.clone(), |row, currency| {
-                        row.child(format!("{currency} · "))
-                    })
-                    .child(value::text(&percentage, false, false, cx))
-                    .child(t!("home.cost_percentage"))
-                    .into_any_element()
-            })
-            .build(window, cx)
-        })
+        .child(
+            share_bar(
+                ("holding-share", index),
+                position.cost,
+                largest,
+                cost,
+                t!("home.cost_percentage").into(),
+                cx,
+            )
+            .w(px(150.))
+            .flex_shrink_0(),
+        )
 }
 
 fn currencies(summary: &PortfolioSummary, cost: Decimal, cx: &App) -> Div {
@@ -534,9 +475,10 @@ fn currencies(summary: &PortfolioSummary, cost: Decimal, cx: &App) -> Div {
                                 .when(index + 1 == summary.cost_by_currency.len(), |bar| {
                                     bar.rounded_r(px(4.))
                                 }),
-                            Some(currency.to_string()),
+                            Some(currency.to_string().into()),
                             *amount,
                             cost,
+                            t!("home.cost_percentage").into(),
                         )
                     },
                 )),
@@ -563,12 +505,27 @@ fn crypto(summary: &PortfolioSummary, context: &PageContext, disabled: bool, cx:
     )
     .children(
         [
-            ("home.put_in", summary.crypto.put_in, false),
-            ("home.taken_out", summary.crypto.taken_out, false),
-            ("home.net", summary.crypto.net, true),
+            (
+                "crypto-put-in",
+                format!("{} {}", t!("crypto.put_in"), t!("crypto.buys_and_fees")),
+                summary.crypto.put_in,
+                false,
+            ),
+            (
+                "crypto-taken-out",
+                format!("{} {}", t!("crypto.taken_out"), t!("crypto.sales")),
+                summary.crypto.taken_out,
+                false,
+            ),
+            (
+                "crypto-net",
+                t!("dividends.net").into_owned(),
+                summary.crypto.net,
+                true,
+            ),
         ]
         .into_iter()
-        .map(|(label, amount, muted)| {
+        .map(|(id, label, amount, muted)| {
             let amount = pln(amount);
             h_flex()
                 .h(px(46.))
@@ -577,10 +534,10 @@ fn crypto(summary: &PortfolioSummary, context: &PageContext, disabled: bool, cx:
                 .border_t_1()
                 .border_color(palette(cx).line)
                 .when(muted, |row| row.text_color(palette(cx).muted))
-                .child(div().flex_1().child(t!(label)))
+                .child(div().flex_1().child(label))
                 .child(value::full_tooltip(
                     div()
-                        .id(label)
+                        .id(id)
                         .text_size(px(16.))
                         .font_features(tabular_digits())
                         .when(!muted, |value| value.font_medium())
@@ -615,7 +572,7 @@ pub fn skeleton(cx: &App) -> [Div; 2] {
         )
         .child(
             div()
-                .h(px(196.))
+                .h(px(232.))
                 .m(px(16.))
                 .rounded(px(4.))
                 .bg(cx.theme().skeleton),

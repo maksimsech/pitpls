@@ -328,6 +328,7 @@ fn rate_error(error: &RateConverterError) -> String {
             steps,
             currency,
             date: at,
+            ..
         } => t!(
             "error.rate_not_found",
             currency = currency,

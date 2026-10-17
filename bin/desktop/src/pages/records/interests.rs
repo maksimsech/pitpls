@@ -45,6 +45,10 @@ impl RecordKind for Interests {
         &record.id
     }
 
+    fn time(record: &CalculatedInterest) -> DateTime<Utc> {
+        record.time
+    }
+
     fn columns() -> Vec<RecordColumn> {
         vec![
             RecordColumn::new("column.date", CellStyle::Time, 116., 50.),
@@ -137,14 +141,7 @@ impl RecordKind for Interests {
         app: Arc<pitpls_app::App>,
         today: NaiveDate,
     ) -> Result<(InterestPortfolioView, Vec<CalculatedInterest>), ServiceError> {
-        let mut data =
-            pitpls_app::use_case::portfolio::load_interest_portfolio(&app, today).await?;
-        data.data.calculated.sort_unstable_by(|left, right| {
-            right
-                .time
-                .cmp(&left.time)
-                .then_with(|| left.id.cmp(&right.id))
-        });
+        let data = pitpls_app::use_case::portfolio::load_interest_portfolio(&app, today).await?;
         Ok((
             InterestPortfolioView::new(
                 data.months,

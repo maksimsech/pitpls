@@ -97,6 +97,7 @@ impl ColumnMap {
 
 enum RowKind {
     Dividend,
+    DividendAdjustment,
     Interest,
     Stock(Side),
     Unknown,
@@ -111,8 +112,7 @@ enum Side {
 impl RowKind {
     fn from_action(action: &str) -> Self {
         if action == "Dividend adjustment" {
-            // Skip cash adjustments until they have separate import handling.
-            Self::Unknown
+            Self::DividendAdjustment
         } else if action.starts_with("Dividend") {
             Self::Dividend
         } else if action.starts_with("Interest on cash") {
@@ -186,6 +186,8 @@ pub fn parse(csv_content: String) -> Result<ImportData> {
                 }
                 data.stocks.push(stock);
             }
+            // Not imported until they have their own handling; the import reports how many.
+            RowKind::DividendAdjustment => data.skipped_dividend_adjustments += 1,
             RowKind::Unknown => {}
         }
     }

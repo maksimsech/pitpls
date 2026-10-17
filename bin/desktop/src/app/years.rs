@@ -8,7 +8,7 @@ use crate::{
 use gpui_kit::{
     assets::IconName,
     base::{FocusTrapElement, actions::Confirm},
-    component::{button::*, input::Input},
+    component::{button::*, input::Input, tooltip::Tooltip},
 };
 use pitpls_app::use_case::year::{self, YearInfo};
 use rust_i18n::t;
@@ -385,19 +385,24 @@ impl Desktop {
             .gap(px(2.))
             .child(select)
             .when_some(year, |row, year| {
+                let label: SharedString = t!("year.remove_tooltip", year = year).into();
                 row.child(
-                    Button::new(("remove-year", year as u64))
-                        .ghost()
-                        .size(px(24.))
+                    // A kit button sets its own hover style, and a second one panics.
+                    gpui_kit::base::Button::new(("remove-year", year as u64))
+                        .role(Role::Button)
+                        .accessibility_label(label.clone())
+                        .tooltip(move |window, cx| Tooltip::new(label.clone()).build(window, cx))
+                        .disabled(self.locked())
+                        .flex()
                         .flex_shrink_0()
-                        .p_0()
+                        .size(px(24.))
+                        .items_center()
+                        .justify_center()
                         .rounded(px(6.))
                         .text_color(p.muted)
-                        .hover(|style| style.text_color(p.danger))
+                        .hover(move |style| style.bg(p.hover).text_color(p.danger))
+                        .focus(move |style| style.bg(p.hover).text_color(p.danger))
                         .child(Icon::new(IconName::X).size(px(14.)))
-                        .accessibility_label(t!("year.remove_tooltip", year = year))
-                        .tooltip(t!("year.remove_tooltip", year = year))
-                        .disabled(self.locked())
                         .on_click(cx.listener(move |this, _, window, cx| {
                             this.confirm_year_removal(Removal::Year(year), window, cx);
                         })),

@@ -150,8 +150,15 @@ impl ImportsPage {
                         OutputType::Stock => plural("count.stocks", result.stocks),
                     })
                     .collect::<Vec<_>>();
-                let message = t!("imports.imported", counts = and_list(&counts));
-                Ok((message.into_owned(), last_import))
+                let mut message = t!("imports.imported", counts = and_list(&counts)).into_owned();
+                if result.skipped_dividend_adjustments > 0 {
+                    message.push(' ');
+                    message.push_str(&plural(
+                        "imports.skipped_dividend_adjustments",
+                        result.skipped_dividend_adjustments,
+                    ));
+                }
+                Ok((message, last_import))
             },
             |this, result, window, cx| {
                 let result = result.map(|(message, last_import)| {

@@ -1,13 +1,8 @@
-use crate::{components::tabs::TabItem, format::DisplayText, theme::palette};
-use gpui_kit::{
-    assets::IconName,
-    base::InteractiveElementExt,
-    component::{
-        Icon, h_flex,
-        scroll::{Scrollbar, ScrollbarMode},
-    },
-    *,
+use crate::{
+    components::{notice, tabs::TabItem},
+    format::DisplayText,
 };
+use gpui_kit::*;
 use std::rc::Rc;
 
 pub type OpenYear = Rc<dyn Fn(i32, &mut Window, &mut App)>;
@@ -19,24 +14,13 @@ pub struct PortfolioStat {
     pub caption: Option<SharedString>,
 }
 
-pub trait PortfolioView: Default + Send + 'static {
-    const LABELS: &'static [&'static str] = &[];
+pub trait PortfolioView: Send + 'static {
+    const LABELS: &'static [&'static str];
 
-    fn stats(&self) -> Vec<PortfolioStat> {
-        Vec::new()
-    }
-
-    fn tabs(&self) -> Vec<TabItem<usize>> {
-        Vec::new()
-    }
-
-    fn caption(&self, _: Option<usize>) -> SharedString {
-        SharedString::default()
-    }
-
-    fn records_note(&self) -> SharedString {
-        SharedString::default()
-    }
+    fn stats(&self) -> Vec<PortfolioStat>;
+    fn tabs(&self) -> Vec<TabItem<usize>>;
+    fn caption(&self, tab: Option<usize>) -> SharedString;
+    fn records_note(&self) -> SharedString;
 
     fn callout(&self) -> Option<SharedString> {
         None
@@ -57,49 +41,9 @@ pub trait PortfolioView: Default + Send + 'static {
     ) -> AnyElement;
 }
 
-impl PortfolioView for () {
-    fn render(
-        &self,
-        _: usize,
-        _: &str,
-        _: &ScrollHandle,
-        _: Pixels,
-        _: OpenYear,
-        _: &App,
-    ) -> AnyElement {
-        div().into_any_element()
-    }
-}
-
 pub fn note(text: impl Into<SharedString>, cx: &App) -> Div {
-    h_flex()
+    notice::info(text, cx)
         .flex_shrink_0()
-        .items_start()
         .px(px(20.))
         .py(px(16.))
-        .gap(px(8.))
-        .text_size(px(12.))
-        .text_color(palette(cx).faint)
-        .child(Icon::new(IconName::Info).size(px(14.)).flex_shrink_0())
-        .child(div().min_w_0().child(text.into()))
-}
-
-pub fn scroll_table(rows: Div, width: Pixels, scroll: &ScrollHandle) -> Stateful<Div> {
-    div()
-        .id("portfolio-table")
-        .relative()
-        .w_full()
-        .min_w_0()
-        .flex_shrink_0()
-        .overflow_hidden()
-        .child(
-            h_flex()
-                .id("portfolio-pan")
-                .w_full()
-                .overflow_x_scroll()
-                .lock_scroll_axis()
-                .track_scroll(scroll)
-                .child(rows.w(width).flex_none()),
-        )
-        .child(Scrollbar::horizontal(scroll).mode(ScrollbarMode::Hover))
 }

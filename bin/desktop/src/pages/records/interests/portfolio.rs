@@ -1,16 +1,15 @@
 use super::super::{
-    OpenYear, PortfolioStat, PortfolioView, no_match,
-    portfolio::{note, scroll_table},
-    table::month_title,
+    OpenYear, PortfolioStat, PortfolioView, no_match, portfolio::note, table::month_title,
 };
 use crate::{
     components::{
-        chart::{BarChart, chart_tooltip},
+        chart::{BarChart, chart_tooltip, section, so_far},
+        scroll_table,
         tabs::TabItem,
         value,
         year_table::{ColumnWidth, YearTable},
     },
-    format::{DisplayText, amount, date, money, pln},
+    format::{DisplayText, amount, count, date, money, pln},
     i18n::plural,
     theme::{palette, tabular_digits},
 };
@@ -27,7 +26,6 @@ use pitpls_core::{
 use rust_decimal::Decimal;
 use rust_i18n::t;
 
-#[derive(Default)]
 pub struct InterestPortfolioView {
     months: Vec<InterestMonth>,
     years: Vec<InterestYear>,
@@ -76,14 +74,8 @@ impl InterestPortfolioView {
             |month| month_title(month.0, true),
             |month| month.1,
             move |month, _, cx| {
-                let title = month_title(month.0, true);
-                let title = if month.0 == current {
-                    format!("{title} · {}", t!("year.so_far")).into()
-                } else {
-                    title
-                };
                 chart_tooltip(
-                    title,
+                    so_far(month_title(month.0, true), month.0 == current),
                     month
                         .2
                         .iter()
@@ -97,7 +89,7 @@ impl InterestPortfolioView {
                             )
                         })
                         .collect(),
-                    Some((t!("interests.interest").into(), pln(month.1))),
+                    Some((t!("imports.interest").into(), pln(month.1))),
                     cx,
                 )
                 .into_any_element()
@@ -107,13 +99,13 @@ impl InterestPortfolioView {
         let mut columns = vec![ColumnWidth::Fixed(px(128.)), ColumnWidth::Fixed(px(76.))];
         columns.extend((0..=self.providers.len()).map(|_| ColumnWidth::Flexible));
         let table = YearTable::new(columns);
-        let mut headings = vec![t!("field.year").into(), t!("interests.records").into()];
+        let mut headings = vec![t!("field.year").into(), t!("stocks.records").into()];
         headings.extend(
             self.providers
                 .iter()
                 .map(|provider| format!("{}, PLN", provider.provider).into()),
         );
-        headings.push(t!("interests.total_pln").into());
+        headings.push(t!("home.total_pln").into());
         let rows = v_flex()
             .child(table.header(headings, cx))
             .children(self.years.iter().rev().map(|year| {
@@ -149,26 +141,14 @@ impl InterestPortfolioView {
             .min_w_0()
             .w(width)
             .overflow_hidden()
-            .child(
-                v_flex()
-                    .px(px(20.))
-                    .py(px(8.))
-                    .child(
-                        h_flex()
-                            .flex_wrap()
-                            .gap_x(px(8.))
-                            .pb(px(8.))
-                            .text_size(px(12.))
-                            .child(div().font_medium().child(t!("interests.chart_title")))
-                            .child(
-                                div()
-                                    .text_color(palette(cx).faint)
-                                    .child(t!("interests.chart_caption")),
-                            ),
-                    )
-                    .child(chart),
-            )
+            .child(section(
+                t!("interests.chart_title"),
+                t!("interests.chart_caption"),
+                chart.height(px(160.)),
+                cx,
+            ))
             .child(scroll_table(
+                "portfolio-table",
                 rows,
                 width.max(px(252. + 160. * (self.providers.len() + 1) as f32)),
                 scroll,
@@ -185,10 +165,10 @@ impl InterestPortfolioView {
                 .children(
                     [
                         "column.provider",
-                        "interests.currency",
+                        "history.currency",
                         "interests.first",
                         "interests.last",
-                        "interests.records",
+                        "stocks.records",
                         "interests.received",
                         "interests.received_pln",
                     ]
@@ -270,7 +250,12 @@ impl InterestPortfolioView {
             .min_w_0()
             .w(width)
             .overflow_hidden()
-            .child(scroll_table(rows, width.max(px(860.)), scroll))
+            .child(scroll_table(
+                "portfolio-table",
+                rows,
+                width.max(px(860.)),
+                scroll,
+            ))
             .when(
                 !self
                     .providers
@@ -286,7 +271,7 @@ impl PortfolioView for InterestPortfolioView {
     const LABELS: &'static [&'static str] = &[
         "interests.received",
         "interests.last_12_months",
-        "interests.providers",
+        "imports.providers",
     ];
 
     fn stats(&self) -> Vec<PortfolioStat> {
@@ -384,9 +369,6 @@ impl PortfolioView for InterestPortfolioView {
 
 fn month_number((year, month): (i32, u32)) -> String {
     format!("{month:02}.{year}")
-}
-fn count(value: usize) -> DisplayText {
-    DisplayText::plain(value.to_string())
 }
 fn matches(provider: &InterestProvider, query: &str) -> bool {
     provider.provider.to_lowercase().contains(query)

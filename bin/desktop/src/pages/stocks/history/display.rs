@@ -173,7 +173,8 @@ impl HistoryDisplay {
         };
         let (exchange, warning) = match &history.listing {
             Some(listing) => (format!("{} · {}", listing.name, listing.country), false),
-            None => (t!("stocks.no_exchange").into_owned(), true),
+            // A missing exchange only matters for PIT/ZG, so All years doesn't warn.
+            None => (t!("stocks.no_exchange").into_owned(), year.is_some()),
         };
         let currencies = records
             .iter()

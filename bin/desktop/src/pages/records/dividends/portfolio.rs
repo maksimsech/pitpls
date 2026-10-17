@@ -1,29 +1,26 @@
-use super::super::{
-    OpenYear, PortfolioStat, PortfolioView, no_match,
-    portfolio::{note, scroll_table},
-};
+use super::super::{OpenYear, PortfolioStat, PortfolioView, no_match, portfolio::note};
 use crate::{
     components::{
-        chart::{BarChart, chart_tooltip},
+        chart::{BarChart, chart_tooltip, section, share_bar, so_far},
+        scroll_table,
         tabs::TabItem,
         value,
         year_table::{ColumnWidth, YearTable},
     },
-    format::{DisplayText, amount, money, pln},
+    format::{amount, count, money, pln},
     i18n::plural,
     theme::{palette, tabular_digits},
 };
 use chrono::{Datelike, NaiveDate};
 use gpui_kit::{
-    component::{StyledExt, h_flex, tooltip::Tooltip, v_flex},
+    component::{StyledExt, h_flex, v_flex},
     prelude::FluentBuilder,
     *,
 };
 use pitpls_core::portfolio::{DividendPayer, DividendYear};
-use rust_decimal::{Decimal, prelude::ToPrimitive};
+use rust_decimal::Decimal;
 use rust_i18n::t;
 
-#[derive(Default)]
 pub struct DividendPortfolioView {
     years: Vec<DividendYear>,
     payers: Vec<DividendPayer>,
@@ -66,13 +63,8 @@ impl DividendPortfolioView {
             |year| year.0.to_string().into(),
             |year| year.2,
             move |year, _, cx| {
-                let title = if year.0 == current_year {
-                    format!("{} · {}", year.0, t!("year.so_far"))
-                } else {
-                    year.0.to_string()
-                };
                 chart_tooltip(
-                    title,
+                    so_far(year.0.to_string(), year.0 == current_year),
                     vec![
                         (t!("dividends.payments").into(), count(year.1)),
                         (t!("dividends.withheld").into(), money(year.3)),
@@ -96,7 +88,7 @@ impl DividendPortfolioView {
             .child(
                 table.header(
                     [
-                        "dividends.year",
+                        "field.year",
                         "dividends.payments",
                         "dividends.payers",
                         "dividends.gross_pln",
@@ -142,27 +134,18 @@ impl DividendPortfolioView {
             .min_w_0()
             .w(width)
             .overflow_hidden()
-            .child(
-                v_flex()
-                    .px(px(20.))
-                    .pt(px(8.))
-                    .pb(px(8.))
-                    .child(
-                        h_flex()
-                            .flex_wrap()
-                            .gap_x(px(8.))
-                            .pb(px(8.))
-                            .text_size(px(12.))
-                            .child(div().font_medium().child(t!("dividends.chart_title")))
-                            .child(
-                                div()
-                                    .text_color(palette(cx).faint)
-                                    .child(t!("dividends.chart_caption")),
-                            ),
-                    )
-                    .child(chart),
-            )
-            .child(scroll_table(rows, width.max(px(800.)), scroll))
+            .child(section(
+                t!("dividends.chart_title"),
+                t!("dividends.chart_caption"),
+                chart.height(px(160.)),
+                cx,
+            ))
+            .child(scroll_table(
+                "portfolio-table",
+                rows,
+                width.max(px(800.)),
+                scroll,
+            ))
             .child(note(t!("dividends.by_year_note"), cx))
     }
 
@@ -266,7 +249,14 @@ impl DividendPortfolioView {
                                 )
                             }),
                     )
-                    .child(payer_cell(9).child(share(payer.gross, largest, self.gross, cx))),
+                    .child(payer_cell(9).child(share_bar(
+                        "share",
+                        payer.gross,
+                        largest,
+                        self.gross,
+                        t!("dividends.share_caption").into(),
+                        cx,
+                    ))),
             );
         }
         let none = !self.payers.iter().any(|payer| matches(payer, query));
@@ -275,7 +265,12 @@ impl DividendPortfolioView {
             .min_w_0()
             .w(width)
             .overflow_hidden()
-            .child(scroll_table(rows, width.max(px(948.)), scroll))
+            .child(scroll_table(
+                "portfolio-table",
+                rows,
+                width.max(px(948.)),
+                scroll,
+            ))
             .when(none, |view| view.child(no_match(query, cx)))
             .child(note(t!("dividends.by_ticker_note"), cx))
     }
@@ -320,7 +315,7 @@ impl PortfolioView for DividendPortfolioView {
         vec![
             TabItem {
                 key: 0,
-                label: t!("dividends.by_year").into(),
+                label: t!("home.by_year").into(),
                 count: self.years.len(),
             },
             TabItem {
@@ -373,10 +368,6 @@ impl PortfolioView for DividendPortfolioView {
     }
 }
 
-fn count(value: usize) -> DisplayText {
-    DisplayText::plain(value.to_string())
-}
-
 fn matches(payer: &DividendPayer, query: &str) -> bool {
     format!("{}\n{}\n{}", payer.ticker, payer.provider, payer.country)
         .to_lowercase()
@@ -405,48 +396,4 @@ fn payer_cell(index: usize) -> Div {
             9 => cell.w(px(52.)).flex_shrink_0(),
             _ => cell.flex_1().min_w(px(96.)),
         })
-}
-
-fn share(gross: Decimal, largest: Decimal, total: Decimal, cx: &App) -> Stateful<Div> {
-    let width = if largest.is_zero() {
-        0.
-    } else {
-        (gross / largest).to_f32().unwrap_or_default().clamp(0., 1.)
-    };
-    let percentage = money(if total.is_zero() {
-        Decimal::ZERO
-    } else {
-        gross / total * Decimal::ONE_HUNDRED
-    });
-    div()
-        .id("share")
-        .w_full()
-        .h(px(20.))
-        .flex()
-        .items_center()
-        .role(Role::Image)
-        .aria_label(format!(
-            "{}{}",
-            percentage.full,
-            t!("dividends.share_caption")
-        ))
-        .tooltip(move |window, cx| {
-            let percentage = percentage.clone();
-            Tooltip::element(move |_, cx| {
-                h_flex()
-                    .text_size(px(12.))
-                    .font_features(tabular_digits())
-                    .child(value::text(&percentage, false, false, cx))
-                    .child(t!("dividends.share_caption"))
-                    .into_any_element()
-            })
-            .build(window, cx)
-        })
-        .child(
-            div()
-                .w(relative(width))
-                .h(px(8.))
-                .rounded_r(px(3.))
-                .bg(palette(cx).series),
-        )
 }

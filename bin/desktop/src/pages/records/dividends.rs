@@ -52,6 +52,10 @@ impl RecordKind for Dividends {
         &record.id
     }
 
+    fn time(record: &CalculatedDividend) -> DateTime<Utc> {
+        record.time
+    }
+
     fn columns() -> Vec<RecordColumn> {
         vec![
             RecordColumn::new("column.date", CellStyle::Time, 104., 44.),
@@ -187,13 +191,7 @@ impl RecordKind for Dividends {
         app: Arc<pitpls_app::App>,
         today: NaiveDate,
     ) -> Result<(DividendPortfolioView, Vec<CalculatedDividend>), ServiceError> {
-        let mut data = pitpls_app::use_case::portfolio::load_dividend_portfolio(&app).await?;
-        data.data.calculated.sort_unstable_by(|left, right| {
-            right
-                .time
-                .cmp(&left.time)
-                .then_with(|| left.id.cmp(&right.id))
-        });
+        let data = pitpls_app::use_case::portfolio::load_dividend_portfolio(&app).await?;
         Ok((
             DividendPortfolioView::new(data.years, data.payers, today),
             data.data.calculated,

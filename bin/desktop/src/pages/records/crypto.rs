@@ -44,6 +44,10 @@ impl RecordKind for Crypto {
         &record.id
     }
 
+    fn time(record: &CalculatedCrypto) -> DateTime<Utc> {
+        record.time
+    }
+
     fn columns() -> Vec<RecordColumn> {
         vec![
             RecordColumn::new("column.date", CellStyle::Time, 100., 50.),
@@ -199,13 +203,7 @@ impl RecordKind for Crypto {
         app: Arc<pitpls_app::App>,
         today: NaiveDate,
     ) -> Result<(CryptoPortfolioView, Vec<CalculatedCrypto>), ServiceError> {
-        let mut data = pitpls_app::use_case::portfolio::load_crypto_portfolio(&app).await?;
-        data.data.calculated.sort_unstable_by(|left, right| {
-            right
-                .time
-                .cmp(&left.time)
-                .then_with(|| left.id.cmp(&right.id))
-        });
+        let data = pitpls_app::use_case::portfolio::load_crypto_portfolio(&app).await?;
         Ok((
             CryptoPortfolioView::new(data.years, data.totals, today),
             data.data.calculated,

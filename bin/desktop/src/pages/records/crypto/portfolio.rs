@@ -1,26 +1,19 @@
-use super::super::{
-    OpenYear, PortfolioStat, PortfolioView,
-    portfolio::{note, scroll_table},
-};
+use super::super::{OpenYear, PortfolioStat, PortfolioView, portfolio::note};
 use crate::{
     components::{
-        chart::{BarChart, chart_tooltip},
+        chart::{BarChart, chart_tooltip, section, so_far},
+        scroll_table,
         tabs::TabItem,
         year_table::{ColumnWidth, YearTable},
     },
-    format::{DisplayText, money, pln},
-    theme::palette,
+    format::{DisplayText, count, money, pln},
 };
 use chrono::{Datelike, NaiveDate};
-use gpui_kit::{
-    component::{StyledExt, h_flex, v_flex},
-    *,
-};
+use gpui_kit::{component::v_flex, *};
 use pitpls_core::portfolio::{CryptoTotals, CryptoYear};
 use rust_decimal::Decimal;
 use rust_i18n::t;
 
-#[derive(Default)]
 pub struct CryptoPortfolioView {
     years: Vec<CryptoYear>,
     total: CryptoYear,
@@ -52,7 +45,7 @@ impl CryptoPortfolioView {
 }
 
 impl PortfolioView for CryptoPortfolioView {
-    const LABELS: &'static [&'static str] = &["crypto.put_in", "crypto.taken_out", "crypto.net"];
+    const LABELS: &'static [&'static str] = &["crypto.put_in", "crypto.taken_out", "dividends.net"];
 
     fn stats(&self) -> Vec<PortfolioStat> {
         Self::LABELS
@@ -75,7 +68,7 @@ impl PortfolioView for CryptoPortfolioView {
     fn tabs(&self) -> Vec<TabItem<usize>> {
         vec![TabItem {
             key: 0,
-            label: t!("crypto.by_year").into(),
+            label: t!("home.by_year").into(),
             count: self.years.len(),
         }]
     }
@@ -113,19 +106,14 @@ impl PortfolioView for CryptoPortfolioView {
             |year| year.0.to_string().into(),
             |year| year.4,
             move |year, _, cx| {
-                let title = if year.0 == current {
-                    format!("{} · {}", year.0, t!("year.so_far"))
-                } else {
-                    year.0.to_string()
-                };
                 chart_tooltip(
-                    title,
+                    so_far(year.0.to_string(), year.0 == current),
                     vec![
                         (t!("crypto.bought").into(), money(year.1)),
                         (t!("crypto.sold").into(), money(year.2)),
                         (t!("crypto.fees").into(), money(year.3)),
                     ],
-                    Some((t!("crypto.net").into(), pln(year.4))),
+                    Some((t!("dividends.net").into(), pln(year.4))),
                     cx,
                 )
                 .into_any_element()
@@ -150,7 +138,7 @@ impl PortfolioView for CryptoPortfolioView {
                         "crypto.sells",
                         "crypto.sold_pln",
                         "crypto.fees_pln",
-                        "crypto.net_pln",
+                        "dividends.net_pln",
                     ]
                     .into_iter()
                     .map(|key| t!(key).into())
@@ -175,26 +163,18 @@ impl PortfolioView for CryptoPortfolioView {
             .min_w_0()
             .w(width)
             .overflow_hidden()
-            .child(
-                v_flex()
-                    .px(px(20.))
-                    .py(px(8.))
-                    .child(
-                        h_flex()
-                            .flex_wrap()
-                            .gap_x(px(8.))
-                            .pb(px(8.))
-                            .text_size(px(12.))
-                            .child(div().font_medium().child(t!("crypto.chart_title")))
-                            .child(
-                                div()
-                                    .text_color(palette(cx).faint)
-                                    .child(t!("crypto.chart_caption")),
-                            ),
-                    )
-                    .child(chart),
-            )
-            .child(scroll_table(rows, width.max(px(880.)), scroll))
+            .child(section(
+                t!("crypto.chart_title"),
+                t!("crypto.chart_caption"),
+                chart.height(px(160.)),
+                cx,
+            ))
+            .child(scroll_table(
+                "portfolio-table",
+                rows,
+                width.max(px(880.)),
+                scroll,
+            ))
             .child(note(t!("crypto.year_note"), cx))
             .into_any_element()
     }
@@ -202,9 +182,9 @@ impl PortfolioView for CryptoPortfolioView {
 
 fn cells(year: &CryptoYear) -> Vec<DisplayText> {
     vec![
-        DisplayText::plain(year.buys.to_string()),
+        count(year.buys),
         money(year.bought),
-        DisplayText::plain(year.sells.to_string()),
+        count(year.sells),
         money(year.sold),
         money(year.fees),
         money(year.net),

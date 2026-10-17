@@ -82,8 +82,7 @@ impl YearRepository {
         Ok(())
     }
 
-    /// Deletes records and saved years together, keeping rates and settings.
-    /// `settled_stock_ids` also includes sales traded outside the chosen year.
+    // `settled_stock_ids` are sales traded in an earlier year that settle in this one.
     pub async fn delete(&self, year: Option<i32>, settled_stock_ids: &[String]) -> Result<u64> {
         let range = year
             .map(|year| year_range(year).ok_or(RepositoryError::InvalidYear(year)))

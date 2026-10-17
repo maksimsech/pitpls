@@ -392,8 +392,8 @@ impl StocksPage {
             return;
         }
         let year = self
-            .year
-            .or(self.missing_rate_year)
+            .missing_rate_year
+            .or(self.year)
             .unwrap_or_else(|| tax_date(Utc::now()).year());
         self.nbp_year = Some(nbp::open(year, Self::nbp_dialog, window, cx));
         self.status.error = None;
@@ -753,8 +753,8 @@ impl StocksPage {
                         vec!["tax.income_c22", "tax.costs_c23"]
                     } else {
                         vec![
-                            "stocks.portfolio_cost",
-                            "stocks.realized_profit",
+                            "home.holdings_cost",
+                            "home.realized_profit",
                             "stocks.positions",
                             "stocks.sales",
                         ]
@@ -834,7 +834,7 @@ impl StocksPage {
     fn missing_rate_state(&self, error: &SharedString, cx: &mut Context<Self>) -> Empty {
         notice::missing_rate(
             self.year,
-            self.year.or(self.missing_rate_year),
+            self.missing_rate_year.or(self.year),
             error.clone(),
             self.disabled(),
             cx.listener(|this, _, window, cx| this.open_nbp(window, cx)),

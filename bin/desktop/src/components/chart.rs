@@ -9,6 +9,7 @@ use gpui_kit::{
     *,
 };
 use rust_decimal::{Decimal, prelude::ToPrimitive};
+use rust_i18n::t;
 use std::rc::Rc;
 
 type TooltipContent<T> = Rc<dyn Fn(&T, &mut Window, &mut App) -> AnyElement>;
@@ -79,9 +80,10 @@ impl Scale {
         } else {
             step
         };
+        let low = (low / step).floor() * step;
         Self {
             low,
-            high: ((high / step).ceil() * step).max(((low / step).ceil() + 3.) * step),
+            high: ((high / step).ceil() * step).max(low + 3. * step),
             step,
         }
     }
@@ -124,7 +126,7 @@ impl<T: 'static> RenderOnce for BarChart<T> {
             .map(|value| value.to_f64().unwrap_or_default())
             .collect::<Vec<_>>();
         let scale = Scale::new(&geometry);
-        let height = (self.height.as_f32() - 36.).max(1.);
+        let height = self.height.as_f32().max(1.);
         let zero = scale.y(0., height);
         let mut plot = div().relative().w_full().h(px(height + 14.));
         for tick in scale.ticks() {
@@ -236,7 +238,7 @@ impl<T: 'static> RenderOnce for BarChart<T> {
         v_flex()
             .id(self.id)
             .flex_shrink_0()
-            .h(self.height)
+            .h(px(height + 36.))
             .w_full()
             .pl(px(52.))
             .pr(px(16.))
@@ -285,4 +287,113 @@ pub fn chart_tooltip(
                     .child(div().text_color(p.muted).child("PLN")),
             )
         })
+}
+
+pub fn so_far(title: impl Into<SharedString>, so_far: bool) -> SharedString {
+    let title = title.into();
+    if so_far {
+        format!("{title} · {}", t!("year.so_far")).into()
+    } else {
+        title
+    }
+}
+
+pub fn section(
+    title: impl Into<SharedString>,
+    caption: impl Into<SharedString>,
+    chart: impl IntoElement,
+    cx: &App,
+) -> Div {
+    v_flex()
+        .flex_shrink_0()
+        .pt(px(6.))
+        .pb(px(8.))
+        .child(
+            h_flex()
+                .flex_wrap()
+                .gap_x(px(8.))
+                .px(px(20.))
+                .pb(px(8.))
+                .child(
+                    div()
+                        .text_size(px(12.5))
+                        .font_semibold()
+                        .child(title.into()),
+                )
+                .child(
+                    div()
+                        .text_size(px(12.))
+                        .text_color(palette(cx).faint)
+                        .child(caption.into()),
+                ),
+        )
+        .child(div().px(px(12.)).child(chart))
+}
+
+pub fn fraction(part: Decimal, total: Decimal) -> Decimal {
+    if total.is_zero() {
+        Decimal::ZERO
+    } else {
+        part / total
+    }
+}
+
+pub fn share_tooltip(
+    element: Stateful<Div>,
+    prefix: Option<SharedString>,
+    part: Decimal,
+    total: Decimal,
+    caption: SharedString,
+) -> Stateful<Div> {
+    let percentage = money(fraction(part, total) * Decimal::ONE_HUNDRED);
+    let prefix = prefix.map(|prefix| SharedString::from(format!("{prefix} · ")));
+    element
+        .role(Role::Image)
+        .aria_label(format!(
+            "{}{}{caption}",
+            prefix.clone().unwrap_or_default(),
+            percentage.full
+        ))
+        .tooltip(move |window, cx| {
+            let prefix = prefix.clone();
+            let percentage = percentage.clone();
+            let caption = caption.clone();
+            Tooltip::element(move |_, cx| {
+                h_flex()
+                    .text_size(px(12.))
+                    .font_features(tabular_digits())
+                    .children(prefix.clone())
+                    .child(value::text(&percentage, false, false, cx))
+                    .child(caption.clone())
+                    .into_any_element()
+            })
+            .build(window, cx)
+        })
+}
+
+pub fn share_bar(
+    id: impl Into<ElementId>,
+    part: Decimal,
+    largest: Decimal,
+    total: Decimal,
+    caption: SharedString,
+    cx: &App,
+) -> Stateful<Div> {
+    let width = fraction(part, largest)
+        .to_f32()
+        .unwrap_or_default()
+        .clamp(0., 1.);
+    share_tooltip(
+        h_flex().id(id).w_full().h(px(20.)).child(
+            div()
+                .w(relative(width))
+                .h(px(8.))
+                .rounded(px(3.))
+                .bg(palette(cx).series),
+        ),
+        None,
+        part,
+        total,
+        caption,
+    )
 }

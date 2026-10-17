@@ -567,13 +567,15 @@ fn step(index: usize, step: &Step, copy: bool, cx: &App) -> Stateful<Div> {
                     .justify_between()
                     .items_baseline()
                     .gap(px(12.))
-                    .when(!copy, |entry| entry.flex_wrap().gap_y_0())
+                    .flex_wrap()
+                    .gap_y_0()
                     .line_height(px(22.))
                     .when(*style == EntryStyle::Strong, |entry| entry.font_semibold())
                     .child(
                         div()
                             .min_w_0()
-                            .when(!copy, |label| label.flex_shrink_0().max_w_full())
+                            .flex_shrink_0()
+                            .max_w_full()
                             .text_color(match style {
                                 EntryStyle::Normal => p.muted,
                                 EntryStyle::Strong => p.text,
@@ -584,7 +586,8 @@ fn step(index: usize, step: &Step, copy: bool, cx: &App) -> Stateful<Div> {
                     .child(
                         parts(id, value, copy, cx)
                             .flex_shrink_0()
-                            .when(!copy, |value| value.max_w_full().flex_grow(1.))
+                            .max_w_full()
+                            .flex_grow(1.)
                             .justify_end()
                             .font_features(tabular_digits()),
                     )

@@ -298,9 +298,8 @@ impl HomePage {
                 Totals::MissingRate(_, year) => *year,
                 _ => None,
             });
-        let year = self
-            .year
-            .or(missing_year)
+        let year = missing_year
+            .or(self.year)
             .unwrap_or_else(|| tax_date(Utc::now()).year());
         self.nbp_year = Some(nbp::open(year, Self::nbp_dialog, window, cx));
         self.status.error = None;
@@ -564,7 +563,7 @@ impl HomePage {
             }
             Totals::MissingRate(error, missing_year) => notice::missing_rate(
                 self.year,
-                self.year.or(*missing_year),
+                missing_year.or(self.year),
                 error.clone(),
                 self.disabled(),
                 cx.listener(|this, _, window, cx| this.open_nbp(window, cx)),

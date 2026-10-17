@@ -203,9 +203,6 @@ data:
       pl: "sprzed %{count} dni"
 
 records:
-  tab_records:
-    en: Records
-    pl: Wpisy
   open_year_caption:
     en: Click a year to open it as a tax year
     pl: Kliknij rok, aby otworzyć widok podatkowy
@@ -856,12 +853,9 @@ tax:
     pl: Zapłacony (G-48)
 
 home:
-  interest:
-    en: Interest
-    pl: Odsetki
   holdings_cost:
     en: Holdings cost
-    pl: Koszt portfela
+    pl: Koszt pozycji
   realized_profit:
     en: Realized profit
     pl: Zrealizowany zysk
@@ -917,9 +911,6 @@ home:
   by_year_caption:
     en: realized profit, dividends and interest · before tax
     pl: zrealizowany zysk, dywidendy i odsetki · przed opodatkowaniem
-  year:
-    en: Year
-    pl: Rok
   realized_pln:
     en: Realized, PLN
     pl: Zysk, PLN
@@ -938,18 +929,12 @@ home:
   by_year_note:
     en: "A year opens as a tax year with its e-PIT values. Crypto isn't in these totals: its records have no coin or amount, so there's no profit to show."
     pl: "Wybrany rok otwiera widok podatkowy z kwotami do e-PIT. Te sumy nie obejmują krypto: wpisy nie zawierają rodzaju ani liczby jednostek kryptowaluty, więc nie da się obliczyć zysku."
-  holdings:
-    en: Holdings
-    pl: Posiadane papiery
   holdings_caption:
     en: open lots today · cost at the buy-day NBP rates, buy fees included
     pl: otwarte partie na dziś · koszt po kursach NBP z dnia zakupu, z prowizjami
   position:
     en: Position
     pl: Pozycja
-  cost_pln:
-    en: Cost, PLN
-    pl: Koszt, PLN
   share_of_cost:
     en: Share of cost
     pl: Udział w koszcie
@@ -959,15 +944,6 @@ home:
   by_currency:
     en: By currency
     pl: Według waluty
-  put_in:
-    en: Put in · buys and fees
-    pl: Wpłacono · zakupy i prowizje
-  taken_out:
-    en: Taken out · sales
-    pl: Wypłacono · sprzedaż
-  net:
-    en: Net
-    pl: Bilans
   nbp_note:
     en: "PLN values use the NBP rate of each record, as the tax view does, so they differ from your broker's own PLN figures."
     pl: "Kwoty w PLN są przeliczane po kursie NBP dla każdego wpisu, tak jak w widoku podatkowym. Dlatego różnią się od kwot w PLN podawanych przez brokera."
@@ -1109,12 +1085,6 @@ stocks:
   open_today:
     en: Open today
     pl: Otwarte na dziś
-  portfolio_cost:
-    en: Holdings cost
-    pl: Koszt pozycji
-  realized_profit:
-    en: Realized profit
-    pl: Zrealizowany zysk
   positions:
     en: Positions
     pl: Pozycje
@@ -1273,12 +1243,6 @@ stocks:
   empty_year:
     en: No stocks in %{year}
     pl: Brak akcji w %{year}
-  pick_year:
-    en: Pick a tax year
-    pl: Wybierz rok podatkowy
-  pick_year_detail:
-    en: "Stocks are calculated one tax year at a time: its sales, its records and the lots open on 31.12."
-    pl: "Akcje są liczone osobno dla każdego roku podatkowego: jego sprzedaże, wpisy i partie otwarte na 31.12."
   no_exchange:
     en: No exchange
     pl: Brak giełdy
@@ -1410,6 +1374,16 @@ imports:
   imported:
     en: Imported %{counts}.
     pl: "Zaimportowano: %{counts}."
+  skipped_dividend_adjustments:
+    one:
+      en: Skipped 1 dividend adjustment; the app doesn't import them yet, so check it against your statement.
+      pl: Pominięto 1 korektę dywidendy; aplikacja jeszcze ich nie importuje, więc sprawdź ją w wyciągu.
+    other:
+      en: Skipped %{count} dividend adjustments; the app doesn't import them yet, so check them against your statement.
+    few:
+      pl: Pominięto %{count} korekty dywidend; aplikacja jeszcze ich nie importuje, więc sprawdź je w wyciągu.
+    many:
+      pl: Pominięto %{count} korekt dywidend; aplikacja jeszcze ich nie importuje, więc sprawdź je w wyciągu.
   providers:
     en: Providers
     pl: Platformy
@@ -1570,9 +1544,6 @@ dividends:
   payments_since:
     en: "%{payments} since %{year}"
     pl: "%{payments} od %{year} r."
-  by_year:
-    en: By year
-    pl: Według roku
   by_ticker:
     en: By ticker
     pl: Według tickera
@@ -1585,9 +1556,6 @@ dividends:
   chart_caption:
     en: PLN at each payment's NBP rate
     pl: PLN po kursie NBP z każdej wypłaty
-  year:
-    en: Year
-    pl: Rok
   years:
     en: Years
     pl: Lata
@@ -1669,18 +1637,12 @@ dividends:
     pl: Dodaj dywidendę
 
 interests:
-  currency:
-    en: Currency
-    pl: Waluta
   received:
     en: Received
     pl: Otrzymano
   last_12_months:
     en: Last 12 months
     pl: Ostatnie 12 miesięcy
-  providers:
-    en: Providers
-    pl: Platformy
   since:
     en: "since %{month}"
     pl: "od %{month}"
@@ -1696,15 +1658,6 @@ interests:
   chart_caption:
     en: PLN at each record's NBP rate
     pl: PLN po kursie NBP z każdego wpisu
-  interest:
-    en: Interest
-    pl: Odsetki
-  records:
-    en: Records
-    pl: Wpisy
-  total_pln:
-    en: Total, PLN
-    pl: Razem, PLN
   first:
     en: First
     pl: Pierwszy wpis
@@ -1756,18 +1709,12 @@ crypto:
   taken_out:
     en: Taken out
     pl: Wycofano
-  net:
-    en: Net
-    pl: Netto
   buys_and_fees:
     en: · buys and fees
     pl: · zakupy i prowizje
   sales:
     en: · sales
     pl: · sprzedaże
-  by_year:
-    en: By year
-    pl: Według roku
   cash_note:
     en: Crypto records hold only the PLN or fiat side of a buy or sale, not the coin or its amount, so there is no holding, value or profit here. Net is cash out minus cash in.
     pl: Wpisy krypto zawierają tylko kwotę zakupu lub sprzedaży w PLN albo innej walucie tradycyjnej, bez nazwy i ilości kryptowaluty. Nie pokazujemy więc stanu posiadania, jego wartości ani zysku. Netto to kwota wycofana minus włożona.
@@ -1801,9 +1748,6 @@ crypto:
   fees_pln:
     en: Fees, PLN
     pl: Prowizje, PLN
-  net_pln:
-    en: Net, PLN
-    pl: Netto, PLN
   year_note:
     en: A year opens as a tax year with E-36 and E-37.
     pl: Wybrany rok otwiera widok podatkowy z E-36 i E-37.

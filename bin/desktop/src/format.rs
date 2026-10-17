@@ -58,8 +58,8 @@ pub fn money(value: Decimal) -> DisplayText {
     let value = value.normalize();
     let digits = format!("{:.*}", value.scale().max(2) as usize, value.abs());
     let (whole, fraction) = digits.split_once('.').unwrap_or((digits.as_str(), "00"));
-    let sign = if value.is_sign_negative() { "-" } else { "" };
-    let grouped = format!("{sign}{}", group_thousands(whole));
+    let (sign, shown_sign) = signs(value);
+    let grouped = format!("{shown_sign}{}", group_thousands(whole));
     let (cents, rest) = fraction.split_at(2);
     let shown = rest.len().min(EXTRA_DIGITS);
     DisplayText {
@@ -77,9 +77,9 @@ pub fn shares(value: Decimal) -> DisplayText {
     if !value.fract().is_zero() {
         return money(value);
     }
-    let sign = if value.is_sign_negative() { "-" } else { "" };
+    let (sign, shown_sign) = signs(value);
     let digits = value.abs().to_string();
-    let grouped = format!("{sign}{}", group_thousands(&digits));
+    let grouped = format!("{shown_sign}{}", group_thousands(&digits));
     DisplayText {
         main: grouped.clone().into(),
         extra: SharedString::default(),
@@ -88,6 +88,10 @@ pub fn shares(value: Decimal) -> DisplayText {
         full: grouped.into(),
         copy: format!("{sign}{digits}").into(),
     }
+}
+
+pub fn count(value: usize) -> DisplayText {
+    DisplayText::plain(value.to_string())
 }
 
 pub fn record_count(count: u32) -> String {
@@ -103,6 +107,15 @@ pub fn pln(value: Decimal) -> DisplayText {
 
 pub fn amount(value: Amount) -> DisplayText {
     money(value.value).with_unit(value.currency)
+}
+
+// The typographic minus on screen; copies keep the ASCII one, which forms and spreadsheets parse.
+fn signs(value: Decimal) -> (&'static str, &'static str) {
+    if value.is_sign_negative() {
+        ("-", "\u{2212}")
+    } else {
+        ("", "")
+    }
 }
 
 fn group_thousands(digits: &str) -> String {
