@@ -21,6 +21,7 @@ pub struct ImportResult {
     pub cryptos: u64,
     pub interests: u64,
     pub stocks: u64,
+    pub skipped_dividend_adjustments: u64,
 }
 
 pub async fn run_import(
@@ -50,6 +51,7 @@ pub async fn run_import(
         cryptos,
         interests,
         stocks,
+        skipped_dividend_adjustments: data.skipped_dividend_adjustments,
     })
 }
 

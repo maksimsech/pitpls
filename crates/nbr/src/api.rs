@@ -42,174 +42,140 @@ const NBP_TABLE_A: &str = "a";
 struct NbpCurrency {
     currency: Currency,
     code: &'static str,
-    unit: u32,
 }
 
 const NBP_CURRENCIES: [NbpCurrency; 33] = [
     NbpCurrency {
         currency: Currency::THB,
         code: "THB",
-        unit: 1,
     },
     NbpCurrency {
         currency: Currency::USD,
         code: "USD",
-        unit: 1,
     },
     NbpCurrency {
         currency: Currency::AUD,
         code: "AUD",
-        unit: 1,
     },
     NbpCurrency {
         currency: Currency::HKD,
         code: "HKD",
-        unit: 1,
     },
     NbpCurrency {
         currency: Currency::CAD,
         code: "CAD",
-        unit: 1,
     },
     NbpCurrency {
         currency: Currency::NZD,
         code: "NZD",
-        unit: 1,
     },
     NbpCurrency {
         currency: Currency::SGD,
         code: "SGD",
-        unit: 1,
     },
     NbpCurrency {
         currency: Currency::EUR,
         code: "EUR",
-        unit: 1,
     },
     NbpCurrency {
         currency: Currency::HUF,
         code: "HUF",
-        unit: 100,
     },
     NbpCurrency {
         currency: Currency::CHF,
         code: "CHF",
-        unit: 1,
     },
     NbpCurrency {
         currency: Currency::GBP,
         code: "GBP",
-        unit: 1,
     },
     NbpCurrency {
         currency: Currency::UAH,
         code: "UAH",
-        unit: 1,
     },
     NbpCurrency {
         currency: Currency::JPY,
         code: "JPY",
-        unit: 100,
     },
     NbpCurrency {
         currency: Currency::CZK,
         code: "CZK",
-        unit: 1,
     },
     NbpCurrency {
         currency: Currency::DKK,
         code: "DKK",
-        unit: 1,
     },
     NbpCurrency {
         currency: Currency::ISK,
         code: "ISK",
-        unit: 100,
     },
     NbpCurrency {
         currency: Currency::NOK,
         code: "NOK",
-        unit: 1,
     },
     NbpCurrency {
         currency: Currency::SEK,
         code: "SEK",
-        unit: 1,
     },
     NbpCurrency {
         currency: Currency::RON,
         code: "RON",
-        unit: 1,
     },
     NbpCurrency {
         currency: Currency::BGN,
         code: "BGN",
-        unit: 1,
     },
     NbpCurrency {
         currency: Currency::TRY,
         code: "TRY",
-        unit: 1,
     },
     NbpCurrency {
         currency: Currency::ILS,
         code: "ILS",
-        unit: 1,
     },
     NbpCurrency {
         currency: Currency::CLP,
         code: "CLP",
-        unit: 100,
     },
     NbpCurrency {
         currency: Currency::PHP,
         code: "PHP",
-        unit: 1,
     },
     NbpCurrency {
         currency: Currency::MXN,
         code: "MXN",
-        unit: 1,
     },
     NbpCurrency {
         currency: Currency::ZAR,
         code: "ZAR",
-        unit: 1,
     },
     NbpCurrency {
         currency: Currency::BRL,
         code: "BRL",
-        unit: 1,
     },
     NbpCurrency {
         currency: Currency::MYR,
         code: "MYR",
-        unit: 1,
     },
     NbpCurrency {
         currency: Currency::IDR,
         code: "IDR",
-        unit: 10000,
     },
     NbpCurrency {
         currency: Currency::INR,
         code: "INR",
-        unit: 100,
     },
     NbpCurrency {
         currency: Currency::KRW,
         code: "KRW",
-        unit: 100,
     },
     NbpCurrency {
         currency: Currency::CNY,
         code: "CNY",
-        unit: 1,
     },
     NbpCurrency {
         currency: Currency::XDR,
         code: "XDR",
-        unit: 1,
     },
 ];
 
@@ -227,7 +193,7 @@ struct NbpTableRate {
 }
 
 pub async fn load_api_rates(client: &Client, year: i32) -> Result<Vec<Rate>, ApiImportError> {
-    let ranges = nbp_year_ranges(year)?;
+    let ranges = nbp_year_ranges(year, Local::now().date_naive())?;
     let mut rates = Vec::new();
 
     for (start_date, end_date) in &ranges {
@@ -237,9 +203,10 @@ pub async fn load_api_rates(client: &Client, year: i32) -> Result<Vec<Rate>, Api
     Ok(rates)
 }
 
-fn nbp_year_ranges(year: i32) -> Result<Vec<(NaiveDate, NaiveDate)>, ApiImportError> {
-    let today = Local::now().date_naive();
-
+fn nbp_year_ranges(
+    year: i32,
+    today: NaiveDate,
+) -> Result<Vec<(NaiveDate, NaiveDate)>, ApiImportError> {
     if year < NBP_MIN_YEAR {
         return Err(ApiImportError::YearTooEarly {
             min_year: NBP_MIN_YEAR,
@@ -312,11 +279,15 @@ async fn fetch_nbp_rates(
         });
     }
 
-    let response: Vec<NbpTableResponse> = response
+    let tables: Vec<NbpTableResponse> = response
         .json()
         .await
         .map_err(|source| ApiImportError::Response { source })?;
-    Ok(response
+    Ok(table_rates(tables))
+}
+
+fn table_rates(tables: Vec<NbpTableResponse>) -> Vec<Rate> {
+    tables
         .into_iter()
         .flat_map(|table| {
             table.rates.into_iter().filter_map(move |rate| {
@@ -325,11 +296,11 @@ async fn fetch_nbp_rates(
                 Some(Rate {
                     date: table.effective_date,
                     currency: currency.currency,
-                    rate: rate.mid / Decimal::from(currency.unit),
+                    rate: rate.mid,
                 })
             })
         })
-        .collect())
+        .collect()
 }
 
 fn nbp_currency(code: &str) -> Option<&'static NbpCurrency> {
@@ -340,4 +311,75 @@ fn nbp_currency(code: &str) -> Option<&'static NbpCurrency> {
 
 fn date(year: i32, month: u32, day: u32) -> Result<NaiveDate, ApiImportError> {
     NaiveDate::from_ymd_opt(year, month, day).ok_or(ApiImportError::InvalidDate)
+}
+
+#[cfg(test)]
+mod tests {
+    use rust_decimal::dec;
+
+    use super::*;
+
+    fn date(year: i32, month: u32, day: u32) -> NaiveDate {
+        NaiveDate::from_ymd_opt(year, month, day).unwrap()
+    }
+
+    #[test]
+    fn mid_is_already_per_unit() {
+        let tables: Vec<NbpTableResponse> = serde_json::from_str(
+            r#"[{
+                "table": "A",
+                "no": "042/A/NBP/2025",
+                "effectiveDate": "2025-03-03",
+                "rates": [
+                    {"currency": "dolar amerykański", "code": "USD", "mid": 4.0112},
+                    {"currency": "jen (Japonia)", "code": "JPY", "mid": 0.026681},
+                    {"currency": "rupia indonezyjska", "code": "IDR", "mid": 0.0002434},
+                    {"currency": "złoto", "code": "XAU", "mid": 300.0}
+                ]
+            }]"#,
+        )
+        .unwrap();
+
+        let rates = table_rates(tables)
+            .into_iter()
+            .map(|rate| (rate.date, rate.currency, rate.rate))
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            rates,
+            [
+                (date(2025, 3, 3), Currency::USD, dec!(4.0112)),
+                (date(2025, 3, 3), Currency::JPY, dec!(0.026681)),
+                (date(2025, 3, 3), Currency::IDR, dec!(0.0002434)),
+            ]
+        );
+    }
+
+    #[test]
+    fn year_splits_into_93_day_ranges() {
+        let today = date(2026, 10, 17);
+
+        assert_eq!(
+            nbp_year_ranges(2024, today).unwrap(),
+            [
+                (date(2024, 1, 1), date(2024, 4, 2)),
+                (date(2024, 4, 3), date(2024, 7, 4)),
+                (date(2024, 7, 5), date(2024, 10, 5)),
+                (date(2024, 10, 6), date(2024, 12, 31)),
+            ]
+        );
+        assert_eq!(
+            nbp_year_ranges(2026, today).unwrap().last(),
+            Some(&(date(2026, 10, 7), today))
+        );
+        assert_eq!(nbp_year_ranges(2002, today).unwrap()[0].0, date(2002, 1, 2));
+        assert!(matches!(
+            nbp_year_ranges(2001, today),
+            Err(ApiImportError::YearTooEarly { min_year: 2002 })
+        ));
+        assert!(matches!(
+            nbp_year_ranges(2027, today),
+            Err(ApiImportError::FutureYear)
+        ));
+    }
 }

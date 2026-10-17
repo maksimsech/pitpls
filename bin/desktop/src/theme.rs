@@ -23,6 +23,9 @@ pub struct Palette {
     pub warning: Hsla,
     pub danger: Hsla,
     pub ok: Hsla,
+    pub series: Hsla,
+    pub series_2: Hsla,
+    pub negative: Hsla,
 }
 
 impl Global for Palette {}
@@ -47,6 +50,9 @@ impl Palette {
             warning: rgb(0xe9b45c).into(),
             danger: rgb(0xff8a80).into(),
             ok: rgb(0x7fcf9a).into(),
+            series: rgb(0x3987e5).into(),
+            series_2: rgb(0xd95926).into(),
+            negative: rgb(0xe66767).into(),
         }
     }
 
@@ -69,7 +75,20 @@ impl Palette {
             warning: rgb(0x9a5b00).into(),
             danger: rgb(0xc42b1c).into(),
             ok: rgb(0x1f7a45).into(),
+            series: rgb(0x2a78d6).into(),
+            series_2: rgb(0xeb6834).into(),
+            negative: rgb(0xe34948).into(),
         }
+    }
+
+    pub fn currency_series(&self, index: usize) -> Hsla {
+        let color = if index.is_multiple_of(2) {
+            self.series
+        } else {
+            self.series_2
+        };
+        // Later currencies alternate the same two hues at lower opacity.
+        color.opacity(if index < 2 { 1. } else { 0.55 })
     }
 }
 

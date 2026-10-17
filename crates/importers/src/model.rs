@@ -42,6 +42,7 @@ pub struct ImportData {
     pub interests: Vec<Interest>,
     pub stocks: Vec<Stock>,
     pub instruments: Vec<ImportedInstrument>,
+    pub skipped_dividend_adjustments: u64,
 }
 
 pub struct ImportedInstrument {

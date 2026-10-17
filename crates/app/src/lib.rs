@@ -1,6 +1,8 @@
 use pitpls_db::Database;
 use reqwest::Client;
 
+#[cfg(test)]
+mod tests;
 pub mod use_case;
 
 pub struct App {

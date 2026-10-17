@@ -55,6 +55,7 @@ fn buy(
         action: StockAction::Buy(StockBuy {
             number: shares,
             price,
+            amount: None,
             fee: Amount {
                 value: Decimal::ZERO,
                 currency: price.currency,
@@ -80,6 +81,7 @@ fn sell(
         action: StockAction::Sell(StockSell {
             number: shares,
             price,
+            amount: None,
             fee: Amount {
                 value: Decimal::ZERO,
                 currency: price.currency,
@@ -122,6 +124,15 @@ fn with_tax_paid(mut stock: Stock, tax_paid: Amount) -> Stock {
     match &mut stock.action {
         StockAction::Sell(sell) => sell.tax_paid = Some(tax_paid),
         _ => panic!("only a sale has tax paid"),
+    }
+    stock
+}
+
+fn with_amount(mut stock: Stock, amount: Decimal) -> Stock {
+    match &mut stock.action {
+        StockAction::Buy(buy) => buy.amount = Some(amount),
+        StockAction::Sell(sell) => sell.amount = Some(amount),
+        StockAction::Split(_) => panic!("a split has no amount"),
     }
     stock
 }
@@ -760,6 +771,160 @@ fn missing_rate_is_an_error() {
     ));
 }
 
+#[test]
+fn trade_total_is_the_value_over_shares_times_price() {
+    let records = [
+        with_amount(
+            buy(
+                "buy",
+                on(2025, 2, 3),
+                "AAPL",
+                T212,
+                dec!(3),
+                usd(dec!(33.333)),
+            ),
+            dec!(100),
+        ),
+        with_amount(
+            sell("sell", on(2025, 5, 5), "AAPL", T212, dec!(3), usd(dec!(40))),
+            dec!(120.01),
+        ),
+    ];
+
+    let data = calculate_stocks(&records, &[], 2025, &usd_at_4()).unwrap();
+    let sale = sale(&data, "sell");
+
+    assert_eq!(sale.value.value, dec!(120.01));
+    assert!(sale.from_total);
+    assert_eq!(sale.income, dec!(480.04));
+    assert!(sale.matches[0].from_total);
+    assert_eq!(sale.lots_cost, dec!(400));
+}
+
+#[test]
+fn records_at_one_time_go_split_buy_sell() {
+    let at = on(2025, 6, 2);
+    let records = [
+        buy(
+            "early",
+            on(2025, 2, 3),
+            "NVDA",
+            T212,
+            dec!(2),
+            usd(dec!(100)),
+        ),
+        sell("sell", at, "NVDA", T212, dec!(5), usd(dec!(60))),
+        buy("buy", at, "NVDA", T212, dec!(1), usd(dec!(50))),
+        split("split", at, "NVDA", 1, 2),
+    ];
+
+    let data = calculate_stocks(&records, &[], 2025, &usd_at_4()).unwrap();
+    let sale = sale(&data, "sell");
+
+    assert_eq!(sale.uncovered, Decimal::ZERO);
+    assert_eq!(
+        sale.matches
+            .iter()
+            .map(|lot| (lot.buy_id.as_str(), lot.taken))
+            .collect::<Vec<_>>(),
+        [("early", dec!(4)), ("buy", dec!(1))]
+    );
+    assert!(data.open_lots.is_empty());
+}
+
+#[test]
+fn preview_replaces_the_edited_record_and_leaves_out_later_ones() {
+    let records = [
+        buy("buy", on(2025, 2, 3), "MSFT", T212, dec!(10), usd(dec!(10))),
+        sell("sell", on(2025, 5, 5), "MSFT", T212, dec!(4), usd(dec!(20))),
+        buy(
+            "later",
+            on(2025, 8, 4),
+            "MSFT",
+            T212,
+            dec!(5),
+            usd(dec!(30)),
+        ),
+        buy(
+            "other",
+            on(2025, 2, 3),
+            "AAPL",
+            T212,
+            dec!(7),
+            usd(dec!(10)),
+        ),
+    ];
+
+    let edited = sell("sell", on(2025, 5, 5), "MSFT", T212, dec!(6), usd(dec!(20)));
+    let Some(StockPreview::Sell { sale, holding }) =
+        preview(&records, &edited, &[], &usd_at_4()).unwrap()
+    else {
+        panic!("expected a sale preview");
+    };
+    assert_eq!((sale.shares, sale.matches[0].taken), (dec!(6), dec!(6)));
+    assert_eq!((holding.shares, holding.lots), (dec!(4), 1));
+
+    let added = buy("new", on(2025, 3, 3), "MSFT", T212, dec!(2), usd(dec!(15)));
+    let Some(StockPreview::Buy { lot, holding }) =
+        preview(&records, &added, &[], &usd_at_4()).unwrap()
+    else {
+        panic!("expected a buy preview");
+    };
+    assert_eq!((lot.buy_id.as_str(), lot.open), ("new", dec!(2)));
+    assert_eq!((holding.shares, holding.lots), (dec!(12), 2));
+}
+
+#[test]
+fn sale_years_follow_settlement() {
+    let records = [
+        buy(
+            "buy",
+            on(2025, 6, 2),
+            "VWCE",
+            T212,
+            dec!(10),
+            eur(dec!(100)),
+        ),
+        // Monday 29.12 settles 31.12; Tuesday 30.12 settles 01.01.
+        sell(
+            "dec-29",
+            on(2025, 12, 29),
+            "VWCE",
+            T212,
+            dec!(1),
+            eur(dec!(110)),
+        ),
+        sell(
+            "dec-30",
+            on(2025, 12, 30),
+            "VWCE",
+            T212,
+            dec!(1),
+            eur(dec!(110)),
+        ),
+        with_settlement(
+            sell(
+                "recorded",
+                on(2024, 12, 30),
+                "VWCE",
+                T212,
+                dec!(1),
+                eur(dec!(110)),
+            ),
+            date(2024, 12, 31),
+        ),
+    ];
+    let exchanges = [listed("VWCE", T212, "XETR", "DE")];
+
+    assert_eq!(
+        sale_years(&records, &exchanges)
+            .into_iter()
+            .collect::<Vec<_>>(),
+        [2024, 2025, 2026]
+    );
+    assert_eq!(sale_year(&records[0], &exchanges), None);
+}
+
 // The canvas samples (docs/stocks/03-fifo-calculation.md). Fees in PLN are the Trading 212
 // conversion fees as the canvas has them. Rates sit on the NBP date task 2 gives each record.
 fn sample_records() -> Vec<Stock> {
@@ -1163,4 +1328,11 @@ fn sample_2026_income_and_costs() {
     assert_eq!(data.income, dec!(12967.08));
     assert_eq!(data.costs, dec!(12657.78));
     assert_eq!(sale(&data, "et-s").tax_paid_pln, dec!(1296.708));
+    let [us] = &data.countries[..] else {
+        panic!("expected one country");
+    };
+    assert_eq!(
+        (us.country, us.sales, us.tax_paid),
+        (Country::USA, 1, dec!(1296.71))
+    );
 }

@@ -53,8 +53,10 @@ pub async fn load_csv_rates(path: &str) -> Result<Vec<Rate>, CsvImportError> {
     }
 
     let bytes = read(path).await?;
-    let content = String::from_utf8_lossy(&bytes);
+    parse_csv(&String::from_utf8_lossy(&bytes))
+}
 
+fn parse_csv(content: &str) -> Result<Vec<Rate>, CsvImportError> {
     let mut lines = content.lines().enumerate().filter_map(|(i, l)| {
         let line = l.trim();
         (!line.is_empty()).then_some((i + 1, line))
@@ -183,4 +185,66 @@ fn parse_unit(code: &str) -> Result<Decimal, rust_decimal::Error> {
     }
 
     digits.parse()
+}
+
+#[cfg(test)]
+mod tests {
+    use rust_decimal::dec;
+
+    use super::*;
+
+    const HEADER: &str = "data;1USD;100JPY;10000IDR;1XAU;nr tabeli;pełny numer tabeli;\n\
+        ;dolar amerykański;jen (Japonia);rupia indonezyjska;złoto;;;\n";
+
+    fn date(year: i32, month: u32, day: u32) -> NaiveDate {
+        NaiveDate::from_ymd_opt(year, month, day).unwrap()
+    }
+
+    fn rate(rates: &[Rate], date: NaiveDate, currency: Currency) -> Decimal {
+        rates
+            .iter()
+            .find(|rate| rate.date == date && rate.currency == currency)
+            .unwrap_or_else(|| panic!("no {currency} rate on {date}"))
+            .rate
+    }
+
+    #[test]
+    fn unit_in_header_divides_rate() {
+        let content = format!(
+            "{HEADER}20250303;4,0112;2,6681;2,434;300,00;42/A/NBP/2025;042/A/NBP/2025;\n\
+             20250304;4,0001;2,6600;2,430;301,00;43/A/NBP/2025;043/A/NBP/2025;\n\
+             kod ISO;USD;JPY;IDR;XAU;;;\n"
+        );
+
+        let rates = parse_csv(&content).unwrap();
+
+        assert_eq!(rates.len(), 6);
+        assert_eq!(rate(&rates, date(2025, 3, 3), Currency::USD), dec!(4.0112));
+        assert_eq!(
+            rate(&rates, date(2025, 3, 3), Currency::JPY),
+            dec!(0.026681)
+        );
+        assert_eq!(
+            rate(&rates, date(2025, 3, 3), Currency::IDR),
+            dec!(0.0002434)
+        );
+        assert_eq!(rate(&rates, date(2025, 3, 4), Currency::JPY), dec!(0.0266));
+    }
+
+    #[test]
+    fn duplicate_date_is_an_error() {
+        let content = format!(
+            "{HEADER}20250303;4,0112;2,6681;2,434;300,00;42/A/NBP/2025;042/A/NBP/2025;\n\
+             20250303;4,0001;2,6600;2,430;301,00;43/A/NBP/2025;043/A/NBP/2025;\n"
+        );
+
+        assert!(matches!(
+            parse_csv(&content),
+            Err(CsvImportError::DuplicateRate {
+                currency: Currency::USD,
+                line: 4,
+                ..
+            })
+        ));
+    }
 }

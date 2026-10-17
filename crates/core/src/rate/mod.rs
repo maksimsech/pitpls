@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use chrono::NaiveDate;
+use chrono::{Datelike, NaiveDate};
 use rust_decimal::Decimal;
 use thiserror::Error;
 
@@ -20,7 +20,17 @@ pub enum RateConverterError {
         steps: u8,
         currency: Currency,
         date: NaiveDate,
+        missing_year: i32,
     },
+}
+
+impl RateConverterError {
+    pub fn missing_year(&self) -> Option<i32> {
+        match self {
+            Self::StepLimitReached { missing_year, .. } => Some(*missing_year),
+            Self::NoRatesAvailable => None,
+        }
+    }
 }
 
 pub struct NbpRateProvider {
@@ -107,7 +117,30 @@ impl NbpRateProvider {
             steps: MAX_LOOKUP_STEPS,
             currency: *currency,
             date: *date,
+            missing_year: self.missing_year(*date, currency),
         })
+    }
+
+    // NBP has no table on 01.01, so a lookup early in January steps back into December. When the
+    // later year already has rates, the gap is in the earlier one.
+    fn missing_year(&self, date: NaiveDate, currency: &Currency) -> i32 {
+        let (oldest, newest) = Self::lookup_window(date);
+        [newest.year(), oldest.year()]
+            .into_iter()
+            .find(|year| !self.has_year(*year, currency))
+            .unwrap_or(newest.year())
+    }
+
+    fn has_year(&self, year: i32, currency: &Currency) -> bool {
+        let (Some(start), Some(end)) = (
+            NaiveDate::from_ymd_opt(year, 1, 1),
+            NaiveDate::from_ymd_opt(year, 12, 31),
+        ) else {
+            return false;
+        };
+        self.rates_by_date
+            .range(start..=end)
+            .any(|(_, rates)| rates.contains_key(currency))
     }
 }
 
@@ -153,6 +186,61 @@ mod tests {
             error,
             RateConverterError::StepLimitReached { steps: 10, .. }
         ));
+    }
+
+    fn usd_rate(date: NaiveDate, rate: Decimal) -> Rate {
+        Rate {
+            date,
+            currency: Currency::USD,
+            rate,
+        }
+    }
+
+    #[test]
+    fn rate_is_from_last_day_before() {
+        // Friday 07.03.2025 and Monday 10.03.2025.
+        let provider = NbpRateProvider::new(vec![
+            usd_rate(date(2025, 3, 7), Decimal::from(4)),
+            usd_rate(date(2025, 3, 10), Decimal::from(9)),
+        ]);
+
+        let monday = provider
+            .convert(&usd_amount(2), &date(2025, 3, 10))
+            .unwrap();
+        assert_eq!(
+            (monday.pln, monday.rate, monday.date),
+            (Decimal::from(8), Decimal::from(4), date(2025, 3, 7))
+        );
+
+        let pln = provider
+            .convert(
+                &Amount {
+                    value: Decimal::from(5),
+                    currency: Currency::PLN,
+                },
+                &date(2025, 3, 10),
+            )
+            .unwrap();
+        assert_eq!(
+            (pln.pln, pln.rate, pln.date),
+            (Decimal::from(5), Decimal::ONE, date(2025, 3, 10))
+        );
+    }
+
+    #[test]
+    fn missing_year_names_the_year_without_rates() {
+        // 2025 has rates, but a lookup on 02.01 needs December's.
+        let provider = NbpRateProvider::new(vec![usd_rate(date(2025, 1, 2), Decimal::ONE)]);
+        let error = provider
+            .convert(&usd_amount(1), &date(2025, 1, 2))
+            .unwrap_err();
+        assert_eq!(error.missing_year(), Some(2024));
+
+        let provider = NbpRateProvider::new(vec![usd_rate(date(2023, 6, 1), Decimal::ONE)]);
+        let error = provider
+            .convert(&usd_amount(1), &date(2025, 6, 10))
+            .unwrap_err();
+        assert_eq!(error.missing_year(), Some(2025));
     }
 
     #[test]

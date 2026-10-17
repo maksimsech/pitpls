@@ -1,6 +1,7 @@
 use crate::{
     components::{self, ButtonText, Status, data, file_picker, header, nbp},
     config::LastImport,
+    i18n::{and_list, plural},
     navigation::{Page, PageContext},
     theme::{palette, tabular_digits},
 };
@@ -16,7 +17,8 @@ use pitpls_app::use_case::{
     rate::{self, RateCoverage},
 };
 use pitpls_importers::{IMPORTERS, InputType, OutputType, model::Importer};
-use std::path::Path;
+use rust_i18n::t;
+use std::{borrow::Cow, path::Path};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Active {
@@ -142,19 +144,21 @@ impl ImportsPage {
                     .output
                     .iter()
                     .map(|output| match output {
-                        OutputType::Dividend => count(result.dividends, "dividend"),
-                        OutputType::Crypto => count(result.cryptos, "crypto record"),
-                        OutputType::Interest => count(result.interests, "interest record"),
-                        OutputType::Stock => count(result.stocks, "stock record"),
+                        OutputType::Dividend => plural("count.dividends", result.dividends),
+                        OutputType::Crypto => plural("count.cryptos", result.cryptos),
+                        OutputType::Interest => plural("count.interest_records", result.interests),
+                        OutputType::Stock => plural("count.stocks", result.stocks),
                     })
                     .collect::<Vec<_>>();
-                let counts = match counts.split_last() {
-                    Some((last, rest)) if !rest.is_empty() => {
-                        format!("{} and {last}", rest.join(", "))
-                    }
-                    _ => counts.concat(),
-                };
-                Ok((format!("Imported {counts}."), last_import))
+                let mut message = t!("imports.imported", counts = and_list(&counts)).into_owned();
+                if result.skipped_dividend_adjustments > 0 {
+                    message.push(' ');
+                    message.push_str(&plural(
+                        "imports.skipped_dividend_adjustments",
+                        result.skipped_dividend_adjustments,
+                    ));
+                }
+                Ok((message, last_import))
             },
             |this, result, window, cx| {
                 let result = result.map(|(message, last_import)| {
@@ -296,7 +300,7 @@ impl ImportsPage {
                     .h(px(42.))
                     .pl(px(16.))
                     .pr(px(10.))
-                    .child(div().font_semibold().child("Providers")),
+                    .child(div().font_semibold().child(t!("imports.providers"))),
             )
             .children(
                 IMPORTERS
@@ -322,10 +326,10 @@ impl ImportsPage {
             .output
             .iter()
             .map(|value| match value {
-                OutputType::Dividend => "Dividends",
-                OutputType::Crypto => "Crypto",
-                OutputType::Interest => "Interest",
-                OutputType::Stock => "Stocks",
+                OutputType::Dividend => t!("nav.dividends"),
+                OutputType::Crypto => t!("nav.crypto"),
+                OutputType::Interest => t!("imports.interest"),
+                OutputType::Stock => t!("nav.stocks"),
             })
             .collect::<Vec<_>>()
             .join(" & ");
@@ -336,19 +340,20 @@ impl ImportsPage {
         // The picker is open or the file is importing.
         let busy = active && self.status.busy;
         let label = if busy && self.file_name.is_some() {
-            "Importing…".to_owned()
+            t!("common.importing")
         } else if busy {
-            "Choosing file…".to_owned()
+            t!("imports.choosing")
         } else if active && self.status.error.is_some() {
-            "Try another file".to_owned()
+            t!("imports.try_another")
         } else {
-            format!("Choose {formats}")
+            t!("imports.choose", formats = formats)
         };
         let button = header::task_button(("import-file", index), None, label, busy)
             .when(!busy, |button| {
-                button.accessibility_label(format!(
-                    "Choose {formats} file for {}",
-                    crate::messages::importer_name(importer.kind)
+                button.accessibility_label(t!(
+                    "imports.choose_for",
+                    formats = formats,
+                    provider = crate::messages::importer_name(importer.kind)
                 ))
             })
             .disabled(self.locked())
@@ -398,7 +403,7 @@ impl ImportsPage {
                     .child(div().flex_shrink_0().child(button)),
             )
             .when(active, |row| {
-                row.children(self.outcome("Couldn't import file", px(60.), cx))
+                row.children(self.outcome(t!("imports.file_failed"), px(60.), cx))
             })
     }
 
@@ -409,13 +414,13 @@ impl ImportsPage {
                 v_flex()
                     .gap_3()
                     .child(
-                        Alert::error("imports-load-error", error.clone())
-                            .title("Couldn't load the exchange rate and import status"),
+                        Alert::error("imports-load-error", error.text())
+                            .title(t!("imports.load_failed")),
                     )
                     .child(
                         h_flex().child(
                             Button::new("retry")
-                                .text_label("Retry")
+                                .text_label(t!("common.retry"))
                                 .outline()
                                 .disabled(self.load.loading)
                                 .on_click(
@@ -432,7 +437,7 @@ impl ImportsPage {
                 cards.push(self.import_card(cx).into_any_element());
             }
             None if self.load.loading_visible => cards.extend(
-                ["Exchange rates", "Last import"]
+                [t!("home.exchange_rates"), t!("home.last_import")]
                     .map(|title| status_row_skeleton(title, cx).into_any_element()),
             ),
             None => {}
@@ -441,20 +446,20 @@ impl ImportsPage {
     }
 
     fn rates_card(&self, data: &Data, cx: &mut Context<Self>) -> Div {
-        let rates = data::rate_status("NBP table A · latest rate", data.coverage, self.year, cx);
-        let import = header::button("import-nbp", None, "Import from NBP")
+        let rates = data::rate_status("imports.latest_rate", data.coverage, self.year, cx);
+        let import = header::button("import-nbp", None, t!("nbp.import_title"))
             .primary()
             .disabled(self.locked())
             .on_click(cx.listener(|this, _, window, cx| this.open_nbp(window, cx)));
         // While the dialog is open, it shows the outcome itself.
         let outcome = if self.active == Some(Active::Rates) && self.nbp_year.is_none() {
-            self.outcome("Couldn't import rates", px(35.), cx)
+            self.outcome(t!("imports.rates_failed"), px(35.), cx)
         } else {
             None
         };
         data::card(cx)
             .child(
-                status_row(rates.dot, "Exchange rates", rates.detail, cx)
+                status_row(rates.dot, t!("home.exchange_rates"), rates.detail, cx)
                     .pr(px(10.))
                     .child(div().flex_shrink_0().child(import)),
             )
@@ -465,19 +470,24 @@ impl ImportsPage {
         let p = palette(cx);
         let import = data::import_status(self.last_import.as_ref(), cx);
         data::card(cx).child(
-            status_row(import.dot, "Last import", data::import_detail(&import), cx)
-                .pr(px(16.))
-                .children(import.date.map(|date| {
-                    div()
-                        .flex_shrink_0()
-                        .text_color(p.faint)
-                        .font_features(tabular_digits())
-                        .child(date)
-                })),
+            status_row(
+                import.dot,
+                t!("home.last_import"),
+                data::import_detail(&import),
+                cx,
+            )
+            .pr(px(16.))
+            .children(import.date.map(|date| {
+                div()
+                    .flex_shrink_0()
+                    .text_color(p.faint)
+                    .font_features(tabular_digits())
+                    .child(date)
+            })),
         )
     }
 
-    fn outcome(&self, failure: &'static str, indent: Pixels, cx: &App) -> Option<Div> {
+    fn outcome(&self, failure: Cow<'static, str>, indent: Pixels, cx: &App) -> Option<Div> {
         let p = palette(cx);
         let band = h_flex()
             .items_start()
@@ -486,7 +496,7 @@ impl ImportsPage {
             .pr(px(16.))
             .pb(px(12.))
             .text_size(px(12.));
-        if let Some(error) = self.status.error.clone() {
+        if let Some(error) = &self.status.error {
             Some(
                 band.text_color(p.danger)
                     .child(Icon::new(IconName::CircleX).size(px(14.)).mt(px(1.)))
@@ -496,24 +506,30 @@ impl ImportsPage {
                             .min_w_0()
                             .gap(px(2.))
                             .child(div().font_medium().child(failure))
-                            .child(error),
+                            .child(error.text()),
                     ),
             )
         } else {
-            self.status.message.clone().map(|message| {
+            self.status.message.as_ref().map(|message| {
                 band.child(
                     Icon::new(IconName::Check)
                         .size(px(14.))
                         .mt(px(1.))
                         .text_color(p.ok),
                 )
-                .child(div().flex_1().min_w_0().text_color(p.muted).child(message))
+                .child(
+                    div()
+                        .flex_1()
+                        .min_w_0()
+                        .text_color(p.muted)
+                        .child(message.text()),
+                )
             })
         }
     }
 }
 
-fn status_row(dot: Hsla, title: &'static str, detail: impl IntoElement, cx: &App) -> Div {
+fn status_row(dot: Hsla, title: Cow<'static, str>, detail: impl IntoElement, cx: &App) -> Div {
     h_flex()
         .h(px(56.))
         .gap(px(12.))
@@ -535,7 +551,7 @@ fn status_row(dot: Hsla, title: &'static str, detail: impl IntoElement, cx: &App
         )
 }
 
-fn status_row_skeleton(title: &'static str, cx: &App) -> Div {
+fn status_row_skeleton(title: Cow<'static, str>, cx: &App) -> Div {
     data::card(cx).child(
         h_flex()
             .h(px(56.))
@@ -562,8 +578,4 @@ fn initials(name: &str) -> String {
         .filter_map(|word| word.chars().next())
         .take(2)
         .collect()
-}
-
-fn count(count: u64, noun: &str) -> String {
-    format!("{count} {noun}{}", if count == 1 { "" } else { "s" })
 }

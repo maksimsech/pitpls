@@ -7,12 +7,14 @@ use gpui_kit::{
     component::{
         ActiveTheme, StyledExt, h_flex,
         menu::{ContextMenuExt, PopupMenuItem},
+        tag::Tag,
         tooltip::Tooltip,
         v_flex,
     },
     prelude::FluentBuilder,
     *,
 };
+use rust_i18n::t;
 use std::{ops::Range, sync::Arc};
 
 /// As wide as a tabular digit; fills the unused part of the decimals slot.
@@ -151,12 +153,41 @@ pub fn reveal_full(element: Stateful<Div>, value: &DisplayText) -> AnyElement {
             cx.set_global(ValueMenu(menu.focus_handle(cx)));
             let copied = copied.clone();
             menu.item(
-                PopupMenuItem::new("Copy full value").on_click(move |_, _, cx| {
+                PopupMenuItem::new(t!("common.copy_full")).on_click(move |_, _, cx| {
                     cx.write_to_clipboard(ClipboardItem::new_string(copied.to_string()))
                 }),
             )
         })
         .into_any_element()
+}
+
+pub fn chip(label: impl Into<SharedString>, small: bool, cx: &App) -> Tag {
+    let p = palette(cx);
+    Tag::custom(transparent_black(), p.muted, p.strong_line)
+        .py_0()
+        .map(|tag| {
+            if small {
+                tag.h(px(18.)).px(px(5.)).rounded(px(5.)).text_size(px(10.))
+            } else {
+                tag.h(px(20.)).px(px(7.)).rounded(px(6.)).text_size(px(12.))
+            }
+        })
+        .child(label.into())
+}
+
+pub fn reveal(element: Stateful<Div>, value: &DisplayText, copy: bool) -> AnyElement {
+    if copy {
+        reveal_full(element, value)
+    } else {
+        full_tooltip(element, value).into_any_element()
+    }
+}
+
+pub fn full_tooltip(element: Stateful<Div>, value: &DisplayText) -> Stateful<Div> {
+    element.when(value.more, |element| {
+        let full = value.full.clone();
+        element.tooltip(move |window, cx| Tooltip::new(full.clone()).build(window, cx))
+    })
 }
 
 fn baseline_drop(size: Pixels, unit: Pixels, cx: &App) -> Pixels {
@@ -237,6 +268,52 @@ pub fn stat(
         )
 }
 
+pub fn plain_stat(
+    id: impl Into<ElementId>,
+    label: impl Into<SharedString>,
+    value: &DisplayText,
+    unit: Option<SharedString>,
+    caption: Option<SharedString>,
+    cx: &App,
+) -> Div {
+    let p = palette(cx);
+    v_flex()
+        .min_w(STAT_WIDTH)
+        .gap(px(2.))
+        .child(
+            div()
+                .text_size(px(12.))
+                .text_color(p.muted)
+                .child(label.into()),
+        )
+        .child(
+            h_flex()
+                .gap_1()
+                .child(
+                    div()
+                        .id(id)
+                        .text_size(px(18.))
+                        .font_medium()
+                        .font_features(tabular_digits())
+                        .map(|element| full_tooltip(element, value))
+                        .child(text(value, false, false, cx)),
+                )
+                .when_some(unit, |row, unit| {
+                    row.child(
+                        div()
+                            .relative()
+                            .top(baseline_drop(px(18.), px(12.), cx))
+                            .text_size(px(12.))
+                            .text_color(p.muted)
+                            .child(unit),
+                    )
+                })
+                .when_some(caption, |row, caption| {
+                    row.child(div().text_size(px(12.)).text_color(p.muted).child(caption))
+                }),
+        )
+}
+
 /// The copy button's fixed column keeps "Copied" from moving the value.
 pub fn card_row(
     id: impl Into<ElementId>,
@@ -260,9 +337,9 @@ pub fn card_row(
         )
 }
 
-pub fn card_row_skeleton(label: &'static str, visible: bool, cx: &App) -> Div {
+pub fn card_row_skeleton(label: impl Into<SharedString>, visible: bool, cx: &App) -> Div {
     card_row_frame(cx)
-        .child(div().flex_1().min_w_0().truncate().child(label))
+        .child(div().flex_1().min_w_0().truncate().child(label.into()))
         .child(
             div()
                 .h(px(20.))
@@ -284,7 +361,7 @@ fn card_row_frame(cx: &App) -> Div {
         .border_color(palette(cx).line)
 }
 
-pub fn stat_skeleton(label: &'static str, visible: bool, cx: &App) -> Div {
+pub fn stat_skeleton(label: impl Into<SharedString>, visible: bool, cx: &App) -> Div {
     v_flex()
         .min_w(STAT_WIDTH)
         .gap(px(2.))
@@ -292,7 +369,7 @@ pub fn stat_skeleton(label: &'static str, visible: bool, cx: &App) -> Div {
             div()
                 .text_size(px(12.))
                 .text_color(palette(cx).muted)
-                .child(label),
+                .child(label.into()),
         )
         .child(
             div()

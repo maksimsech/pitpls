@@ -12,12 +12,16 @@ use gpui_kit::{
     },
     *,
 };
+use rust_i18n::t;
 
 pub fn disclaimer(cx: &App) -> Div {
+    info(t!("notice.disclaimer"), cx).px(px(16.))
+}
+
+pub fn info(text: impl Into<SharedString>, cx: &App) -> Div {
     h_flex()
         .items_start()
         .gap(px(8.))
-        .px(px(16.))
         .text_size(px(12.))
         .line_height(relative(1.5))
         .text_color(palette(cx).faint)
@@ -27,37 +31,31 @@ pub fn disclaimer(cx: &App) -> Div {
                 .flex_shrink_0()
                 .mt(px(2.)),
         )
-        .child(div().flex_1().min_w_0().child(
-            "For information only, not tax advice. You're responsible for checking every figure \
-             before you file.",
-        ))
+        .child(div().flex_1().min_w_0().child(text.into()))
 }
 
 pub fn first_launch(dialog: Dialog, cx: &App) -> Dialog {
     dialog
-        .title("Before you start")
+        .title(t!("notice.first_title"))
         .close_button(false)
         .overlay_closable(false)
         .keyboard(false)
         .child(
             v_flex()
                 .gap(px(10.))
+                .child(t!("notice.first_information"))
                 .child(
-                    "pitpls is for information only. It is not tax, financial or legal advice, \
-                     and not a guide to filing your return.",
-                )
-                .child(div().text_color(palette(cx).muted).child(
-                    "Results aren't guaranteed to be complete or correct. You are responsible \
-                     for your tax return: check every figure yourself, and ask a tax adviser if \
-                     you're unsure.",
-                )),
+                    div()
+                        .text_color(palette(cx).muted)
+                        .child(t!("notice.first_responsibility")),
+                ),
         )
         .footer(
             DialogFooter::new().child(
                 div().child(
                     DialogAction::new().child(
                         Button::new("notice-accept")
-                            .text_label("I understand")
+                            .text_label(t!("notice.understand"))
                             .primary(),
                     ),
                 ),
@@ -68,7 +66,7 @@ pub fn first_launch(dialog: Dialog, cx: &App) -> Dialog {
 pub fn notice(
     icon: IconName,
     warning: bool,
-    title: String,
+    title: impl Into<SharedString>,
     description: impl Into<SharedString>,
     cx: &App,
 ) -> Empty {
@@ -93,7 +91,7 @@ pub fn notice(
                 EmptyTitle::new()
                     .text_size(px(15.))
                     .font_semibold()
-                    .child(title),
+                    .child(title.into()),
             )
             .description(
                 EmptyDescription::new()
@@ -106,21 +104,20 @@ pub fn notice(
 
 pub fn missing_rate(
     year: Option<i32>,
+    import_year: Option<i32>,
     error: SharedString,
     disabled: bool,
     on_import: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
     on_open_rates: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
     cx: &App,
 ) -> Empty {
-    let (title, import) = match year {
-        Some(year) => (
-            format!("Can't calculate {year} yet"),
-            SharedString::from(format!("Import {year} from NBP")),
-        ),
-        None => (
-            "Can't calculate all years yet".into(),
-            "Import from NBP".into(),
-        ),
+    let title = match year {
+        Some(year) => t!("notice.cannot_calculate_year", year = year),
+        None => t!("notice.cannot_calculate_all"),
+    };
+    let import = match import_year {
+        Some(year) => t!("notice.import_year", year = year),
+        None => t!("nbp.import_title"),
     };
     notice(IconName::TriangleAlert, true, title, error, cx).content(
         EmptyContent::new().child(
@@ -134,7 +131,7 @@ pub fn missing_rate(
                         .on_click(on_import),
                 )
                 .child(
-                    header::button("missing-rates", None, "Open rates")
+                    header::button("missing-rates", None, t!("notice.open_rates"))
                         .disabled(disabled)
                         .on_click(on_open_rates),
                 ),

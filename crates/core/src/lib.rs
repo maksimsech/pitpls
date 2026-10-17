@@ -3,6 +3,7 @@ pub mod crypto;
 pub mod dividend;
 pub mod exchange;
 pub mod interest;
+pub mod portfolio;
 pub mod rate;
 pub mod rounding;
 pub mod settings;

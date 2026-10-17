@@ -51,3 +51,46 @@ pub fn calculate(
         calculated,
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use chrono::{Datelike, NaiveDate, TimeZone, Utc};
+    use rust_decimal::dec;
+
+    use super::*;
+    use crate::{
+        common::{Amount, Currency},
+        rate::Rate,
+    };
+
+    #[test]
+    fn tax_rounds_the_sum_not_each_record() {
+        let rates = NbpRateProvider::new(
+            NaiveDate::from_ymd_opt(2025, 1, 1)
+                .unwrap()
+                .iter_days()
+                .take_while(|day| day.year() == 2025)
+                .map(|date| Rate {
+                    date,
+                    currency: Currency::USD,
+                    rate: dec!(4),
+                })
+                .collect(),
+        );
+        let interest = |id: &str, day| Interest {
+            id: id.to_owned(),
+            time: Utc.with_ymd_and_hms(2025, 3, day, 2, 0, 0).unwrap(),
+            value: Amount {
+                value: dec!(0.03),
+                currency: Currency::USD,
+            },
+            provider: "Trading 212".to_owned(),
+        };
+
+        let data = calculate(vec![interest("a", 3), interest("b", 4)], &rates).unwrap();
+
+        // 0.0228 twice: 0.05 from the sum, 0.04 from rounded records.
+        assert_eq!(data.calculated[0].to_pay, dec!(0.0228));
+        assert_eq!((data.income, data.to_pay), (dec!(0.24), dec!(0.05)));
+    }
+}

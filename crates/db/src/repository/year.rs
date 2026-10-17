@@ -1,6 +1,7 @@
+use pitpls_core::time::year_range;
 use sqlx::{Row, SqlitePool};
 
-use super::Result;
+use super::{RepositoryError, Result};
 
 /// A year that has records or was added to the `years` table.
 pub struct YearRecords {
@@ -81,11 +82,52 @@ impl YearRepository {
         Ok(())
     }
 
-    pub async fn delete(&self, year: i32) -> Result<u64> {
-        let result = sqlx::query("DELETE FROM years WHERE year = ?")
-            .bind(year)
-            .execute(&self.db)
-            .await?;
-        Ok(result.rows_affected())
+    // `settled_stock_ids` are sales traded in an earlier year that settle in this one.
+    pub async fn delete(&self, year: Option<i32>, settled_stock_ids: &[String]) -> Result<u64> {
+        let range = year
+            .map(|year| year_range(year).ok_or(RepositoryError::InvalidYear(year)))
+            .transpose()?;
+        let mut tx = self.db.begin().await?;
+        let mut records = 0;
+        for table in ["dividends", "interests", "cryptos", "stocks"] {
+            let result = match range {
+                Some((start, end)) => {
+                    sqlx::query(&format!("DELETE FROM {table} WHERE time >= ? AND time < ?"))
+                        .bind(start)
+                        .bind(end)
+                        .execute(&mut *tx)
+                        .await?
+                }
+                None => {
+                    sqlx::query(&format!("DELETE FROM {table}"))
+                        .execute(&mut *tx)
+                        .await?
+                }
+            };
+            records += result.rows_affected();
+        }
+        for id in settled_stock_ids {
+            records += sqlx::query("DELETE FROM stocks WHERE id = ?")
+                .bind(id)
+                .execute(&mut *tx)
+                .await?
+                .rows_affected();
+        }
+        match year {
+            Some(year) => {
+                sqlx::query("DELETE FROM years WHERE year = ?")
+                    .bind(year)
+                    .execute(&mut *tx)
+                    .await?;
+            }
+            None => {
+                sqlx::query("DELETE FROM years").execute(&mut *tx).await?;
+                sqlx::query("DELETE FROM stock_instruments")
+                    .execute(&mut *tx)
+                    .await?;
+            }
+        }
+        tx.commit().await?;
+        Ok(records)
     }
 }

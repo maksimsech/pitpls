@@ -17,6 +17,7 @@ use gpui_kit::{
     *,
 };
 use pitpls_core::time;
+use rust_i18n::t;
 use std::rc::Rc;
 
 pub const PADDING: f32 = 12.;
@@ -46,6 +47,7 @@ pub enum CellStyle {
     Rate,
 }
 
+/// `label` is a message key.
 pub struct RecordColumn {
     pub label: &'static str,
     pub style: CellStyle,
@@ -215,7 +217,7 @@ pub fn heading(column: &RecordColumn, width: Pixels) -> Div {
             matches!(column.style, CellStyle::Number | CellStyle::Rate),
             |cell| cell.pl(px(NUMBER_INSET)).text_right(),
         )
-        .child(column.label)
+        .child(t!(column.label))
 }
 
 /// Plain text: hundreds of selectable cells are too slow.
@@ -323,6 +325,33 @@ pub fn cell(
     }
 }
 
+pub fn plain_cell(
+    id: impl Into<ElementId>,
+    number: &DisplayText,
+    column: &RecordColumn,
+    width: Pixels,
+    compact: bool,
+    cx: &App,
+) -> AnyElement {
+    if !matches!(column.style, CellStyle::Number) {
+        return cell(id, number, column, width, compact, false, cx);
+    }
+    value::full_tooltip(
+        div()
+            .id(id)
+            .w(width)
+            .flex_shrink_0()
+            .min_w_0()
+            .truncate()
+            .pl(px(NUMBER_INSET))
+            .text_right()
+            .font_features(tabular_digits())
+            .child(value::text(number, true, true, cx)),
+        number,
+    )
+    .into_any_element()
+}
+
 /// With tabular digits the longest value in each unit is the widest, so only
 /// those are measured.
 pub fn fit_widths(
@@ -403,6 +432,11 @@ pub enum StepLine {
     Formula(Vec<DisplayText>),
     Result(Vec<DisplayText>),
     Caption(SharedString),
+    ValueCaption {
+        label: SharedString,
+        value: DisplayText,
+        caption: SharedString,
+    },
     Entry {
         label: SharedString,
         value: Vec<DisplayText>,
@@ -410,6 +444,7 @@ pub enum StepLine {
     },
 }
 
+/// `title` is a message key.
 #[derive(PartialEq)]
 pub struct Step {
     pub title: &'static str,
@@ -446,20 +481,21 @@ pub struct RowDisplay {
     pub links: Vec<SharedString>,
 }
 
-fn parts(id: impl Into<ElementId>, parts: &[DisplayText], cx: &App) -> Stateful<Div> {
+fn parts(id: impl Into<ElementId>, parts: &[DisplayText], copy: bool, cx: &App) -> Stateful<Div> {
     h_flex()
         .id(id)
         .flex_wrap()
         .gap_x(px(4.))
         .children(parts.iter().enumerate().map(|(index, part)| {
-            value::reveal_full(
+            value::reveal(
                 div().id(index).child(value::text(part, false, true, cx)),
                 part,
+                copy,
             )
         }))
 }
 
-fn step(index: usize, step: &Step, cx: &App) -> Stateful<Div> {
+fn step(index: usize, step: &Step, copy: bool, cx: &App) -> Stateful<Div> {
     let p = *palette(cx);
     v_flex()
         .id(("step", index))
@@ -486,16 +522,16 @@ fn step(index: usize, step: &Step, cx: &App) -> Stateful<Div> {
                         .text_size(px(11.))
                         .child((index + 1).to_string()),
                 )
-                .child(step.title),
+                .child(t!(step.title)),
         )
         .children(step.lines.iter().enumerate().map(|(index, line)| {
             let id = ("line", index);
             match line {
-                StepLine::Formula(formula) => parts(id, formula, cx)
+                StepLine::Formula(formula) => parts(id, formula, copy, cx)
                     .text_color(p.muted)
                     .font_features(tabular_digits())
                     .into_any_element(),
-                StepLine::Result(result) => parts(id, result, cx)
+                StepLine::Result(result) => parts(id, result, copy, cx)
                     .text_size(px(16.))
                     .font_medium()
                     .font_features(tabular_digits())
@@ -506,6 +542,23 @@ fn step(index: usize, step: &Step, cx: &App) -> Stateful<Div> {
                     .text_color(p.faint)
                     .child(text.clone())
                     .into_any_element(),
+                StepLine::ValueCaption {
+                    label,
+                    value,
+                    caption,
+                } => h_flex()
+                    .mt(px(3.))
+                    .flex_wrap()
+                    .gap_x(px(4.))
+                    .text_size(px(12.))
+                    .text_color(p.faint)
+                    .child(label.clone())
+                    .child(value::full_tooltip(
+                        div().id(id).child(value::text(value, false, true, cx)),
+                        value,
+                    ))
+                    .child(div().min_w_0().max_w_full().child(caption.clone()))
+                    .into_any_element(),
                 StepLine::Entry {
                     label,
                     value,
@@ -514,11 +567,15 @@ fn step(index: usize, step: &Step, cx: &App) -> Stateful<Div> {
                     .justify_between()
                     .items_baseline()
                     .gap(px(12.))
+                    .flex_wrap()
+                    .gap_y_0()
                     .line_height(px(22.))
                     .when(*style == EntryStyle::Strong, |entry| entry.font_semibold())
                     .child(
                         div()
                             .min_w_0()
+                            .flex_shrink_0()
+                            .max_w_full()
                             .text_color(match style {
                                 EntryStyle::Normal => p.muted,
                                 EntryStyle::Strong => p.text,
@@ -527,8 +584,10 @@ fn step(index: usize, step: &Step, cx: &App) -> Stateful<Div> {
                             .child(label.clone()),
                     )
                     .child(
-                        parts(id, value, cx)
+                        parts(id, value, copy, cx)
                             .flex_shrink_0()
+                            .max_w_full()
+                            .flex_grow(1.)
                             .justify_end()
                             .font_features(tabular_digits()),
                     )
@@ -537,6 +596,7 @@ fn step(index: usize, step: &Step, cx: &App) -> Stateful<Div> {
         }))
 }
 
+/// The result labels are message keys.
 pub struct Preview {
     pub nbp_date: NaiveDate,
     pub formula: Vec<DisplayText>,
@@ -561,7 +621,7 @@ pub fn preview_frame(note: Option<SharedString>, cx: &App) -> Div {
                 .gap_2()
                 .text_size(px(12.))
                 .text_color(p.faint)
-                .child("Preview")
+                .child(t!("records.preview"))
                 .children(note),
         )
 }
@@ -570,11 +630,11 @@ pub fn preview_error(error: SharedString, cx: &App) -> Div {
     preview_frame(None, cx).child(div().text_color(palette(cx).warning).child(error))
 }
 
-pub fn preview_band(preview: &Result<Preview, SharedString>, cx: &App) -> Div {
+pub fn preview_band(preview: &Result<Preview, SharedString>, copy: bool, cx: &App) -> Div {
     let p = *palette(cx);
     match preview {
         Ok(preview) => preview_frame(
-            Some(format!("NBP date {}", date(preview.nbp_date).main).into()),
+            Some(t!("records.nbp_date", date = date(preview.nbp_date).main).into()),
             cx,
         )
         .child(
@@ -583,13 +643,14 @@ pub fn preview_band(preview: &Result<Preview, SharedString>, cx: &App) -> Div {
                 .gap_x(px(4.))
                 .text_color(p.muted)
                 .children(preview.formula.iter().enumerate().map(|(index, part)| {
-                    preview_value(("preview-formula", index), part, div(), cx)
+                    preview_value(("preview-formula", index), part, div(), copy, cx)
                 }))
                 .child("=")
                 .child(preview_value(
                     "preview-value",
                     &preview.value,
                     div().font_semibold().text_color(p.text),
+                    copy,
                     cx,
                 )),
         )
@@ -602,10 +663,11 @@ pub fn preview_band(preview: &Result<Preview, SharedString>, cx: &App) -> Div {
                     .text_size(px(12.))
                     .text_color(p.muted)
                     .children(preview.results.iter().map(|(label, result)| {
-                        h_flex().gap(px(4.)).child(*label).child(preview_value(
+                        h_flex().gap(px(4.)).child(t!(*label)).child(preview_value(
                             *label,
                             result,
                             div().text_color(p.text),
+                            copy,
                             cx,
                         ))
                     })),
@@ -619,11 +681,13 @@ pub fn preview_value(
     id: impl Into<ElementId>,
     display: &DisplayText,
     style: Div,
+    copy: bool,
     cx: &App,
 ) -> AnyElement {
-    value::reveal_full(
+    value::reveal(
         style.id(id).child(value::text(display, false, true, cx)),
         display,
+        copy,
     )
 }
 
@@ -636,6 +700,7 @@ enum LotCell {
     Rate,
 }
 
+/// `label` is a message key.
 struct LotColumn {
     label: &'static str,
     cell: LotCell,
@@ -657,31 +722,31 @@ const fn lot_column(label: &'static str, cell: LotCell, width: f32, min: f32) ->
 }
 
 const LOT_COLUMNS: [LotColumn; 9] = [
-    lot_column("Bought", LotCell::Muted, 80., 72.),
+    lot_column("lots.bought", LotCell::Muted, 80., 72.),
     LotColumn {
         hide_stacked: true,
-        ..lot_column("Lot", LotCell::Shares, 64., 44.)
+        ..lot_column("lots.lot", LotCell::Shares, 64., 44.)
     },
     LotColumn {
         hide_compact: true,
-        ..lot_column("Before", LotCell::Shares, 64., 44.)
+        ..lot_column("lots.before", LotCell::Shares, 64., 44.)
     },
-    lot_column("Taken", LotCell::Taken, 64., 44.),
+    lot_column("lots.taken", LotCell::Taken, 64., 44.),
     LotColumn {
         hide_compact: true,
-        ..lot_column("After", LotCell::Shares, 64., 44.)
+        ..lot_column("lots.after", LotCell::Shares, 64., 44.)
     },
     LotColumn {
         hide_stacked: true,
-        ..lot_column("Price", LotCell::Number, 112., 80.)
+        ..lot_column("lots.price", LotCell::Number, 112., 80.)
     },
     LotColumn {
         hide_stacked: true,
-        ..lot_column("NBP rate", LotCell::Rate, 112., 88.)
+        ..lot_column("lots.nbp_rate", LotCell::Rate, 112., 88.)
     },
     // Takes the rest of the row.
-    lot_column("Cost, PLN", LotCell::Number, 0., 88.),
-    lot_column("Buy fee, PLN", LotCell::Number, 96., 72.),
+    lot_column("lots.cost", LotCell::Number, 0., 88.),
+    lot_column("lots.buy_fee", LotCell::Number, 96., 72.),
 ];
 
 const LOT_GAP: f32 = 8.;
@@ -725,7 +790,13 @@ pub fn link(id: impl Into<ElementId>, label: SharedString, cx: &App) -> Button {
         .child(Icon::new(IconName::ChevronRight).size(px(13.)))
 }
 
-fn lot_table(table: &LotTable, layout: &TableLayout, link: Option<AnyElement>, cx: &App) -> Div {
+fn lot_table(
+    table: &LotTable,
+    layout: &TableLayout,
+    link: Option<AnyElement>,
+    copy: bool,
+    cx: &App,
+) -> Div {
     let p = *palette(cx);
     let headings = lot_row()
         .h(px(28.))
@@ -734,7 +805,7 @@ fn lot_table(table: &LotTable, layout: &TableLayout, link: Option<AnyElement>, c
         .border_color(p.line)
         .text_size(px(12.))
         .text_color(p.faint)
-        .children(lot_columns(layout).map(|(_, column)| lot_slot(column).child(column.label)));
+        .children(lot_columns(layout).map(|(_, column)| lot_slot(column).child(t!(column.label))));
     let rows = table.rows.iter().enumerate().map(|(row_index, row)| {
         let cells = lot_columns(layout).map(|(index, column)| {
             let value = &row.cells[index];
@@ -765,7 +836,7 @@ fn lot_table(table: &LotTable, layout: &TableLayout, link: Option<AnyElement>, c
                     .justify_end()
                     .items_baseline()
                     .into_any_element(),
-                LotCell::Shares | LotCell::Taken | LotCell::Number => value::reveal_full(
+                LotCell::Shares | LotCell::Taken | LotCell::Number => value::reveal(
                     slot.id(id)
                         .when(column.cell == LotCell::Shares, |slot| {
                             slot.text_color(p.muted)
@@ -773,6 +844,7 @@ fn lot_table(table: &LotTable, layout: &TableLayout, link: Option<AnyElement>, c
                         .when(column.cell == LotCell::Taken, |slot| slot.font_semibold())
                         .child(value::text(value, true, true, cx)),
                     value,
+                    copy,
                 ),
             }
         });
@@ -837,6 +909,7 @@ pub fn details(
     links: Vec<AnyElement>,
     lots_link: Option<AnyElement>,
     actions: impl IntoIterator<Item = AnyElement>,
+    copy: bool,
     cx: &App,
 ) -> Div {
     let p = *palette(cx);
@@ -847,7 +920,8 @@ pub fn details(
             .ml(indent)
             .mr(px(PADDING))
             .children(steps.iter().enumerate().map(|(index, item)| {
-                step(index, item, cx).when(index > 0, |step| step.border_t_1().border_color(p.line))
+                step(index, item, copy, cx)
+                    .when(index > 0, |step| step.border_t_1().border_color(p.line))
             }))
     } else {
         // Stretched columns, so the dividers run the full height.
@@ -856,7 +930,7 @@ pub fn details(
             .ml(indent)
             .mr(px(PADDING))
             .children(steps.iter().enumerate().map(|(index, item)| {
-                step(index, item, cx)
+                step(index, item, copy, cx)
                     .flex_1()
                     .pr(px(20.))
                     .when(index > 0, |step| {
@@ -878,7 +952,7 @@ pub fn details(
                 div()
                     .ml(indent)
                     .mr(px(PADDING))
-                    .child(lot_table(lots, layout, lots_link, cx)),
+                    .child(lot_table(lots, layout, lots_link, copy, cx)),
             )
         })
         .child(
@@ -889,7 +963,7 @@ pub fn details(
                 .gap(px(6.))
                 .text_size(px(12.))
                 .text_color(p.faint)
-                .child(div().flex_shrink_0().child("Record ID"))
+                .child(div().flex_shrink_0().child(t!("records.record_id")))
                 .child(
                     div()
                         .min_w_0()
@@ -898,10 +972,12 @@ pub fn details(
                         .font_family(cx.theme().mono_font_family.clone())
                         .child(SharedString::from(record_id.to_owned())),
                 )
-                .child(CopyButton::new(
-                    SharedString::from(format!("copy-id-{record_id}")),
-                    record_id.to_owned(),
-                ))
+                .when(copy, |footer| {
+                    footer.child(CopyButton::new(
+                        SharedString::from(format!("copy-id-{record_id}")),
+                        record_id.to_owned(),
+                    ))
+                })
                 .child(record_time(time, layout.stacked, cx))
                 .when(!links.is_empty(), |footer| {
                     footer.child(h_flex().ml(px(6.)).gap(px(2.)).children(links))
@@ -924,16 +1000,16 @@ fn record_time(value: DateTime<Utc>, short: bool, cx: &App) -> Div {
         .ml(px(14.))
         .gap(px(6.))
         .font_features(tabular_digits())
-        .child("Time")
+        .child(t!("records.time"))
         .child(
             div()
                 .text_color(palette(cx).muted)
                 .child(local.format(DATE_TIME_FORMAT).to_string()),
         )
         .child(if short {
-            "Warsaw".to_owned()
+            t!("records.warsaw")
         } else {
-            format!("Warsaw · {} UTC", utc.format(utc_format))
+            t!("records.warsaw_utc", time = utc.format(utc_format))
         })
 }
 

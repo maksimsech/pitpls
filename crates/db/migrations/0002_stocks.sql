@@ -6,6 +6,7 @@ CREATE TABLE stocks(
     number TEXT,
     price TEXT,
     price_currency TEXT,
+    amount TEXT,
     fee TEXT,
     fee_currency TEXT,
     provider TEXT,
@@ -51,6 +52,7 @@ CREATE TABLE stocks(
                 AND number IS NULL
                 AND price IS NULL
                 AND price_currency IS NULL
+                AND amount IS NULL
                 AND fee IS NULL
                 AND fee_currency IS NULL
                 AND provider IS NULL

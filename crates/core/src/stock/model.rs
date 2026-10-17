@@ -19,6 +19,14 @@ impl Stock {
             StockAction::Split(_) => None,
         }
     }
+
+    pub fn value(&self) -> Option<Amount> {
+        match &self.action {
+            StockAction::Buy(buy) => Some(buy.value()),
+            StockAction::Sell(sell) => Some(sell.value()),
+            StockAction::Split(_) => None,
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -32,6 +40,8 @@ pub enum StockAction {
 pub struct StockBuy {
     pub number: Decimal,
     pub price: Amount,
+    // What changed hands, in the price currency; `None` is shares × price.
+    pub amount: Option<Decimal>,
     pub fee: Amount,
     pub provider: String,
     pub settlement_date: Option<NaiveDate>,
@@ -41,10 +51,30 @@ pub struct StockBuy {
 pub struct StockSell {
     pub number: Decimal,
     pub price: Amount,
+    pub amount: Option<Decimal>,
     pub fee: Amount,
     pub provider: String,
     pub settlement_date: Option<NaiveDate>,
     pub tax_paid: Option<Amount>,
+}
+
+impl StockBuy {
+    pub fn value(&self) -> Amount {
+        trade_value(self.number, self.price, self.amount)
+    }
+}
+
+impl StockSell {
+    pub fn value(&self) -> Amount {
+        trade_value(self.number, self.price, self.amount)
+    }
+}
+
+fn trade_value(number: Decimal, price: Amount, amount: Option<Decimal>) -> Amount {
+    Amount {
+        value: amount.unwrap_or(number * price.value),
+        currency: price.currency,
+    }
 }
 
 // New shares = shares × after ÷ before; a ratio can't hold 1-for-3 exactly.
@@ -113,6 +143,8 @@ pub struct CalculatedSale {
     pub settlement_worked_out: bool,
     pub shares: Decimal,
     pub price: Amount,
+    pub value: Amount,
+    pub from_total: bool,
     pub nbp_date: NaiveDate,
     pub nbp_rate: Decimal,
     pub income: Decimal,
@@ -138,6 +170,8 @@ pub struct LotMatch {
     pub taken: Decimal,
     pub after: Decimal,
     pub price: Amount,
+    pub lot_value: Amount,
+    pub from_total: bool,
     pub nbp_date: NaiveDate,
     pub nbp_rate: Decimal,
     pub cost: Decimal,
@@ -155,6 +189,8 @@ pub struct OpenLot {
     pub lot_shares: Decimal,
     pub open: Decimal,
     pub price: Amount,
+    pub lot_value: Amount,
+    pub from_total: bool,
     pub nbp_date: NaiveDate,
     pub nbp_rate: Decimal,
     pub cost: Decimal,

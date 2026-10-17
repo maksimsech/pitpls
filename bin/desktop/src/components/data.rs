@@ -1,7 +1,8 @@
-use crate::{config::LastImport, format::DATE_FORMAT, theme::palette};
+use crate::{config::LastImport, format::DATE_FORMAT, i18n::plural, theme::palette};
 use chrono::{Datelike, Days, Local, NaiveDate, Weekday};
 use gpui_kit::*;
 use pitpls_app::use_case::rate::RateCoverage;
+use rust_i18n::t;
 
 pub fn card(cx: &App) -> Div {
     open_card(cx).overflow_hidden()
@@ -39,9 +40,9 @@ pub struct RateStatus {
 }
 
 /// The age shows only for the current year: it only matters while the year is
-/// still running.
+/// still running. `latest` is a message key with the rate's `%{date}`.
 pub fn rate_status(
-    lead: &str,
+    latest: &str,
     coverage: Option<RateCoverage>,
     year: Option<i32>,
     cx: &App,
@@ -50,11 +51,11 @@ pub fn rate_status(
     let Some(coverage) = coverage else {
         return RateStatus {
             dot: p.warning,
-            detail: StyledText::new("No NBP rates yet"),
+            detail: StyledText::new(t!("data.no_rates")),
             stale: true,
         };
     };
-    let latest = format!("{lead} {}", coverage.last.format(DATE_FORMAT));
+    let latest = t!(latest, date = coverage.last.format(DATE_FORMAT)).into_owned();
     if !is_current_year(year) {
         return RateStatus {
             dot: p.ok,
@@ -98,7 +99,7 @@ pub fn import_status(last: Option<&LastImport>, cx: &App) -> ImportStatus {
         },
         None => ImportStatus {
             dot: p.faint,
-            source: "No statement imported yet".into(),
+            source: t!("data.no_import").into(),
             counts: None,
             date: None,
         },
@@ -120,17 +121,17 @@ pub fn import_detail(status: &ImportStatus) -> Div {
 
 fn import_counts(last: &LastImport) -> String {
     let counts = [
-        (last.dividends, "dividend", "dividends"),
-        (last.interests, "interest", "interest"),
-        (last.cryptos, "crypto record", "crypto records"),
-        (last.stocks, "stock record", "stock records"),
+        (last.dividends, "count.dividends"),
+        (last.interests, "count.interests"),
+        (last.cryptos, "count.cryptos"),
+        (last.stocks, "count.stocks"),
     ]
     .into_iter()
-    .filter(|(count, _, _)| *count > 0)
-    .map(|(count, one, many)| format!("{count} {}", if count == 1 { one } else { many }))
+    .filter(|(count, _)| *count > 0)
+    .map(|(count, key)| plural(key, count))
     .collect::<Vec<_>>();
     if counts.is_empty() {
-        "no records".to_owned()
+        t!("records.none").into_owned()
     } else {
         counts.join(", ")
     }
@@ -142,9 +143,8 @@ fn import_counts(last: &LastImport) -> String {
 fn rate_age(latest: NaiveDate, today: NaiveDate) -> (String, bool) {
     let days = (today - latest).num_days().max(0);
     let age = match days {
-        0 => "today".to_owned(),
-        1 => "1 day old".to_owned(),
-        days => format!("{days} days old"),
+        0 => t!("data.rate_today").into_owned(),
+        days => plural("data.rate_age", days as u64).into_owned(),
     };
     let mut expected = today - Days::new(1);
     while matches!(expected.weekday(), Weekday::Sat | Weekday::Sun) {

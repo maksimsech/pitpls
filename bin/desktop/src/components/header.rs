@@ -8,6 +8,7 @@ use gpui_kit::{
     prelude::FluentBuilder,
     *,
 };
+use rust_i18n::t;
 
 const HEIGHT: Pixels = px(52.);
 
@@ -58,7 +59,7 @@ pub fn no_drag() -> Div {
 }
 
 pub fn page(
-    title: &'static str,
+    title: impl Into<SharedString>,
     context: Option<SharedString>,
     window: &mut Window,
     cx: &mut App,
@@ -77,7 +78,7 @@ pub fn page(
                 .flex_shrink_0()
                 .text_size(px(15.))
                 .font_semibold()
-                .child(title),
+                .child(title.into()),
         )
         .when_some(context, |row, context| {
             row.child(
@@ -93,7 +94,7 @@ pub fn page(
 }
 
 pub fn breadcrumb(
-    parent: &'static str,
+    parent: impl Into<SharedString>,
     title: SharedString,
     context: SharedString,
     back: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
@@ -101,6 +102,7 @@ pub fn breadcrumb(
     cx: &mut App,
 ) -> Stateful<Div> {
     let p = *palette(cx);
+    let parent = parent.into();
     drag_region("page-header", window, cx)
         .flex()
         .flex_shrink_0()
@@ -119,7 +121,7 @@ pub fn breadcrumb(
                     .gap(px(4.))
                     .rounded(px(8.))
                     .text_color(p.muted)
-                    .accessibility_label(format!("Back to {parent}"))
+                    .accessibility_label(t!("header.back_to", page = parent))
                     .child(Icon::new(IconName::ChevronLeft).size(px(16.)))
                     .child(div().text_size(px(13.)).child(parent))
                     .on_click(back),
@@ -188,7 +190,12 @@ fn labelled(
         .child(div().text_size(px(13.)).font_medium().child(label))
 }
 
-pub fn icon_button(id: impl Into<ElementId>, icon: IconName, label: &'static str) -> Button {
+pub fn icon_button(
+    id: impl Into<ElementId>,
+    icon: IconName,
+    label: impl Into<SharedString>,
+) -> Button {
+    let label = label.into();
     // A child icon, since `icon()` sizes it from the 14px rem.
     Button::new(id)
         .ghost()
@@ -196,17 +203,17 @@ pub fn icon_button(id: impl Into<ElementId>, icon: IconName, label: &'static str
         .p_0()
         .rounded(px(8.))
         .child(Icon::new(icon).size(px(16.)))
-        .accessibility_label(label)
+        .accessibility_label(label.clone())
         .tooltip(label)
         .tooltip_placement(Placement::Bottom)
 }
 
 pub fn year_label(year: Option<i32>) -> SharedString {
-    year.map_or_else(|| "All years".into(), |year| year.to_string().into())
+    year.map_or_else(|| t!("year.all").into(), |year| year.to_string().into())
 }
 
 pub fn refresh(disabled: bool, cx: &App) -> Button {
-    icon_button("page-refresh", IconName::RefreshCw, "Refresh")
+    icon_button("page-refresh", IconName::RefreshCw, t!("common.refresh"))
         .text_color(cx.theme().muted_foreground)
         .disabled(disabled)
 }

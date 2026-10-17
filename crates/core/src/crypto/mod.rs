@@ -58,3 +58,59 @@ pub fn calculate_sell_buy_values(
         calculated,
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use chrono::{Datelike, NaiveDate, TimeZone, Utc};
+    use rust_decimal::dec;
+
+    use super::*;
+    use crate::{
+        common::{Amount, Currency},
+        rate::Rate,
+    };
+
+    fn eur(value: Decimal) -> Amount {
+        Amount {
+            value,
+            currency: Currency::EUR,
+        }
+    }
+
+    #[test]
+    fn buy_costs_value_and_fee_sale_counts_value_as_income() {
+        let rates = NbpRateProvider::new(
+            NaiveDate::from_ymd_opt(2025, 1, 1)
+                .unwrap()
+                .iter_days()
+                .take_while(|day| day.year() == 2025)
+                .map(|date| Rate {
+                    date,
+                    currency: Currency::EUR,
+                    rate: dec!(4.5),
+                })
+                .collect(),
+        );
+        let crypto = |id: &str, action, value, fee| Crypto {
+            id: id.to_owned(),
+            value: eur(value),
+            fee: eur(fee),
+            action,
+            time: Utc.with_ymd_and_hms(2025, 4, 9, 8, 0, 0).unwrap(),
+            provider: "Coinbase".to_owned(),
+        };
+        let cryptos = vec![
+            crypto("buy", Action::FiatBuy, dec!(100), dec!(1)),
+            crypto("sell", Action::FiatSell, dec!(200), dec!(2)),
+        ];
+
+        let data = calculate_sell_buy_values(cryptos, &rates).unwrap();
+
+        assert_eq!((data.income, data.costs), (dec!(900), dec!(463.5)));
+        let sell = &data.calculated[1];
+        assert_eq!(
+            (sell.calculated_value, sell.calculated_fee, sell.nbp_rate),
+            (dec!(900), dec!(9), dec!(4.5))
+        );
+    }
+}

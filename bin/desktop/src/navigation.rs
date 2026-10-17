@@ -1,5 +1,7 @@
-use crate::config::LastImport;
+use crate::{config::LastImport, i18n::Language};
 use gpui_kit::{App, Context, Entity, EntityId, EventEmitter, assets::IconName};
+use rust_i18n::t;
+use std::borrow::Cow;
 
 #[derive(Clone, Copy, Default, PartialEq, Eq)]
 pub enum Page {
@@ -15,16 +17,16 @@ pub enum Page {
 }
 
 impl Page {
-    pub fn title(self) -> &'static str {
+    pub fn title(self) -> Cow<'static, str> {
         match self {
-            Self::Home => "Summary",
-            Self::Imports => "Imports",
-            Self::Dividends => "Dividends",
-            Self::Interests => "Interests",
-            Self::Crypto => "Crypto",
-            Self::Stocks => "Stocks",
-            Self::Rates => "Rates",
-            Self::Settings => "Settings",
+            Self::Home => t!("nav.summary"),
+            Self::Imports => t!("nav.imports"),
+            Self::Dividends => t!("nav.dividends"),
+            Self::Interests => t!("nav.interests"),
+            Self::Crypto => t!("nav.crypto"),
+            Self::Stocks => t!("nav.stocks"),
+            Self::Rates => t!("nav.rates"),
+            Self::Settings => t!("nav.settings"),
         }
     }
 
@@ -49,6 +51,8 @@ pub enum PageEvent {
     SelectYear(Option<i32>),
     /// `None` follows the system.
     SetTheme(Option<bool>),
+    /// `None` follows the system.
+    SetLanguage(Option<Language>),
     Imported(LastImport),
     Loaded(EntityId),
 }
@@ -90,6 +94,11 @@ impl PageContext {
     pub fn set_theme(&self, dark: Option<bool>, cx: &mut App) {
         self.events
             .update(cx, |_, cx| cx.emit(PageEvent::SetTheme(dark)));
+    }
+
+    pub fn set_language(&self, language: Option<Language>, cx: &mut App) {
+        self.events
+            .update(cx, |_, cx| cx.emit(PageEvent::SetLanguage(language)));
     }
 
     pub fn imported(&self, last_import: LastImport, cx: &mut App) {

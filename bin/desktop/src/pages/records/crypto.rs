@@ -8,7 +8,7 @@ use crate::{
     navigation::Page,
     services::Error as ServiceError,
 };
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, NaiveDate, Utc};
 use gpui_kit::{
     component::{date_picker::DatePickerState, input::InputState},
     *,
@@ -22,33 +22,41 @@ use pitpls_core::{
     crypto::{self as core_crypto, Action, CalculatedCrypto},
 };
 use pitpls_importers::OutputType;
+use portfolio::CryptoPortfolioView;
 use rust_decimal::Decimal;
-use std::sync::Arc;
+use rust_i18n::t;
+use std::{borrow::Cow, sync::Arc};
 
 pub struct Crypto;
 
 impl RecordKind for Crypto {
     type Record = CalculatedCrypto;
+    type Portfolio = CryptoPortfolioView;
     type Form = CryptoForm;
 
     const PAGE: Page = Page::Crypto;
-    const NAME: &'static str = "Crypto";
-    const PLURAL: &'static str = "crypto";
-    const TOTAL_LABELS: &'static [&'static str] = &["Income (E-36)", "Costs (E-37)"];
+    const EMPTY: &'static str = "crypto.empty";
+    const EMPTY_YEAR: &'static str = "crypto.empty_year";
+    const OTHER_YEAR: &'static str = "crypto.other_year";
+    const TOTAL_LABELS: &'static [&'static str] = &["tax.income_e36", "tax.costs_e37"];
 
     fn id(record: &CalculatedCrypto) -> &str {
         &record.id
     }
 
+    fn time(record: &CalculatedCrypto) -> DateTime<Utc> {
+        record.time
+    }
+
     fn columns() -> Vec<RecordColumn> {
         vec![
-            RecordColumn::new("Date", CellStyle::Time, 100., 50.),
-            RecordColumn::new("Action", CellStyle::Tag, 64., 56.),
-            RecordColumn::grow("Provider", CellStyle::Muted),
-            RecordColumn::new("Value", CellStyle::Number, 150., 120.),
-            RecordColumn::new("Fee", CellStyle::Number, 104., 90.).optional(),
-            RecordColumn::new("Calculated value", CellStyle::Number, 160., 124.),
-            RecordColumn::new("Calculated fee", CellStyle::Number, 120., 100.).optional(),
+            RecordColumn::new("column.date", CellStyle::Time, 100., 50.),
+            RecordColumn::new("column.action", CellStyle::Tag, 64., 56.),
+            RecordColumn::grow("column.provider", CellStyle::Muted),
+            RecordColumn::new("column.value", CellStyle::Number, 150., 120.),
+            RecordColumn::new("column.fee", CellStyle::Number, 104., 90.).optional(),
+            RecordColumn::new("column.calculated_value", CellStyle::Number, 160., 124.),
+            RecordColumn::new("column.calculated_fee", CellStyle::Number, 120., 100.).optional(),
         ]
     }
 
@@ -56,7 +64,7 @@ impl RecordKind for Crypto {
         let action = action_title(record.action);
         let cells = vec![
             day(record.time),
-            DisplayText::plain(action),
+            DisplayText::plain(action.clone()),
             DisplayText::plain(record.provider.clone()),
             amount(record.value),
             amount(record.fee),
@@ -67,52 +75,51 @@ impl RecordKind for Crypto {
         // `calculate_sell_buy_values`; the sum is shown, never fed back.
         let adds_to = match record.action {
             Action::FiatBuy => vec![
-                StepLine::Formula(vec![DisplayText::plain("Buy · value + fee")]),
+                StepLine::Formula(vec![DisplayText::plain(t!("crypto.buy_formula"))]),
                 StepLine::Result(vec![
-                    DisplayText::plain("Costs (E-37)"),
+                    DisplayText::plain(t!("tax.costs_e37")),
                     added(record.calculated_value + record.calculated_fee),
                 ]),
-                StepLine::Caption(
-                    "A sale adds its value to Income (E-36) and its fee to Costs (E-37)".into(),
-                ),
+                StepLine::Caption(t!("crypto.sale_note").into()),
             ],
             Action::FiatSell => vec![
-                StepLine::Formula(vec![DisplayText::plain(
-                    "Sell · value to income, fee to costs",
-                )]),
+                StepLine::Formula(vec![DisplayText::plain(t!("crypto.sell_formula"))]),
                 StepLine::Result(vec![
-                    DisplayText::plain("Income (E-36)"),
+                    DisplayText::plain(t!("tax.income_e36")),
                     added(record.calculated_value),
                 ]),
                 StepLine::Result(vec![
-                    DisplayText::plain("Costs (E-37)"),
+                    DisplayText::plain(t!("tax.costs_e37")),
                     added(record.calculated_fee),
                 ]),
-                StepLine::Caption("A purchase adds its value and fee to Costs (E-37)".into()),
+                StepLine::Caption(t!("crypto.purchase_note").into()),
             ],
         };
         let steps = vec![
             Step {
-                title: "Value",
+                title: "field.value",
                 lines: vec![
                     StepLine::Formula(conversion(record.value, record.nbp_rate)),
                     StepLine::Result(vec![pln(record.calculated_value)]),
                     StepLine::Caption(
-                        format!("Calculated value · NBP date {}", date(record.nbp_date).main)
-                            .into(),
+                        t!(
+                            "records.calculated_value_nbp",
+                            date = date(record.nbp_date).main
+                        )
+                        .into(),
                     ),
                 ],
             },
             Step {
-                title: "Fee",
+                title: "field.fee",
                 lines: vec![
                     StepLine::Formula(conversion(record.fee, record.fee_nbp_rate)),
                     StepLine::Result(vec![pln(record.calculated_fee)]),
-                    StepLine::Caption("Calculated fee".into()),
+                    StepLine::Caption(t!("column.calculated_fee").into()),
                 ],
             },
             Step {
-                title: "Adds to",
+                title: "crypto.step_adds_to",
                 lines: adds_to,
             },
         ];
@@ -146,16 +153,61 @@ impl RecordKind for Crypto {
         }
         let mut parts = vec![];
         if sells {
-            parts.push((Some("income"), income));
+            parts.push((Some("records.subtotal_income"), income));
         }
         if buys || !costs.is_zero() {
-            parts.push((Some("costs"), costs));
+            parts.push((Some("records.subtotal_costs"), costs));
         }
         parts
     }
 
     fn imported(output: &OutputType) -> bool {
         matches!(output, OutputType::Crypto)
+    }
+
+    fn portfolio_display(record: &CalculatedCrypto) -> RowDisplay {
+        let mut row = Self::display(record);
+        row.steps.truncate(2);
+        row
+    }
+
+    fn portfolio_columns() -> Vec<RecordColumn> {
+        let mut columns = Self::columns();
+        columns[1] = RecordColumn::new("column.action", CellStyle::Tag, 96., 84.);
+        columns
+    }
+
+    fn portfolio_preview(record: &CalculatedCrypto) -> Preview {
+        let mut preview = Self::preview_display(record);
+        preview.results.truncate(1);
+        preview
+    }
+
+    fn portfolio_subtotal(records: &[&CalculatedCrypto]) -> Vec<(Option<&'static str>, Decimal)> {
+        Self::subtotal(records)
+            .into_iter()
+            .map(|(label, value)| {
+                (
+                    Some(if label == Some("records.subtotal_income") {
+                        "crypto.taken_out"
+                    } else {
+                        "crypto.put_in"
+                    }),
+                    value,
+                )
+            })
+            .collect()
+    }
+
+    async fn load_portfolio(
+        app: Arc<pitpls_app::App>,
+        today: NaiveDate,
+    ) -> Result<(CryptoPortfolioView, Vec<CalculatedCrypto>), ServiceError> {
+        let data = pitpls_app::use_case::portfolio::load_crypto_portfolio(&app).await?;
+        Ok((
+            CryptoPortfolioView::new(data.years, data.totals, today),
+            data.data.calculated,
+        ))
     }
 
     fn count(year: &YearInfo) -> u32 {
@@ -213,15 +265,15 @@ impl RecordKind for Crypto {
     }
 
     fn preview_display(record: &CalculatedCrypto) -> Preview {
-        let mut results = vec![("Calculated fee", pln(record.calculated_fee))];
+        let mut results = vec![("column.calculated_fee", pln(record.calculated_fee))];
         match record.action {
             Action::FiatBuy => results.push((
-                "Costs (E-37)",
+                "tax.costs_e37",
                 added(record.calculated_value + record.calculated_fee),
             )),
             Action::FiatSell => {
-                results.push(("Income (E-36)", added(record.calculated_value)));
-                results.push(("Costs (E-37)", added(record.calculated_fee)));
+                results.push(("tax.income_e36", added(record.calculated_value)));
+                results.push(("tax.costs_e37", added(record.calculated_fee)));
             }
         }
         Preview {
@@ -249,10 +301,10 @@ pub struct CryptoDraft {
     fee: (Decimal, Currency),
 }
 
-fn action_title(action: Action) -> &'static str {
+fn action_title(action: Action) -> Cow<'static, str> {
     match action {
-        Action::FiatBuy => "Buy",
-        Action::FiatSell => "Sell",
+        Action::FiatBuy => t!("action.buy"),
+        Action::FiatSell => t!("action.sell"),
     }
 }
 
@@ -310,11 +362,11 @@ impl RecordForm for CryptoForm {
         }
     }
 
-    fn title(&self) -> &'static str {
+    fn title(&self) -> Cow<'static, str> {
         if self.existing_id.is_some() {
-            "Edit crypto"
+            t!("crypto.edit")
         } else {
-            "Add crypto"
+            t!("crypto.add")
         }
     }
 
@@ -331,13 +383,13 @@ impl RecordForm for CryptoForm {
     }
 
     fn submission(&self, cx: &App) -> Result<CryptoSubmission, String> {
-        let time = form::selected_time(&self.date, "Date", cx)?;
-        let action = form::selected(&self.action, "Action", cx)?;
-        let value = form::amount(&self.value, "Value", cx)?;
-        let value_currency = form::selected(&self.value_currency, "Value currency", cx)?;
-        let fee = form::amount(&self.fee, "Fee", cx)?;
-        let fee_currency = form::selected(&self.fee_currency, "Fee currency", cx)?;
-        let provider = form::required(&self.provider, "Provider", cx)?;
+        let time = form::selected_time(&self.date, &t!("field.date"), cx)?;
+        let action = form::selected(&self.action, &t!("field.action"), cx)?;
+        let value = form::amount(&self.value, &t!("field.value"), cx)?;
+        let value_currency = form::selected(&self.value_currency, &t!("field.value_currency"), cx)?;
+        let fee = form::amount(&self.fee, &t!("field.fee"), cx)?;
+        let fee_currency = form::selected(&self.fee_currency, &t!("field.fee_currency"), cx)?;
+        let provider = form::required(&self.provider, &t!("field.provider"), cx)?;
         let fields = CryptoFields {
             time,
             action,
@@ -383,24 +435,35 @@ impl RecordForm for CryptoForm {
 
     fn render(&self, busy: bool, cx: &App) -> Div {
         form::grid()
-            .child(form::date_field("Date", &self.date, busy, cx))
-            .child(form::select_field("Action", &self.action, busy, cx))
+            .child(form::date_field(t!("field.date"), &self.date, busy, cx))
+            .child(form::select_field(
+                t!("field.action"),
+                &self.action,
+                busy,
+                cx,
+            ))
             .child(form::amount_field(
-                "Value",
-                "Value currency",
+                t!("field.value"),
+                t!("field.value_currency"),
                 &self.value,
                 &self.value_currency,
                 busy,
                 cx,
             ))
             .child(form::amount_field(
-                "Fee",
-                "Fee currency",
+                t!("field.fee"),
+                t!("field.fee_currency"),
                 &self.fee,
                 &self.fee_currency,
                 busy,
                 cx,
             ))
-            .child(form::input_field("Provider", &self.provider, busy, cx))
+            .child(form::input_field(
+                t!("field.provider"),
+                &self.provider,
+                busy,
+                cx,
+            ))
     }
 }
+mod portfolio;

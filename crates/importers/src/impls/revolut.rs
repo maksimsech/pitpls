@@ -586,3 +586,87 @@ impl SectionSums {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use chrono::{TimeZone, Utc};
+    use rust_decimal::dec;
+
+    use super::*;
+
+    const STATEMENT: &str = "\
+Profit and Loss Statement
+Revolut Securities Europe UAB
+
+Other income & fees
+Date Description Security name ISIN Country Gross Amount Withholding Tax Net Amount
+2025-03-14 KO dividend Coca-Cola US1912161007 US US$9.70 US$1.46 US$8.24
+2025-04-01 AAPL dividend Apple
+Inc. US0378331005 US US$2.50 US$0.38 US$2.12
+2025-05-02 Custody fee US$-1.00 - US$-1.00
+2025-06-10 MSFT dividend Microsoft US5949181045 US US$3.32 US$0.50 US$2.82
+Date Description Security name ISIN Country Gross Amount Withholding Tax Net Amount
+Rate: 3.9452
+Total US$15.52 US$2.34 US$13.18
+";
+
+    #[test]
+    fn reads_dividends_from_other_income() {
+        let dividends = parse_text(STATEMENT).unwrap();
+
+        let rows = dividends
+            .iter()
+            .map(|dividend| {
+                (
+                    dividend.ticker.as_str(),
+                    dividend.value.value,
+                    dividend.tax_paid.value,
+                    dividend.country,
+                )
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            rows,
+            [
+                ("KO", dec!(9.70), dec!(1.46), Country::USA),
+                ("AAPL", dec!(2.50), dec!(0.38), Country::USA),
+                ("MSFT", dec!(3.32), dec!(0.50), Country::USA),
+            ]
+        );
+        assert!(dividends.iter().all(|dividend| {
+            dividend.value.currency == Currency::USD && dividend.provider == PROVIDER
+        }));
+        // Midnight in Warsaw.
+        assert_eq!(
+            dividends[0].time,
+            Utc.with_ymd_and_hms(2025, 3, 13, 23, 0, 0).unwrap()
+        );
+        assert_eq!(
+            dividends[1].time,
+            Utc.with_ymd_and_hms(2025, 3, 31, 22, 0, 0).unwrap()
+        );
+    }
+
+    #[test]
+    fn total_must_match_the_rows() {
+        let statement = STATEMENT.replace(
+            "Total US$15.52 US$2.34 US$13.18",
+            "Total US$15.53 US$2.34 US$13.19",
+        );
+
+        assert!(matches!(
+            parse_text(&statement),
+            Err(ImportError::TotalsMismatch { .. })
+        ));
+    }
+
+    #[test]
+    fn other_statements_are_refused() {
+        assert!(matches!(
+            parse_text("Account statement"),
+            Err(ImportError::UnexpectedFormat {
+                expected: ImporterKind::Revolut
+            })
+        ));
+    }
+}

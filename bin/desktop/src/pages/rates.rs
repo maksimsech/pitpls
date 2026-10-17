@@ -1,6 +1,7 @@
 use crate::{
     components::{ButtonText, Status, dialog, file_picker, header, nbp, notice, spinner},
     format,
+    i18n::plural,
     navigation::{Page, PageContext},
     theme::{palette, tabular_digits},
 };
@@ -12,6 +13,7 @@ use gpui_kit::{
     *,
 };
 use pitpls_app::use_case::rate::{self, RateCoverage};
+use rust_i18n::t;
 use std::ops::Range;
 
 /// The pinned Date column, including the panel's 20px inset.
@@ -166,13 +168,14 @@ impl RatesPage {
             cx,
             move |app| async move {
                 match change {
-                    Change::Csv(file) => Ok(format!(
-                        "Imported {} rates.",
-                        rate::import_csv(&app, file).await?
-                    )),
+                    Change::Csv(file) => {
+                        let count = rate::import_csv(&app, file).await?;
+                        Ok(plural("nbp.imported", count as u64).into_owned())
+                    }
                     Change::Nbp(year) => nbp::import(app, year).await,
                     Change::Reset => {
-                        Ok(format!("Removed {} rates.", rate::reset_rates(&app).await?))
+                        let count = rate::reset_rates(&app).await?;
+                        Ok(plural("rates.removed", count as u64).into_owned())
                     }
                 }
             },
@@ -257,10 +260,9 @@ impl RatesPage {
     fn open_reset(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.confirm_reset = true;
         dialog::confirm(
-            "Reset rates",
-            "Remove all imported exchange rates? \
-             Calculations will be unavailable until rates are reimported.",
-            "Reset",
+            t!("rates.reset_title"),
+            t!("rates.reset_message"),
+            t!("rates.reset"),
             |this, window, cx| this.change(Change::Reset, window, cx),
             |this, cx| {
                 this.confirm_reset = false;
@@ -277,12 +279,12 @@ impl RatesPage {
         let reset_disabled = disabled || !self.status.ready || self.data.rows.is_empty();
         let running = |operation| self.running == Some(operation);
         let range = match self.data.coverage {
-            Some(RateCoverage { first, last }) => format!(
-                "NBP table A · {} – {}",
-                format::date(first).main,
-                format::date(last).main
+            Some(RateCoverage { first, last }) => t!(
+                "rates.coverage",
+                first = format::date(first).main,
+                last = format::date(last).main
             ),
-            None => "NBP table A".into(),
+            None => t!("rates.table_a"),
         };
         header::page(Page::Rates.title(), Some(range.into()), window, cx).child(
             header::actions()
@@ -291,7 +293,7 @@ impl RatesPage {
                     header::task_button(
                         "rates-csv",
                         IconName::Upload,
-                        "Upload CSV",
+                        t!("rates.upload_csv"),
                         running(Running::Csv),
                     )
                     .disabled(disabled)
@@ -301,7 +303,7 @@ impl RatesPage {
                     header::task_button(
                         "rates-nbp",
                         IconName::Download,
-                        "Import from NBP",
+                        t!("nbp.import_title"),
                         running(Running::Nbp),
                     )
                     .primary()
@@ -317,7 +319,7 @@ impl RatesPage {
                         .h(px(28.))
                         .px(px(11.))
                         .rounded(px(8.))
-                        .accessibility_label("Reset")
+                        .accessibility_label(t!("rates.reset"))
                         .disabled(reset_disabled)
                         .when(running(Running::Reset), |button| button.child(spinner()))
                         .child(
@@ -327,7 +329,7 @@ impl RatesPage {
                                 .when(!reset_disabled, |label| {
                                     label.text_color(palette(cx).danger)
                                 })
-                                .child("Reset"),
+                                .child(t!("rates.reset")),
                         )
                         .on_click(cx.listener(|this, _, window, cx| this.open_reset(window, cx))),
                 ),
@@ -347,12 +349,14 @@ impl RatesPage {
             .gap_3()
             .px(px(20.))
             .when(status || retry, |view| view.pb_3())
-            .when(status, |view| view.child(self.status.render()))
+            .when(status, |view| {
+                view.child(self.status.render(|this| &mut this.status, cx))
+            })
             .when(retry, |view| {
                 view.child(
                     h_flex().child(
                         Button::new("retry-rates")
-                            .text_label("Retry")
+                            .text_label(t!("common.retry"))
                             .outline()
                             .disabled(disabled)
                             .on_click(cx.listener(|this, _, window, cx| this.refresh(window, cx))),
@@ -424,8 +428,8 @@ impl Render for RatesPage {
             notice::notice(
                 Page::Rates.icon(),
                 false,
-                "No exchange rates yet".into(),
-                "Import a year from NBP, or upload a CSV.",
+                t!("rates.empty_title"),
+                t!("rates.empty_detail"),
                 cx,
             )
             .into_any_element()
@@ -525,7 +529,7 @@ impl RatesPage {
                     .border_color(p.line)
                     .text_size(px(12.))
                     .text_color(p.faint)
-                    .child("Date"),
+                    .child(t!("field.date")),
             )
             .child(
                 div()
@@ -606,7 +610,7 @@ impl RatesPage {
                     .border_color(p.line)
                     .text_size(px(12.))
                     .text_color(p.faint)
-                    .child("Date"),
+                    .child(t!("field.date")),
             )
             .children((0..5).map(|_| {
                 h_flex()

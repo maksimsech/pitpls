@@ -1,4 +1,4 @@
-use crate::services::Error as ServiceError;
+use crate::{i18n::Language, services::Error as ServiceError};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
@@ -48,6 +48,8 @@ impl Config {
 pub struct Preferences {
     pub year: Option<i32>,
     pub dark: Option<bool>,
+    /// `None` follows the system.
+    pub language: Option<Language>,
     #[serde(default)]
     pub sidebar_collapsed: bool,
     #[serde(default)]

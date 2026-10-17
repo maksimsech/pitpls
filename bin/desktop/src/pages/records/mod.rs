@@ -1,27 +1,31 @@
 mod crypto;
 mod dividends;
 mod interests;
+mod portfolio;
 mod table;
 
 pub use self::{
     crypto::Crypto,
     dividends::Dividends,
     interests::Interests,
+    portfolio::{OpenYear, PortfolioStat, PortfolioView},
     table::{RecordTable, TableHost, selection_bar, table},
 };
 
 use crate::{
     components::{
-        ButtonText, Status, dialog, form, header, nbp, notice,
+        ButtonText, Status, dialog, form, header, measure_width, nbp, notice,
         records::{Preview, RecordColumn, RowDisplay, preview_band},
+        tabs::{TabItem, tabs},
         value,
     },
     format::{DisplayText, amount, date, pln, record_count},
+    i18n::{or_list, plural, plural_key},
     navigation::{Page, PageContext},
     services::Error as ServiceError,
     theme::{palette, tabular_digits},
 };
-use chrono::{DateTime, Datelike, NaiveTime, Utc};
+use chrono::{DateTime, Datelike, NaiveDate, NaiveTime, Utc};
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::{
     assets::IconName,
@@ -40,7 +44,8 @@ use pitpls_app::use_case::year::{self, YearInfo};
 use pitpls_core::{common::Amount, time};
 use pitpls_importers::{IMPORTERS, OutputType};
 use rust_decimal::Decimal;
-use std::{collections::HashSet, future::Future, sync::Arc};
+use rust_i18n::t;
+use std::{borrow::Cow, collections::HashSet, future::Future, rc::Rc, sync::Arc};
 
 pub enum Submission<C, U> {
     Create(C),
@@ -55,7 +60,7 @@ pub trait RecordForm: 'static {
     type Draft: Clone + PartialEq + Send + 'static;
 
     fn new(record: Option<&Self::Record>, window: &mut Window, cx: &mut App) -> Self;
-    fn title(&self) -> &'static str;
+    fn title(&self) -> Cow<'static, str>;
     fn existing_id(&self) -> Option<&str>;
     fn id_input(&self) -> &Entity<InputState>;
     /// A text input, not the date picker: Enter opens a focused date picker
@@ -77,13 +82,17 @@ type Draft<K> = <<K as RecordKind>::Form as RecordForm>::Draft;
 pub trait RecordKind: 'static {
     type Record: Send + 'static;
     type Form: RecordForm<Record = Self::Record>;
+    type Portfolio: PortfolioView;
 
     const PAGE: Page;
-    const NAME: &'static str;
-    const PLURAL: &'static str;
+    /// Message keys, as are the labels below; `OTHER_YEAR` takes a count.
+    const EMPTY: &'static str;
+    const EMPTY_YEAR: &'static str;
+    const OTHER_YEAR: &'static str;
     const TOTAL_LABELS: &'static [&'static str];
 
     fn id(record: &Self::Record) -> &str;
+    fn time(record: &Self::Record) -> DateTime<Utc>;
     fn columns() -> Vec<RecordColumn>;
     fn display(record: &Self::Record) -> RowDisplay;
     /// Information only: summed here at full precision, never by the
@@ -97,6 +106,22 @@ pub trait RecordKind: 'static {
         app: Arc<pitpls_app::App>,
         year: Option<i32>,
     ) -> impl Future<Output = Result<(Vec<Decimal>, Vec<Self::Record>), ServiceError>> + Send;
+    fn load_portfolio(
+        app: Arc<pitpls_app::App>,
+        today: NaiveDate,
+    ) -> impl Future<Output = Result<(Self::Portfolio, Vec<Self::Record>), ServiceError>> + Send;
+    fn portfolio_columns() -> Vec<RecordColumn> {
+        Self::columns()
+    }
+    fn portfolio_display(record: &Self::Record) -> RowDisplay {
+        Self::display(record)
+    }
+    fn portfolio_preview(record: &Self::Record) -> Preview {
+        Self::preview_display(record)
+    }
+    fn portfolio_subtotal(records: &[&Self::Record]) -> Vec<(Option<&'static str>, Decimal)> {
+        Self::subtotal(records)
+    }
     fn save(
         app: Arc<pitpls_app::App>,
         submission: <Self::Form as RecordForm>::Submission,
@@ -157,6 +182,9 @@ pub struct RecordsPage<K: RecordKind> {
     year: Option<i32>,
     status: Status,
     records: Vec<K::Record>,
+    portfolio: Option<K::Portfolio>,
+    portfolio_tab: Option<usize>,
+    portfolio_scroll: ScrollHandle,
     totals: Vec<(&'static str, DisplayText)>,
     table: RecordTable,
     filter: Entity<InputState>,
@@ -167,6 +195,7 @@ pub struct RecordsPage<K: RecordKind> {
     deleting: HashSet<String>,
     nbp_year: Option<Entity<InputState>>,
     missing_rate: Option<SharedString>,
+    missing_rate_year: Option<i32>,
     other_year: Option<(i32, u32)>,
     focus: FocusHandle,
     _subscriptions: [Subscription; 2],
@@ -180,7 +209,7 @@ impl<K: RecordKind> RecordsPage<K> {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
-        let filter = cx.new(|cx| InputState::new(window, cx).placeholder("Filter"));
+        let filter = cx.new(|cx| InputState::new(window, cx).placeholder(t!("records.filter")));
         let filter_subscription = cx.subscribe_in(&filter, window, |this, filter, event, _, cx| {
             if let InputEvent::Change = event {
                 let query = filter.read(cx).value().trim().to_lowercase();
@@ -206,13 +235,26 @@ impl<K: RecordKind> RecordsPage<K> {
                 window.focus(&this.focus, cx);
             }
         });
+        let portfolio = year.is_none();
         let mut view = Self {
             context,
             year,
             status: Status::default(),
             records: Vec::new(),
             totals: Vec::new(),
-            table: RecordTable::new("records-horizontal", K::columns(), true, width),
+            portfolio: None,
+            portfolio_tab: portfolio.then_some(0),
+            portfolio_scroll: ScrollHandle::default(),
+            table: RecordTable::new(
+                "records-horizontal",
+                if portfolio {
+                    K::portfolio_columns()
+                } else {
+                    K::columns()
+                },
+                true,
+                width,
+            ),
             filter,
             query: String::new(),
             page_scroll: ScrollHandle::default(),
@@ -221,12 +263,17 @@ impl<K: RecordKind> RecordsPage<K> {
             deleting: HashSet::new(),
             nbp_year: None,
             missing_rate: None,
+            missing_rate_year: None,
             other_year: None,
             focus: cx.focus_handle(),
             _subscriptions: [filter_subscription, focus_subscription],
         };
         view.refresh(window, cx);
         view
+    }
+
+    fn is_portfolio(&self) -> bool {
+        self.year.is_none()
     }
 
     fn locked(&self) -> bool {
@@ -244,6 +291,7 @@ impl<K: RecordKind> RecordsPage<K> {
     fn apply(
         &mut self,
         totals: Vec<Decimal>,
+        portfolio: Option<K::Portfolio>,
         records: Vec<K::Record>,
         other_year: Option<(i32, u32)>,
     ) {
@@ -252,10 +300,18 @@ impl<K: RecordKind> RecordsPage<K> {
             .copied()
             .zip(totals.into_iter().map(pln))
             .collect();
+        self.portfolio = portfolio;
         self.other_year = other_year;
-        let changed = self
-            .table
-            .set_rows(records.iter().map(K::display).collect());
+        let changed = self.table.set_rows(
+            records
+                .iter()
+                .map(if self.is_portfolio() {
+                    K::portfolio_display
+                } else {
+                    K::display
+                })
+                .collect(),
+        );
         self.records = records;
         if changed {
             self.regroup();
@@ -271,10 +327,14 @@ impl<K: RecordKind> RecordsPage<K> {
                 .map(|&index| &self.records[index])
                 .collect::<Vec<_>>();
             group.count = record_count(records.len() as u32).into();
-            group.summary = K::subtotal(&records)
-                .into_iter()
-                .map(|(label, value)| (label, pln(value)))
-                .collect();
+            group.summary = (if self.is_portfolio() {
+                K::portfolio_subtotal(&records)
+            } else {
+                K::subtotal(&records)
+            })
+            .into_iter()
+            .map(|(label, value)| (label, pln(value)))
+            .collect();
         }
         self.table.set_groups(groups);
     }
@@ -306,16 +366,23 @@ impl<K: RecordKind> RecordsPage<K> {
         if draft == editor.draft {
             return;
         }
+        let portfolio = self.is_portfolio();
         let task = draft.clone().map(|draft| {
             self.context.services.run(
                 window,
                 cx,
                 move |app| K::preview(app, draft),
-                |this, result, _, cx| {
+                move |this, result, _, cx| {
                     if let Some(editor) = &mut this.editor {
                         editor.preview = Some(
                             result
-                                .map(|record| K::preview_display(&record))
+                                .map(|record| {
+                                    if portfolio {
+                                        K::portfolio_preview(&record)
+                                    } else {
+                                        K::preview_display(&record)
+                                    }
+                                })
                                 .map_err(SharedString::from),
                         );
                         cx.notify();
@@ -372,7 +439,7 @@ impl<K: RecordKind> RecordsPage<K> {
             cx,
             move |app| async move {
                 K::save(app, submission).await?;
-                Ok("Record saved.".into())
+                Ok(t!("records.saved").into_owned())
             },
             |this, result, window, cx| {
                 if this.status.saved(result) {
@@ -402,7 +469,7 @@ impl<K: RecordKind> RecordsPage<K> {
             cx,
             move |app| async move {
                 let count = K::delete(app, ids).await?;
-                Ok(format!("Deleted {count} record(s)."))
+                Ok(plural("records.deleted", count).into_owned())
             },
             |this, result, window, cx| {
                 this.deleting.clear();
@@ -429,9 +496,9 @@ impl<K: RecordKind> RecordsPage<K> {
         }
         self.pending_delete = Some(ids);
         dialog::confirm(
-            "Delete records",
+            t!("records.delete_title"),
             message,
-            "Delete",
+            t!("common.delete"),
             Self::delete,
             |this, cx| {
                 this.pending_delete = None;
@@ -461,7 +528,7 @@ impl<K: RecordKind> RecordsPage<K> {
             .pt(px(8.))
             .child(editor.form.render(busy, cx))
             .child(self.id_field(editor, busy, cx).mt(px(14.)))
-            .when_some(self.status.error.clone(), |body, error| {
+            .when_some(self.status.error.as_ref(), |body, error| {
                 body.child(
                     h_flex()
                         .mt(px(12.))
@@ -475,17 +542,21 @@ impl<K: RecordKind> RecordsPage<K> {
                                 .flex_shrink_0()
                                 .mt(px(1.)),
                         )
-                        .child(div().min_w_0().child(error)),
+                        .child(div().min_w_0().child(error.text())),
                 )
             })
             .when_some(editor.preview.as_ref(), |body, preview| {
-                body.child(preview_band(preview, cx).mt(px(16.)))
+                body.child(preview_band(preview, !self.is_portfolio(), cx).mt(px(16.)))
             });
         dialog::editor(
             self,
             dialog,
             body,
-            if busy { "Saving…" } else { "Save" },
+            if busy {
+                t!("common.saving")
+            } else {
+                t!("common.save")
+            },
             |this| &this.status,
             Self::save,
             Self::close_editor,
@@ -504,7 +575,7 @@ impl<K: RecordKind> RecordsPage<K> {
         let existing = editor.form.existing_id();
         let note = match existing {
             Some(id) => format!("· {id}"),
-            None => "· optional, generated if left blank".into(),
+            None => t!("records.id_note").into_owned(),
         };
         Collapsible::new()
             .open(editor.id_open)
@@ -519,7 +590,7 @@ impl<K: RecordKind> RecordsPage<K> {
                         .gap(px(6.))
                         .rounded(px(6.))
                         .text_color(p.muted)
-                        .accessibility_label("ID")
+                        .accessibility_label(t!("field.id"))
                         .child(
                             Icon::new(if editor.id_open {
                                 IconName::ChevronDown
@@ -534,14 +605,14 @@ impl<K: RecordKind> RecordsPage<K> {
                             h_flex()
                                 .gap(px(4.))
                                 .text_size(px(12.))
-                                .child("ID")
+                                .child(t!("field.id"))
                                 .child(div().text_color(p.faint).child(note)),
                         )
                         .on_click(cx.listener(|this, _, window, cx| this.toggle_id(window, cx))),
                 ),
             )
             .content(form::input_field(
-                "ID",
+                t!("field.id"),
                 editor.form.id_input(),
                 busy || existing.is_some(),
                 cx,
@@ -552,7 +623,10 @@ impl<K: RecordKind> RecordsPage<K> {
         if self.disabled() {
             return;
         }
-        let year = self.year.unwrap_or_else(|| chrono::Local::now().year());
+        let year = self
+            .missing_rate_year
+            .or(self.year)
+            .unwrap_or_else(|| time::tax_date(Utc::now()).year());
         self.nbp_year = Some(nbp::open(year, Self::nbp_dialog, window, cx));
         self.status.error = None;
         self.status.message = None;
@@ -617,41 +691,50 @@ impl<K: RecordKind> RecordsPage<K> {
         let disabled = self.disabled();
         let filterable = self.status.ready && !self.records.is_empty();
         let filter_disabled = self.editor.is_some() || self.nbp_year.is_some();
-        let shown = self.table.shown();
         let narrow = self
             .table
             .state
             .viewport_width
             .is_some_and(|width| width < px(NARROW));
-        let count =
-            (!self.query.is_empty()).then(|| filter_count(shown, self.records.len(), narrow));
+        let counts = match (&self.portfolio, self.portfolio_tab) {
+            (Some(portfolio), Some(tab)) => portfolio.filtered_count(tab, &self.query),
+            _ => Some((self.table.shown(), self.records.len())),
+        };
+        let count = counts
+            .filter(|_| !self.query.is_empty())
+            .map(|(shown, total)| filter_count(shown, total, narrow));
         let import = import_button(narrow);
-        header::page(
-            K::PAGE.title(),
-            Some(header::year_label(self.year)),
-            window,
-            cx,
-        )
-        .when(filterable, |row| {
-            row.child(filter_field(&self.filter, count, filter_disabled, cx))
-        })
-        .child(
-            header::actions()
-                .child(self.status.refreshing(cx))
-                .child(header::refresh(disabled, cx).on_click(cx.listener(
-                    |this, _, window, cx| {
-                        this.context.years_changed(cx);
-                        this.refresh(window, cx);
-                    },
-                )))
-                .child(import.disabled(disabled).on_click(
-                    cx.listener(|this, _, _, cx| this.context.navigate(Page::Imports, cx)),
-                ))
-                .child(
-                    self.add_button("add-record", Some(IconName::Plus), disabled, cx)
-                        .primary(),
-                ),
-        )
+        let meta = if self.is_portfolio() && self.status.ready {
+            format!(
+                "{} · {}",
+                header::year_label(None),
+                record_count(self.records.len() as u32)
+            )
+            .into()
+        } else {
+            header::year_label(self.year)
+        };
+        header::page(K::PAGE.title(), Some(meta), window, cx)
+            .when(filterable, |row| {
+                row.child(filter_field(&self.filter, count, filter_disabled, cx))
+            })
+            .child(
+                header::actions()
+                    .child(self.status.refreshing(cx))
+                    .child(header::refresh(disabled, cx).on_click(cx.listener(
+                        |this, _, window, cx| {
+                            this.context.years_changed(cx);
+                            this.refresh(window, cx);
+                        },
+                    )))
+                    .child(import.disabled(disabled).on_click(
+                        cx.listener(|this, _, _, cx| this.context.navigate(Page::Imports, cx)),
+                    ))
+                    .child(
+                        self.add_button("add-record", Some(IconName::Plus), disabled, cx)
+                            .primary(),
+                    ),
+            )
     }
 
     fn add_button(
@@ -661,7 +744,7 @@ impl<K: RecordKind> RecordsPage<K> {
         disabled: bool,
         cx: &mut Context<Self>,
     ) -> Button {
-        header::button(id, icon, "Add new")
+        header::button(id, icon, t!("records.add"))
             .disabled(disabled)
             .on_click(cx.listener(|this, _, window, cx| {
                 if !this.disabled() {
@@ -672,10 +755,22 @@ impl<K: RecordKind> RecordsPage<K> {
     }
 
     fn totals(&self, compact: bool, cx: &App) -> Div {
+        if let Some(portfolio) = &self.portfolio {
+            return totals_row(compact).children(portfolio.stats().into_iter().map(|stat| {
+                value::plain_stat(
+                    stat.label,
+                    t!(stat.label),
+                    &stat.value,
+                    stat.unit,
+                    stat.caption,
+                    cx,
+                )
+            }));
+        }
         totals_row(compact).children(self.totals.iter().map(|(label, value)| {
             value::stat(
                 SharedString::from(format!("total-{label}")),
-                *label,
+                t!(*label),
                 value,
                 cx,
             )
@@ -690,9 +785,13 @@ impl<K: RecordKind> RecordsPage<K> {
             .min_h_0()
             .child(
                 totals_row(compact).children(
-                    K::TOTAL_LABELS
-                        .iter()
-                        .map(|label| value::stat_skeleton(label, visible, cx)),
+                    (if self.is_portfolio() {
+                        K::Portfolio::LABELS
+                    } else {
+                        K::TOTAL_LABELS
+                    })
+                    .iter()
+                    .map(|label| value::stat_skeleton(t!(*label), visible, cx)),
                 ),
             )
             .child(skeleton)
@@ -701,27 +800,27 @@ impl<K: RecordKind> RecordsPage<K> {
     fn empty_state(&self, cx: &mut Context<Self>) -> Empty {
         let disabled = self.disabled();
         let title = match self.year {
-            Some(year) => format!("No {} in {year}", K::PLURAL),
-            None => format!("No {} yet", K::PLURAL),
+            Some(year) => t!(K::EMPTY_YEAR, year = year),
+            None => t!(K::EMPTY),
         };
         let providers = IMPORTERS
             .iter()
             .filter(|importer| importer.output.iter().any(K::imported))
-            .map(|importer| crate::messages::importer_name(importer.kind))
-            .collect::<Vec<_>>()
-            .join(" or ");
-        let description = format!("Import a {providers} statement, or add a record by hand.");
+            .map(|importer| crate::messages::importer_name(importer.kind).to_owned())
+            .collect::<Vec<_>>();
+        let description = t!("records.empty_detail", providers = or_list(&providers));
         let link = self.other_year.map(|(year, count)| {
-            let records = if count == 1 { "record" } else { "records" };
+            let key = plural_key(K::OTHER_YEAR, count.into());
             Button::new("other-year")
                 .ghost()
                 .small()
                 .text_color(cx.theme().muted_foreground)
                 .disabled(disabled)
-                .child(div().text_size(px(12.)).child(format!(
-                    "{year} has {count} {} {records} · switch to {year}",
-                    K::NAME.to_lowercase()
-                )))
+                .child(
+                    div()
+                        .text_size(px(12.))
+                        .child(t!(key, year = year, count = count)),
+                )
                 .child(Icon::new(IconName::ChevronRight).size(px(12.)))
                 .on_click(
                     cx.listener(move |this, _, _, cx| this.context.select_year(Some(year), cx)),
@@ -734,7 +833,7 @@ impl<K: RecordKind> RecordsPage<K> {
                         .gap(px(8.))
                         .mt(px(6.))
                         .child(
-                            header::button("empty-import", None, "Import")
+                            header::button("empty-import", None, t!("common.import"))
                                 .primary()
                                 .disabled(disabled)
                                 .on_click(cx.listener(|this, _, _, cx| {
@@ -750,6 +849,7 @@ impl<K: RecordKind> RecordsPage<K> {
     fn missing_rate_state(&self, error: &SharedString, cx: &mut Context<Self>) -> Empty {
         notice::missing_rate(
             self.year,
+            self.missing_rate_year.or(self.year),
             error.clone(),
             self.disabled(),
             cx.listener(|this, _, window, cx| this.open_nbp(window, cx)),
@@ -782,6 +882,10 @@ impl<K: RecordKind> TableHost for RecordsPage<K> {
         &self.focus
     }
 
+    fn copyable(&self) -> bool {
+        !self.is_portfolio()
+    }
+
     fn editable(&self) -> bool {
         true
     }
@@ -799,7 +903,7 @@ impl<K: RecordKind> TableHost for RecordsPage<K> {
     fn delete_one(&mut self, id: &str, window: &mut Window, cx: &mut Context<Self>) {
         self.confirm_delete(
             vec![id.to_owned()],
-            "Delete this record? This cannot be undone.".into(),
+            t!("records.delete_one").into_owned(),
             window,
             cx,
         );
@@ -815,17 +919,13 @@ pub fn delete_selected_message<'a>(
         .iter()
         .filter(|id| !visible.contains(id.as_str()))
         .count();
+    let question = plural("records.delete_selected", selected.len() as u64);
+    let undo = t!("records.cannot_undo");
     if hidden > 0 {
-        format!(
-            "Delete {} selected record(s)? {hidden} of them are hidden by the filter. \
-             This cannot be undone.",
-            selected.len()
-        )
+        let hidden = plural("records.hidden_by_filter", hidden as u64);
+        format!("{question} {hidden} {undo}")
     } else {
-        format!(
-            "Delete {} selected record(s)? This cannot be undone.",
-            selected.len()
-        )
+        format!("{question} {undo}")
     }
 }
 
@@ -833,17 +933,17 @@ pub fn delete_selected_message<'a>(
 /// no room for "Showing" beside Import's label.
 pub fn filter_count(shown: usize, total: usize, narrow: bool) -> String {
     if narrow {
-        format!("{shown} of {total}")
+        t!("records.shown_short", shown = shown, total = total).into_owned()
     } else {
-        format!("Showing {shown} of {total}")
+        t!("records.shown", shown = shown, total = total).into_owned()
     }
 }
 
 pub fn import_button(narrow: bool) -> Button {
     if narrow {
-        header::icon_button("open-imports", IconName::Upload, "Import")
+        header::icon_button("open-imports", IconName::Upload, t!("common.import"))
     } else {
-        header::button("open-imports", IconName::Upload, "Import")
+        header::button("open-imports", IconName::Upload, t!("common.import"))
     }
 }
 
@@ -884,7 +984,7 @@ pub fn filter_field(
                     // The buttons' fill; disabled keeps the input's, close
                     // to a disabled button's.
                     .when(!disabled, |input| input.bg(cx.theme().tokens.button))
-                    .aria_label("Filter records")
+                    .aria_label(t!("records.filter_label"))
                     .prefix(
                         Icon::new(IconName::Search)
                             .size(px(14.))
@@ -901,7 +1001,7 @@ pub fn no_match(query: &str, cx: &App) -> Div {
         .px(px(20.))
         .py(px(24.))
         .text_color(palette(cx).muted)
-        .child(format!("No records match “{query}”."))
+        .child(t!("records.no_match", query = query))
 }
 
 pub fn totals_row(compact: bool) -> Div {
@@ -934,32 +1034,49 @@ impl<K: RecordKind> RecordsPage<K> {
         }
         self.status.begin_load(window, cx, |this| &mut this.status);
         let year = self.year;
+        let portfolio = self.is_portfolio();
+        let today = time::tax_date(Utc::now());
         self.status.task = Some(self.context.services.run(
             window,
             cx,
             move |app| async move {
-                let (totals, records) = K::load(app.clone(), year).await?;
+                let (totals, portfolio, records) = if portfolio {
+                    let (portfolio, mut records) = K::load_portfolio(app.clone(), today).await?;
+                    records.sort_unstable_by(|a, b| {
+                        K::time(b)
+                            .cmp(&K::time(a))
+                            .then_with(|| K::id(a).cmp(K::id(b)))
+                    });
+                    (Vec::new(), Some(portfolio), records)
+                } else {
+                    let (totals, records) = K::load(app.clone(), year).await?;
+                    (totals, None, records)
+                };
                 let other_year = if records.is_empty() {
                     let years = year::list_year_info(&app).await.unwrap_or_default();
                     other_year::<K>(year, &years)
                 } else {
                     None
                 };
-                Ok((totals, records, other_year))
+                Ok((totals, portfolio, records, other_year))
             },
             |this, result, _, cx| {
                 let missing_rate = result
                     .as_ref()
                     .err()
                     .is_some_and(|error| error.missing_rate());
+                this.missing_rate_year = result
+                    .as_ref()
+                    .err()
+                    .and_then(|error| error.missing_rate_year());
                 let loaded = this.status.loaded(result);
                 this.missing_rate = if missing_rate {
-                    this.status.error.take()
+                    this.status.error.take().map(|error| error.text())
                 } else {
                     None
                 };
-                if let Some((totals, records, other_year)) = loaded {
-                    this.apply(totals, records, other_year);
+                if let Some((totals, portfolio, records, other_year)) = loaded {
+                    this.apply(totals, portfolio, records, other_year);
                 }
                 this.context.loaded(cx);
                 cx.notify();
@@ -991,7 +1108,7 @@ impl<K: RecordKind> Render for RecordsPage<K> {
                             .flex_shrink_0()
                             .px(px(20.))
                             .pb_3()
-                            .child(self.status.render()),
+                            .child(self.status.render(|this| &mut this.status, cx)),
                     )
                 },
             );
@@ -1002,9 +1119,74 @@ impl<K: RecordKind> Render for RecordsPage<K> {
         } else if self.status.ready {
             let compact = self.table.compact();
             let empty = no_match(&self.query, cx);
-            body = body
-                .child(self.totals(compact, cx))
-                .child(table(self, (), empty, window, cx));
+            body = body.child(self.totals(compact, cx));
+            if let Some(portfolio) = &self.portfolio {
+                if let Some(callout) = portfolio.callout() {
+                    body = body.child(
+                        notice::info(callout, cx)
+                            .flex_shrink_0()
+                            .mx(px(20.))
+                            .mb(px(8.))
+                            .p(px(12.))
+                            .rounded(px(10.))
+                            .border_1()
+                            .border_color(palette(cx).line)
+                            .bg(palette(cx).hover),
+                    );
+                }
+                let mut items = portfolio
+                    .tabs()
+                    .into_iter()
+                    .map(|tab| TabItem {
+                        key: Some(tab.key),
+                        label: tab.label,
+                        count: tab.count,
+                    })
+                    .collect::<Vec<_>>();
+                items.push(TabItem {
+                    key: None,
+                    label: t!("stocks.records").into(),
+                    count: self.records.len(),
+                });
+                body = body.child(tabs(
+                    "record-tabs",
+                    K::PAGE.title(),
+                    items,
+                    self.portfolio_tab,
+                    cx.listener(|this, tab, _, cx| {
+                        if !this.disabled() {
+                            this.portfolio_tab = *tab;
+                            this.portfolio_scroll.set_offset(point(px(0.), px(0.)));
+                            this.page_scroll.set_offset(point(px(0.), px(0.)));
+                            cx.notify();
+                        }
+                    }),
+                    portfolio.caption(self.portfolio_tab),
+                    cx,
+                ));
+                if let Some(tab) = self.portfolio_tab {
+                    let on_open = Rc::new(cx.listener(|this, year: &i32, _, cx| {
+                        if !this.disabled() {
+                            this.context.select_year(Some(*year), cx);
+                        }
+                    }));
+                    body = body.child(portfolio.render(
+                        tab,
+                        &self.query,
+                        &self.portfolio_scroll,
+                        self.table.state.viewport_width.unwrap_or(px(940.)),
+                        Rc::new(move |year, window, cx| on_open(&year, window, cx)),
+                        cx,
+                    ));
+                } else {
+                    let note = portfolio.records_note();
+                    body = body
+                        .child(table(self, (), empty, window, cx))
+                        .child(portfolio::note(note, cx));
+                }
+            } else {
+                body = body.child(table(self, (), empty, window, cx));
+            }
         } else if self.status.loading {
             body = body.child(self.loading(cx));
         } else {
@@ -1012,14 +1194,16 @@ impl<K: RecordKind> Render for RecordsPage<K> {
             body = body.child(
                 h_flex().px(px(20.)).gap_2().child(
                     Button::new("retry")
-                        .text_label("Retry")
+                        .text_label(t!("common.retry"))
                         .outline()
                         .disabled(disabled)
                         .on_click(cx.listener(|this, _, window, cx| this.refresh(window, cx))),
                 ),
             );
         }
-        let selecting = self.status.ready && !self.table.selected.is_empty();
+        let selecting = self.status.ready
+            && (!self.is_portfolio() || self.portfolio_tab.is_none())
+            && !self.table.selected.is_empty();
         v_flex()
             .size_full()
             .min_h_0()
@@ -1029,11 +1213,52 @@ impl<K: RecordKind> Render for RecordsPage<K> {
                     .relative()
                     .flex_1()
                     .min_h_0()
+                    .when(
+                        self.is_portfolio() && self.portfolio_tab.is_some(),
+                        |view| {
+                            view.child(measure_width(
+                                self.table.state.viewport_width,
+                                |this: &mut Self| &mut this.table.state.viewport_width,
+                                cx,
+                            ))
+                        },
+                    )
                     .child(body)
                     .vertical_scrollbar(&self.page_scroll)
                     .when(selecting, |view| {
                         view.child(selection_bar(self, (), Self::delete_selected, cx))
                     }),
             )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Dividends, Interests, YearInfo, other_year};
+
+    fn info(year: i32, dividends: u32, interests: u32) -> YearInfo {
+        YearInfo {
+            year,
+            dividends,
+            interests,
+            cryptos: 0,
+            stocks: 0,
+            custom: false,
+        }
+    }
+
+    #[test]
+    fn other_year_is_the_nearest_with_records_newer_on_a_tie() {
+        let years = [
+            info(2027, 2, 0),
+            info(2026, 0, 5),
+            info(2024, 0, 0),
+            info(2023, 1, 0),
+        ];
+
+        assert_eq!(other_year::<Dividends>(Some(2025), &years), Some((2027, 2)));
+        assert_eq!(other_year::<Interests>(Some(2025), &years), Some((2026, 5)));
+        assert_eq!(other_year::<Dividends>(Some(2027), &years), Some((2023, 1)));
+        assert_eq!(other_year::<Dividends>(None, &years), None);
     }
 }

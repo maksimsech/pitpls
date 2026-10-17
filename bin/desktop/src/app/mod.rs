@@ -3,12 +3,14 @@ mod years;
 
 use crate::{
     components::{
-        ButtonText, SKELETON_DELAY, Status, form, header, measure_width, notice, spinner,
+        BUTTON_TEXT, ButtonText, SKELETON_DELAY, Status, StatusText, dialog, form, header,
+        measure_width, notice, spinner,
     },
     config::{self, Config, Preferences},
+    i18n::{self, Language},
     navigation::{Page, PageContext, PageEvent, PageEvents},
     pages,
-    services::{Services, finish},
+    services::{Error as ServiceError, Services, finish},
     theme::{apply_theme, configure_theme, palette},
 };
 use gpui_kit::prelude::FluentBuilder;
@@ -22,6 +24,7 @@ use gpui_kit::{
     *,
 };
 use pitpls_app::use_case::year::YearInfo;
+use rust_i18n::t;
 use sidebar::Expansion;
 use std::sync::Arc;
 use tokio::runtime::Runtime;
@@ -41,9 +44,11 @@ pub struct Desktop {
     preferences: Preferences,
     preference_task: Option<Task<()>>,
     status: Status,
+    database_broken: bool,
     years: Vec<YearInfo>,
     years_task: Option<Task<()>>,
     year_menu_open: bool,
+    pending_year_removal: Option<years::Removal>,
     year_input: Entity<InputState>,
     year_error: Option<SharedString>,
     year_menu_focus: FocusHandle,
@@ -74,6 +79,7 @@ impl Desktop {
                 PageEvent::YearsChanged => this.load_years(window, cx),
                 PageEvent::SelectYear(year) => this.select_year(*year, window, cx),
                 PageEvent::SetTheme(dark) => this.set_theme(*dark, window, cx),
+                PageEvent::SetLanguage(language) => this.set_language(*language, window, cx),
                 PageEvent::Imported(last_import) => {
                     this.preferences.last_import = Some(last_import.clone());
                     this.save_preferences(window, cx);
@@ -97,7 +103,7 @@ impl Desktop {
             }
         });
         let year_input =
-            cx.new(|cx| InputState::new(window, cx).placeholder("Add year, e.g. 2023"));
+            cx.new(|cx| InputState::new(window, cx).placeholder(t!("year.add_placeholder")));
         let input_subscription = cx.subscribe_in(
             &year_input,
             window,
@@ -134,9 +140,11 @@ impl Desktop {
             preferences: Preferences::default(),
             preference_task: None,
             status: Status::default(),
+            database_broken: false,
             years: vec![],
             years_task: None,
             year_menu_open: false,
+            pending_year_removal: None,
             year_input,
             year_error: None,
             year_menu_focus: cx.focus_handle(),
@@ -150,28 +158,30 @@ impl Desktop {
         };
         // So Tab works before the first click.
         window.focus(&view.focus, cx);
-        view.connect(window, cx);
+        view.connect(false, window, cx);
         view
     }
 
     fn locked(&self) -> bool {
-        self.status.busy || self.page_locked
+        self.status.busy || self.page_locked || self.pending_year_removal.is_some()
     }
 
-    fn connect(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    /// `reset` deletes the database first, so it opens empty.
+    fn connect(&mut self, reset: bool, window: &mut Window, cx: &mut Context<Self>) {
         self.status.begin_save();
+        self.database_broken = false;
         let config = self.config.clone();
         let job = self.runtime.spawn(async move {
+            if reset {
+                pitpls_db::Database::delete(&config.database)
+                    .map_err(ServiceError::DeleteDatabase)?;
+            }
             let db = pitpls_db::Database::open(&config.database).await?;
             let (preferences, warning) = match config::read_preferences(&config.preferences).await {
                 Ok(value) => (value, None),
                 Err(error) => (Preferences::default(), Some(error)),
             };
-            Ok::<_, pitpls_db::OpenDatabaseError>((
-                Arc::new(pitpls_app::App::new(db)),
-                preferences,
-                warning,
-            ))
+            Ok::<_, ServiceError>((Arc::new(pitpls_app::App::new(db)), preferences, warning))
         });
         self.status.task = Some(cx.spawn_in(window, async move |this, cx| {
             let result = finish(job).await;
@@ -188,6 +198,14 @@ impl Desktop {
                         ));
                         this.preferences = preferences;
                         this.status.message = warning.map(Into::into);
+                        if reset {
+                            // It described records that are gone.
+                            this.preferences.last_import = None;
+                            this.save_preferences(window, cx);
+                            this.status
+                                .message
+                                .get_or_insert(StatusText::Key("app.database_reset_done"));
+                        }
                         apply_theme(this.preferences.dark, window, cx);
                         this.mount_page(window, cx);
                         this.load_years(window, cx);
@@ -195,12 +213,27 @@ impl Desktop {
                             this.open_notice(window, cx);
                         }
                     }
-                    Err(error) => this.status.error = Some(error.into()),
+                    Err(error) => {
+                        this.database_broken = error.broken_database();
+                        this.status.error = Some(error.into());
+                    }
                 }
                 cx.notify();
             });
         }));
         cx.notify();
+    }
+
+    fn confirm_reset(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        dialog::confirm(
+            t!("app.database_reset_title"),
+            t!("app.database_reset_message"),
+            t!("app.database_reset_confirm"),
+            |this, window, cx| this.connect(true, window, cx),
+            |_, _| {},
+            window,
+            cx,
+        );
     }
 
     fn mount_page(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -265,6 +298,25 @@ impl Desktop {
         cx.notify();
     }
 
+    /// Pages are built anew on each visit, so only what outlives them is
+    /// relabelled here.
+    fn set_language(
+        &mut self,
+        language: Option<Language>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.preferences.language = language;
+        i18n::apply_language(language, cx);
+        self.year_input.update(cx, |input, cx| {
+            input.set_placeholder(t!("year.add_placeholder"), window, cx)
+        });
+        #[cfg(target_os = "macos")]
+        crate::set_macos_menus(cx);
+        cx.refresh_windows();
+        self.save_preferences(window, cx);
+    }
+
     fn save_preferences(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let previous = self.preference_task.take();
         let runtime = self.runtime.clone();
@@ -285,6 +337,21 @@ impl Desktop {
         }));
     }
 
+    fn reset_button(&self, cx: &mut Context<Self>) -> Button {
+        let label = t!("app.database_reset");
+        Button::new("reset-database")
+            .ghost()
+            .accessibility_label(label.clone())
+            // On the label: the kit's hover colour replaces the button's own.
+            .child(
+                div()
+                    .text_size(BUTTON_TEXT)
+                    .text_color(palette(cx).danger)
+                    .child(label),
+            )
+            .on_click(cx.listener(|this, _, window, cx| this.confirm_reset(window, cx)))
+    }
+
     fn main_panel(&self, window: &mut Window, cx: &mut Context<Self>) -> Div {
         let panel = v_flex()
             .flex_1()
@@ -300,7 +367,7 @@ impl Desktop {
             .rounded(px(10.));
         if self.context.is_none() {
             return panel
-                .child(header::page("Database connection", None, window, cx))
+                .child(header::page(t!("app.database_title"), None, window, cx))
                 .child(
                     v_flex()
                         .px(px(20.))
@@ -310,27 +377,29 @@ impl Desktop {
                             h_flex()
                                 .gap_2()
                                 .text_color(cx.theme().muted_foreground)
-                                .child(div().min_w_0().child(
-                                    "Your records will appear when the database connection is \
-                                     available.",
-                                ))
+                                .child(div().min_w_0().child(t!("app.database_waiting")))
                                 .when(self.status.busy, |line| {
                                     line.child(div().flex_shrink_0().child(spinner()))
                                 }),
                         )
                         .when(self.status.is_visible(), |view| {
-                            view.child(self.status.render())
+                            view.child(self.status.render(|this| &mut this.status, cx))
                         })
                         .when(!self.status.busy, |view| {
                             view.child(
-                                h_flex().child(
-                                    Button::new("retry-connection")
-                                        .text_label("Retry connection")
-                                        .primary()
-                                        .on_click(cx.listener(|this, _, window, cx| {
-                                            this.connect(window, cx)
-                                        })),
-                                ),
+                                h_flex()
+                                    .gap_2()
+                                    .child(
+                                        Button::new("retry-connection")
+                                            .text_label(t!("app.database_retry"))
+                                            .primary()
+                                            .on_click(cx.listener(|this, _, window, cx| {
+                                                this.connect(false, window, cx)
+                                            })),
+                                    )
+                                    .when(self.database_broken, |row| {
+                                        row.child(self.reset_button(cx))
+                                    }),
                             )
                         }),
                 );
@@ -349,9 +418,12 @@ impl Desktop {
                             |this: &mut Self| &mut this.page_width,
                             cx,
                         ))
-                        .when(self.incoming.is_some(), |slot| {
-                            slot.child(div().absolute().inset_0().occlude())
-                        }),
+                        .when(
+                            self.incoming.is_some()
+                                || self.status.busy
+                                || self.pending_year_removal.is_some(),
+                            |slot| slot.child(div().absolute().inset_0().occlude()),
+                        ),
                 )
             })
             .when(self.status.is_visible(), |panel| {
@@ -362,7 +434,7 @@ impl Desktop {
                         .py_3()
                         .border_t_1()
                         .border_color(cx.theme().border)
-                        .child(self.status.render()),
+                        .child(self.status.render(|this| &mut this.status, cx)),
                 )
             })
     }

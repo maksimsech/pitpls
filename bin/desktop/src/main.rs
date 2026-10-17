@@ -3,7 +3,10 @@
 mod app;
 mod components;
 mod config;
+#[cfg(test)]
+mod fixtures;
 mod format;
+mod i18n;
 mod messages;
 mod navigation;
 mod pages;
@@ -13,6 +16,8 @@ mod title_row;
 
 use gpui_kit::*;
 use std::sync::Arc;
+
+rust_i18n::i18n!("locales", fallback = "en");
 
 const APP_NAME: &str = "pitpls";
 
@@ -49,10 +54,19 @@ fn run() -> Result<(), String> {
             .build()
             .map_err(|error| error.to_string())?,
     );
+    // Read ahead of the window, so the first frame is already in the chosen
+    // language. A broken file is reported once the window is open.
+    let language = runtime
+        .block_on(config::read_preferences(&config.preferences))
+        .ok()
+        .and_then(|preferences| preferences.language);
     gpui_kit::application()
         // The default bundle lacks icons such as Trash and Upload.
         .with_assets(gpui_kit::assets::AllAssets)
         .run(move |cx| {
+            use gpui_kit::component as gpui_component;
+            rust_i18n::extend!(gpui_component);
+            i18n::apply_language(language, cx);
             gpui_kit::init(cx);
             gpui_kit::component::Theme::sync_system_appearance(None, cx);
             theme::configure_theme(cx);
@@ -109,8 +123,6 @@ fn run() -> Result<(), String> {
 
 #[cfg(target_os = "macos")]
 fn install_macos_menus(cx: &mut App) {
-    use gpui_kit::component::input::{Copy, Cut, Paste, Redo, SelectAll, Undo};
-
     cx.bind_keys([
         KeyBinding::new("cmd-h", Hide, None),
         KeyBinding::new("alt-cmd-h", HideOthers, None),
@@ -132,35 +144,51 @@ fn install_macos_menus(cx: &mut App) {
         with_active_window(cx, |window| window.toggle_fullscreen())
     });
     cx.on_action(|_: &CloseWindow, cx| with_active_window(cx, |window| window.remove_window()));
+    set_macos_menus(cx);
+}
+
+#[cfg(target_os = "macos")]
+fn set_macos_menus(cx: &mut App) {
+    use gpui_kit::component::input::{Copy, Cut, Paste, Redo, SelectAll, Undo};
+    use rust_i18n::t;
+
     cx.set_menus([
         Menu::new(APP_NAME).items([
-            MenuItem::action(format!("About {APP_NAME}"), About),
+            MenuItem::action(t!("menu.about", app = APP_NAME), About),
             MenuItem::separator(),
-            MenuItem::os_submenu("Services", SystemMenuType::Services),
+            MenuItem::os_submenu(t!("menu.services"), SystemMenuType::Services),
             MenuItem::separator(),
-            MenuItem::action(format!("Hide {APP_NAME}"), Hide),
-            MenuItem::action("Hide Others", HideOthers),
-            MenuItem::action("Show All", ShowAll),
+            MenuItem::action(t!("menu.hide", app = APP_NAME), Hide),
+            MenuItem::action(t!("menu.hide_others"), HideOthers),
+            MenuItem::action(t!("menu.show_all"), ShowAll),
             MenuItem::separator(),
-            MenuItem::action(format!("Quit {APP_NAME}"), Quit),
+            MenuItem::action(t!("menu.quit", app = APP_NAME), Quit),
         ]),
-        Menu::new("Edit").items([
-            MenuItem::os_action("Undo", Undo, OsAction::Undo),
-            MenuItem::os_action("Redo", Redo, OsAction::Redo),
+        Menu::new(t!("menu.edit")).items([
+            MenuItem::os_action(t!("menu.undo"), Undo, OsAction::Undo),
+            MenuItem::os_action(t!("menu.redo"), Redo, OsAction::Redo),
             MenuItem::separator(),
-            MenuItem::os_action("Cut", Cut, OsAction::Cut),
-            MenuItem::os_action("Copy", Copy, OsAction::Copy),
-            MenuItem::os_action("Paste", Paste, OsAction::Paste),
-            MenuItem::os_action("Select All", SelectAll, OsAction::SelectAll),
+            MenuItem::os_action(t!("menu.cut"), Cut, OsAction::Cut),
+            MenuItem::os_action(t!("menu.copy"), Copy, OsAction::Copy),
+            MenuItem::os_action(t!("menu.paste"), Paste, OsAction::Paste),
+            MenuItem::os_action(t!("menu.select_all"), SelectAll, OsAction::SelectAll),
         ]),
-        // AppKit adds full screen and tiling items to the menu named "Window".
-        Menu::new("Window").items([
-            MenuItem::action("Minimize", Minimize),
-            MenuItem::action("Zoom", Zoom),
+        Menu::new(t!("menu.window")).items([
+            MenuItem::action(t!("menu.minimize"), Minimize),
+            MenuItem::action(t!("menu.zoom"), Zoom),
             MenuItem::separator(),
-            MenuItem::action("Close Window", CloseWindow),
+            MenuItem::action(t!("menu.close_window"), CloseWindow),
         ]),
     ]);
+    // AppKit adds full screen and tiling items to its windows menu, which GPUI
+    // sets only for a menu named "Window", so a translated one is set here.
+    let mtm = objc2::MainThreadMarker::new().expect("Menus are set on the main thread");
+    let app = objc2_app_kit::NSApplication::sharedApplication(mtm);
+    let window_menu = app
+        .mainMenu()
+        .and_then(|menu| menu.itemAtIndex(menu.numberOfItems() - 1))
+        .and_then(|item| item.submenu());
+    app.setWindowsMenu(window_menu.as_deref());
 }
 
 /// Window actions are dispatched while the window is being updated, so act on

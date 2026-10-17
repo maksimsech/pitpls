@@ -9,6 +9,7 @@ use pitpls_app::{
         exchange::RefreshError as ExchangeRefreshError,
         import::Error as ImportError,
         interest::Error as InterestError,
+        portfolio::Error as PortfolioError,
         rate::{ApiImportError, CsvImportError},
         stock::Error as StockError,
         tax::Error as TaxError,
@@ -17,7 +18,7 @@ use pitpls_app::{
 };
 use pitpls_core::{
     crypto::CalculateSellBuyValuesError, dividend::CalculateDividendTaxError,
-    interest::CalculateInterestTaxError, stock::CalculateStocksError,
+    interest::CalculateInterestTaxError, rate::RateConverterError, stock::CalculateStocksError,
     summary::CalculateTaxSummaryError,
 };
 use pitpls_db::RepositoryError;
@@ -58,6 +59,7 @@ pub enum Error {
     Dividend(DividendError),
     Interest(InterestError),
     Stock(StockError),
+    Portfolio(PortfolioError),
     ExchangeRefresh(ExchangeRefreshError),
     Import(ImportError),
     RateCsv(CsvImportError),
@@ -66,6 +68,7 @@ pub enum Error {
     Year(YearError),
     Repository(RepositoryError),
     OpenDatabase(pitpls_db::OpenDatabaseError),
+    DeleteDatabase(std::io::Error),
     Background(tokio::task::JoinError),
     ReadPreferences(std::io::Error),
     ParsePreferences(serde_json::Error),
@@ -74,36 +77,57 @@ pub enum Error {
 }
 
 impl Error {
+    /// Starting over with an empty database can fix these.
+    pub fn broken_database(&self) -> bool {
+        use pitpls_db::OpenDatabaseError::{Connect, Migrate};
+
+        matches!(
+            self,
+            Self::OpenDatabase(Connect(_) | Migrate(_)) | Self::DeleteDatabase(_)
+        )
+    }
+
     pub fn missing_rate(&self) -> bool {
+        self.rate_error().is_some()
+    }
+
+    pub fn missing_rate_year(&self) -> Option<i32> {
+        self.rate_error().and_then(RateConverterError::missing_year)
+    }
+
+    fn rate_error(&self) -> Option<&RateConverterError> {
         use CalculateDividendTaxError::{DividendConversion, PaidTaxConversion};
         use CalculateInterestTaxError::InterestConversion;
         use CalculateSellBuyValuesError::{FeeConversion, ValueConversion};
         use CalculateStocksError::{PriceConversion, TaxPaidConversion};
         use CalculateTaxSummaryError::{Crypto, Dividend, Interest, Stock};
 
-        matches!(
-            self,
+        match self {
             Self::Crypto(CryptoError::Calculation(
-                ValueConversion(_) | FeeConversion(_)
-            )) | Self::Dividend(DividendError::Calculation(
-                DividendConversion(_) | PaidTaxConversion(_)
-            )) | Self::Interest(InterestError::Calculation(InterestConversion(_)))
-                | Self::Stock(StockError::Calculation(
-                    PriceConversion(_)
-                        | CalculateStocksError::FeeConversion(_)
-                        | TaxPaidConversion(_)
-                ))
-                | Self::Tax(TaxError::Calculation(
-                    Crypto(ValueConversion(_) | FeeConversion(_))
-                        | Dividend(DividendConversion(_) | PaidTaxConversion(_))
-                        | Interest(InterestConversion(_))
-                        | Stock(
-                            PriceConversion(_)
-                                | CalculateStocksError::FeeConversion(_)
-                                | TaxPaidConversion(_)
-                        )
-                ))
-        )
+                ValueConversion(error) | FeeConversion(error),
+            ))
+            | Self::Dividend(DividendError::Calculation(
+                DividendConversion(error) | PaidTaxConversion(error),
+            ))
+            | Self::Interest(InterestError::Calculation(InterestConversion(error)))
+            | Self::Stock(StockError::Calculation(
+                PriceConversion(error)
+                | CalculateStocksError::FeeConversion(error)
+                | TaxPaidConversion(error),
+            ))
+            | Self::Tax(TaxError::Calculation(
+                Crypto(ValueConversion(error) | FeeConversion(error))
+                | Dividend(DividendConversion(error) | PaidTaxConversion(error))
+                | Interest(InterestConversion(error))
+                | Stock(
+                    PriceConversion(error)
+                    | CalculateStocksError::FeeConversion(error)
+                    | TaxPaidConversion(error),
+                ),
+            )) => Some(error),
+            Self::Portfolio(error) => error.rate_error(),
+            _ => None,
+        }
     }
 }
 
@@ -128,6 +152,12 @@ impl From<InterestError> for Error {
 impl From<StockError> for Error {
     fn from(error: StockError) -> Self {
         Self::Stock(error)
+    }
+}
+
+impl From<PortfolioError> for Error {
+    fn from(error: PortfolioError) -> Self {
+        Self::Portfolio(error)
     }
 }
 

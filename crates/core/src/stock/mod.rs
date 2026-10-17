@@ -131,25 +131,25 @@ fn country_totals(sales: &[CalculatedSale]) -> Vec<CountryTotal> {
 pub fn sale_years(records: &[Stock], exchanges: &[InstrumentExchange]) -> BTreeSet<i32> {
     records
         .iter()
-        .filter_map(|record| {
-            let StockAction::Sell(sell) = &record.action else {
-                return None;
-            };
-            let country = exchanges
-                .iter()
-                .find(|exchange| {
-                    exchange.ticker == record.ticker && exchange.provider == sell.provider
-                })
-                .map(|exchange| exchange.country);
-            let (date, _) = settles_on(
-                record.time,
-                sell.settlement_date,
-                country,
-                sell.price.currency,
-            );
-            Some(date.year())
-        })
+        .filter_map(|record| sale_year(record, exchanges))
         .collect()
+}
+
+pub fn sale_year(record: &Stock, exchanges: &[InstrumentExchange]) -> Option<i32> {
+    let StockAction::Sell(sell) = &record.action else {
+        return None;
+    };
+    let country = exchanges
+        .iter()
+        .find(|exchange| exchange.ticker == record.ticker && exchange.provider == sell.provider)
+        .map(|exchange| exchange.country);
+    let (date, _) = settles_on(
+        record.time,
+        sell.settlement_date,
+        country,
+        sell.price.currency,
+    );
+    Some(date.year())
 }
 
 fn warnings(sales: &[CalculatedSale]) -> Vec<Warning> {

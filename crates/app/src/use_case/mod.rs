@@ -9,6 +9,7 @@ pub mod dividend;
 pub mod exchange;
 pub mod import;
 pub mod interest;
+pub mod portfolio;
 pub mod rate;
 pub mod settings;
 pub mod stock;

@@ -11,7 +11,7 @@ use sqlx::{Row, Sqlite, SqlitePool, sqlite::SqliteArguments, sqlite::SqliteRow};
 
 use super::{RepositoryError, Result};
 
-const COLUMNS: &str = "time, ticker, action, number, price, price_currency, fee, fee_currency, provider, settlement_date, tax_paid, tax_paid_currency, split_before, split_after, id";
+const COLUMNS: &str = "time, ticker, action, number, price, price_currency, amount, fee, fee_currency, provider, settlement_date, tax_paid, tax_paid_currency, split_before, split_after, id";
 
 pub struct StockRepository {
     db: SqlitePool,
@@ -44,7 +44,7 @@ impl StockRepository {
         let mut tx = self.db.begin().await?;
         StockValues::from(stock)
             .bind(sqlx::query(&format!(
-                "INSERT INTO stocks({COLUMNS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+                "INSERT INTO stocks({COLUMNS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
             )))
             .bind(&stock.id)
             .execute(&mut *tx)
@@ -58,7 +58,7 @@ impl StockRepository {
         let query = format!(
             r"
             INSERT INTO stocks({COLUMNS})
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(id) DO UPDATE SET
                 time = excluded.time,
                 ticker = excluded.ticker,
@@ -66,6 +66,7 @@ impl StockRepository {
                 number = excluded.number,
                 price = excluded.price,
                 price_currency = excluded.price_currency,
+                amount = excluded.amount,
                 fee = excluded.fee,
                 fee_currency = excluded.fee_currency,
                 provider = excluded.provider,
@@ -103,7 +104,7 @@ impl StockRepository {
                 r"
                 UPDATE stocks SET
                     time = ?, ticker = ?, action = ?, number = ?, price = ?,
-                    price_currency = ?, fee = ?, fee_currency = ?, provider = ?,
+                    price_currency = ?, amount = ?, fee = ?, fee_currency = ?, provider = ?,
                     settlement_date = ?, tax_paid = ?, tax_paid_currency = ?,
                     split_before = ?, split_after = ?
                 WHERE id = ?
@@ -144,13 +145,20 @@ impl StockRepository {
         &self,
         ticker: &str,
         provider: Option<&str>,
-        year: i32,
+        year: Option<i32>,
     ) -> Result<Vec<Stock>> {
-        let (_, end) = year_range(year).ok_or(RepositoryError::InvalidYear(year))?;
+        let end = year
+            .map(|year| {
+                year_range(year)
+                    .map(|(_, end)| end)
+                    .ok_or(RepositoryError::InvalidYear(year))
+            })
+            .transpose()?;
         sqlx::query(
             r"
             SELECT * FROM stocks
-            WHERE ticker = ?1 AND (?2 IS NULL OR provider = ?2 OR action = 'Split') AND time < ?3
+            WHERE ticker = ?1 AND (?2 IS NULL OR provider = ?2 OR action = 'Split')
+                AND (?3 IS NULL OR time < ?3)
             ORDER BY time, id
             ",
         )
@@ -192,6 +200,7 @@ struct StockValues {
     number: Option<String>,
     price: Option<String>,
     price_currency: Option<String>,
+    amount: Option<String>,
     fee: Option<String>,
     fee_currency: Option<String>,
     provider: Option<String>,
@@ -215,6 +224,7 @@ impl From<&Stock> for StockValues {
                 ..values.with_trade(
                     buy.number,
                     &buy.price,
+                    buy.amount,
                     &buy.fee,
                     &buy.provider,
                     buy.settlement_date,
@@ -227,6 +237,7 @@ impl From<&Stock> for StockValues {
                 ..values.with_trade(
                     sell.number,
                     &sell.price,
+                    sell.amount,
                     &sell.fee,
                     &sell.provider,
                     sell.settlement_date,
@@ -247,6 +258,7 @@ impl StockValues {
         self,
         number: Decimal,
         price: &Amount,
+        amount: Option<Decimal>,
         fee: &Amount,
         provider: &str,
         settlement_date: Option<NaiveDate>,
@@ -255,6 +267,7 @@ impl StockValues {
             number: Some(number.to_string()),
             price: Some(price.value.to_string()),
             price_currency: Some(price.currency.to_string()),
+            amount: amount.map(|amount| amount.to_string()),
             fee: Some(fee.value.to_string()),
             fee_currency: Some(fee.currency.to_string()),
             provider: Some(provider.to_owned()),
@@ -274,6 +287,7 @@ impl StockValues {
             .bind(self.number)
             .bind(self.price)
             .bind(self.price_currency)
+            .bind(self.amount)
             .bind(self.fee)
             .bind(self.fee_currency)
             .bind(self.provider)
@@ -295,6 +309,7 @@ fn read_stock(row: SqliteRow) -> Result<Stock> {
         "Buy" => StockAction::Buy(StockBuy {
             number: Decimal::from_str(&required::<String>(&row, "number", &id)?)?,
             price: amount(&row, "price", &id)?,
+            amount: optional_decimal(&row, "amount")?,
             fee: amount(&row, "fee", &id)?,
             provider: required(&row, "provider", &id)?,
             settlement_date: row.try_get("settlement_date")?,
@@ -302,6 +317,7 @@ fn read_stock(row: SqliteRow) -> Result<Stock> {
         "Sell" => StockAction::Sell(StockSell {
             number: Decimal::from_str(&required::<String>(&row, "number", &id)?)?,
             price: amount(&row, "price", &id)?,
+            amount: optional_decimal(&row, "amount")?,
             fee: amount(&row, "fee", &id)?,
             provider: required(&row, "provider", &id)?,
             settlement_date: row.try_get("settlement_date")?,
@@ -338,6 +354,13 @@ fn amount(row: &SqliteRow, field: &str, id: &str) -> Result<Amount> {
             id,
         )?)?,
     })
+}
+
+fn optional_decimal(row: &SqliteRow, field: &str) -> Result<Option<Decimal>> {
+    Ok(row
+        .try_get::<Option<String>, _>(field)?
+        .map(|value| Decimal::from_str(&value))
+        .transpose()?)
 }
 
 fn required<'r, T>(row: &'r SqliteRow, field: &str, id: &str) -> Result<T>

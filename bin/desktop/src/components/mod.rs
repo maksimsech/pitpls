@@ -1,3 +1,4 @@
+pub mod chart;
 pub mod copy;
 pub mod data;
 pub mod dialog;
@@ -7,15 +8,24 @@ pub mod header;
 pub mod nbp;
 pub mod notice;
 pub mod records;
+pub mod tabs;
 pub mod value;
+pub mod year_table;
 
 use crate::services::Error as ServiceError;
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::{
-    component::{alert::Alert, spinner::Spinner, *},
+    base::InteractiveElementExt,
+    component::{
+        alert::Alert,
+        scroll::{Scrollbar, ScrollbarMode},
+        spinner::Spinner,
+        *,
+    },
     *,
 };
-use std::time::Duration;
+use rust_i18n::t;
+use std::{rc::Rc, time::Duration};
 
 pub const SKELETON_DELAY: Duration = Duration::from_millis(180);
 
@@ -28,8 +38,8 @@ pub struct Status {
     /// Forms also set and clear `error`, so it can't tell a failed load from
     /// empty data.
     pub ready: bool,
-    pub error: Option<SharedString>,
-    pub message: Option<SharedString>,
+    pub error: Option<StatusText>,
+    pub message: Option<StatusText>,
     /// Replacing or dropping this cancels the pending UI callback. Work already
     /// started in the background still finishes.
     pub task: Option<Task<()>>,
@@ -96,19 +106,31 @@ impl Status {
         }
     }
 
-    pub fn render(&self) -> Div {
+    pub fn render<V: 'static>(&self, status: fn(&mut V) -> &mut Status, cx: &Context<V>) -> Div {
         v_flex()
             .flex_shrink_0()
             .gap_3()
-            .when_some(self.message.clone(), |view, message| {
-                view.child(Alert::success("operation-success", message))
+            .when_some(self.message.as_ref(), |view, message| {
+                view.child(
+                    Alert::success("operation-success", message.text()).on_close(cx.listener(
+                        move |view, _, _, cx| {
+                            status(view).message = None;
+                            cx.notify();
+                        },
+                    )),
+                )
             })
-            .children(self.error_alert())
+            .children(self.error_alert().map(|alert| {
+                alert.on_close(cx.listener(move |view, _, _, cx| {
+                    status(view).error = None;
+                    cx.notify();
+                }))
+            }))
     }
 
     pub fn error_alert(&self) -> Option<Alert> {
-        self.error.clone().map(|error| {
-            Alert::error("operation-error", error).title("Unable to complete the operation")
+        self.error.as_ref().map(|error| {
+            Alert::error("operation-error", error.text()).title(t!("common.operation_failed"))
         })
     }
 
@@ -116,9 +138,46 @@ impl Status {
         div()
             .text_size(px(12.))
             .text_color(crate::theme::palette(cx).faint)
-            .child("Refreshing…")
+            .child(t!("common.refreshing"))
             // Hidden, not empty, so it adds no gap to the header's row.
             .when(!(self.ready && self.loading_visible), |view| view.hidden())
+    }
+}
+
+/// Kept as its source rather than its words, so it follows a change of
+/// language while it's shown.
+#[derive(Clone)]
+pub enum StatusText {
+    Plain(SharedString),
+    Key(&'static str),
+    Error(Rc<ServiceError>),
+}
+
+impl StatusText {
+    pub fn text(&self) -> SharedString {
+        match self {
+            Self::Plain(text) => text.clone(),
+            Self::Key(key) => t!(*key).into(),
+            Self::Error(error) => error.as_ref().into(),
+        }
+    }
+}
+
+impl From<ServiceError> for StatusText {
+    fn from(error: ServiceError) -> Self {
+        Self::Error(Rc::new(error))
+    }
+}
+
+impl From<String> for StatusText {
+    fn from(text: String) -> Self {
+        Self::Plain(text.into())
+    }
+}
+
+impl From<SharedString> for StatusText {
+    fn from(text: SharedString) -> Self {
+        Self::Plain(text)
     }
 }
 
@@ -147,6 +206,32 @@ pub fn measure_width<V: 'static>(
     )
     .absolute()
     .size_full()
+}
+
+pub fn scroll_table(
+    id: impl Into<SharedString>,
+    rows: Div,
+    width: Pixels,
+    scroll: &ScrollHandle,
+) -> Stateful<Div> {
+    let id = id.into();
+    div()
+        .id(id.clone())
+        .relative()
+        .w_full()
+        .min_w_0()
+        .flex_shrink_0()
+        .overflow_hidden()
+        .child(
+            h_flex()
+                .id(SharedString::from(format!("{id}-pan")))
+                .w_full()
+                .overflow_x_scroll()
+                .lock_scroll_axis()
+                .track_scroll(scroll)
+                .child(rows.w(width).flex_none()),
+        )
+        .child(Scrollbar::horizontal(scroll).mode(ScrollbarMode::Hover))
 }
 
 pub fn spinner() -> Spinner {

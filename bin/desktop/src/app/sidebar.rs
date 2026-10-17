@@ -9,6 +9,7 @@ use gpui_kit::{
     base::Easing,
     component::{button::*, popover::Popover},
 };
+use rust_i18n::t;
 use std::time::Duration;
 
 const ITEM_HEIGHT: Pixels = px(30.);
@@ -84,9 +85,9 @@ impl Desktop {
         let row = title_row(cx).height / px(1.);
         let body_top = expansion.size(row + 40., row + 8.);
         let toggle_label = if collapsed {
-            "Expand sidebar"
+            t!("nav.expand")
         } else {
-            "Collapse sidebar"
+            t!("nav.collapse")
         };
         let wordmark = (expansion.fade > 0.).then(|| wordmark(expansion, window, cx));
         div()
@@ -144,6 +145,21 @@ impl Desktop {
         let p = *palette(cx);
         let collapsed = self.preferences.sidebar_collapsed;
         let label = header::year_label(self.preferences.year);
+        let (icon, caption, change_label, tooltip) = if self.preferences.year.is_some() {
+            (
+                IconName::Calendar,
+                t!("year.tax_year"),
+                t!("year.change_tax_year", year = label),
+                t!("year.tax_year_label", year = label),
+            )
+        } else {
+            (
+                IconName::ChartPie,
+                t!("year.portfolio"),
+                t!("year.change_portfolio"),
+                t!("year.portfolio_label"),
+            )
+        };
         // A disabled trigger would still open a popover, so a switcher
         // locked by a page isn't wrapped in one. A year being saved keeps it,
         // since remounting the open menu would move focus out of its field;
@@ -156,7 +172,7 @@ impl Desktop {
             .pr(px(10.))
             .rounded(px(10.))
             .border_color(p.line)
-            .accessibility_label(format!("Tax year {label}, change"))
+            .accessibility_label(change_label.clone())
             .disabled(!enabled)
             .child(
                 h_flex()
@@ -172,19 +188,14 @@ impl Desktop {
                             .rounded(px(7.))
                             .bg(p.selected)
                             .text_color(p.muted)
-                            .child(Icon::new(IconName::Calendar).size(px(15.))),
+                            .child(Icon::new(icon).size(px(15.))),
                     )
                     .child(
                         v_flex()
                             .flex_1()
                             .min_w_0()
                             .line_height(relative(1.25))
-                            .child(
-                                div()
-                                    .text_size(px(11.5))
-                                    .text_color(p.faint)
-                                    .child("Tax year"),
-                            )
+                            .child(div().text_size(px(11.5)).text_color(p.faint).child(caption))
                             .child(
                                 div()
                                     .text_size(BUTTON_TEXT)
@@ -204,22 +215,20 @@ impl Desktop {
             .p_0()
             .rounded(px(7.))
             .border_color(p.line)
-            .accessibility_label(format!("Tax year {label}, change"))
+            .accessibility_label(change_label)
             // Only in the rail. While the sidebar expands, this button slides
             // under the pointer and fades out; a tooltip it started would
             // stay once it's no longer drawn, since the kit hides tooltips on
             // hover-out.
             .when(collapsed, |button| {
-                button
-                    .tooltip(format!("Tax year {label}"))
-                    .tooltip_placement(Placement::Right)
+                button.tooltip(tooltip).tooltip_placement(Placement::Right)
             })
             .disabled(!enabled)
             .child(div().text_size(px(12.)).font_semibold().child(
                 if self.preferences.year.is_some() {
                     label.clone()
                 } else {
-                    "All".into()
+                    t!("year.all_short").into()
                 },
             ));
         let mut trigger = |id: &'static str, button: Button, active: bool| {
@@ -301,12 +310,12 @@ impl Desktop {
             .gap(px(2.))
             .overflow_y_scroll()
             .child(self.page_item(Page::Home, None, expansion, cx))
-            .child(group("Records", expansion, cx))
+            .child(group(t!("nav.records"), expansion, cx))
             .child(self.page_item(Page::Dividends, count(dividends), expansion, cx))
             .child(self.page_item(Page::Interests, count(interests), expansion, cx))
             .child(self.page_item(Page::Crypto, count(cryptos), expansion, cx))
             .child(self.page_item(Page::Stocks, count(stocks), expansion, cx))
-            .child(group("Data", expansion, cx))
+            .child(group(t!("nav.data"), expansion, cx))
             .child(self.page_item(Page::Imports, None, expansion, cx))
             .child(self.page_item(Page::Rates, None, expansion, cx))
     }
@@ -330,7 +339,7 @@ impl Desktop {
                 .into_any_element()
         });
         nav_item(
-            SharedString::from(format!("navigate-{}", page.title())),
+            ("navigate", page as usize),
             page.title(),
             page.icon(),
             count,
@@ -354,9 +363,9 @@ impl Desktop {
     fn sidebar_footer(&self, expansion: Expansion, cx: &mut Context<Self>) -> Div {
         let dark = cx.theme().is_dark();
         let theme_label = if dark {
-            "Switch to light theme"
+            t!("nav.light_theme")
         } else {
-            "Switch to dark theme"
+            t!("nav.dark_theme")
         };
         div()
             .relative()
@@ -415,11 +424,12 @@ fn wordmark(expansion: Expansion, window: &Window, cx: &App) -> Svg {
 
 fn nav_item(
     id: impl Into<ElementId>,
-    label: &'static str,
+    label: impl Into<SharedString>,
     icon: IconName,
     trailing: Option<AnyElement>,
     expansion: Expansion,
 ) -> Button {
+    let label = label.into();
     Button::new(id)
         .ghost()
         .w_full()
@@ -428,7 +438,7 @@ fn nav_item(
         .pl(expansion.size(22., 10.))
         .pr(px(10.))
         .rounded(px(8.))
-        .accessibility_label(label)
+        .accessibility_label(label.clone())
         .child(
             h_flex()
                 .w_full()
@@ -456,7 +466,8 @@ fn nav_item(
         )
 }
 
-fn group(label: &'static str, expansion: Expansion, cx: &App) -> Div {
+fn group(label: impl Into<SharedString>, expansion: Expansion, cx: &App) -> Div {
+    let label = label.into();
     let p = *palette(cx);
     div()
         .relative()

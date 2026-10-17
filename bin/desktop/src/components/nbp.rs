@@ -1,5 +1,5 @@
 use super::{Status, dialog, form, spinner};
-use crate::{services::Error as ServiceError, theme::palette};
+use crate::{i18n::plural, services::Error as ServiceError, theme::palette};
 use chrono::Datelike;
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::{
@@ -10,6 +10,7 @@ use gpui_kit::{
     *,
 };
 use pitpls_app::use_case::rate;
+use rust_i18n::t;
 use std::sync::Arc;
 
 pub fn open<V: 'static>(
@@ -26,7 +27,7 @@ pub fn open<V: 'static>(
 
 pub async fn import(app: Arc<pitpls_app::App>, year: i32) -> Result<String, ServiceError> {
     let count = rate::import_api(&app, year).await?;
-    Ok(format!("Imported {count} rates."))
+    Ok(plural("nbp.imported", count as u64).into_owned())
 }
 
 /// The year in the field, if NBP publishes rates for it.
@@ -36,7 +37,7 @@ pub fn year(input: &Entity<InputState>, cx: &App) -> Result<i32, String> {
         if (2002..=current_year).contains(&year) {
             Ok(year)
         } else {
-            Err(format!("Enter a year between 2002 and {current_year}"))
+            Err(t!("nbp.year_range", first = 2002, last = current_year).into_owned())
         }
     })
 }
@@ -55,20 +56,24 @@ pub fn dialog<V: 'static>(
         this,
         dialog,
         form::field(
-            "Year",
+            t!("field.year"),
             Input::new(input)
-                .aria_label("Year")
+                .aria_label(t!("field.year"))
                 .disabled(busy)
                 .when(busy, |input| {
                     input.suffix(spinner().color(palette(cx).muted))
                 }),
             cx,
         ),
-        if busy { "Importing…" } else { "Import" },
+        if busy {
+            t!("common.importing")
+        } else {
+            t!("common.import")
+        },
         status,
         submit,
         close,
         cx,
     )
-    .title("Import from NBP")
+    .title(t!("nbp.import_title"))
 }

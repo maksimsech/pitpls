@@ -19,7 +19,8 @@ use thiserror::Error;
 use super::exchange::country_of;
 use super::validation::{
     AmountField, Error as ValidationError, TextField, parse_amount, parse_split, parse_time,
-    validate_not_empty, validate_not_negative, validate_positive, validate_year,
+    validate_not_empty, validate_not_negative, validate_optional_year, validate_positive,
+    validate_year,
 };
 use crate::App;
 
@@ -56,6 +57,8 @@ pub struct TradeFields {
     pub shares: String,
     pub price: String,
     pub price_currency: Currency,
+    // An imported trade's amount, kept by the editor while shares and price stay the same.
+    pub amount: Option<Decimal>,
     pub fee: String,
     pub fee_currency: Currency,
     pub provider: String,
@@ -148,6 +151,7 @@ fn build_stock(id: String, fields: StockFields) -> Result<(Stock, Option<Mic>), 
             let StockBuy {
                 number,
                 price,
+                amount,
                 fee,
                 provider,
                 settlement_date,
@@ -161,6 +165,7 @@ fn build_stock(id: String, fields: StockFields) -> Result<(Stock, Option<Mic>), 
             let sell = StockSell {
                 number,
                 price,
+                amount,
                 fee,
                 provider,
                 settlement_date,
@@ -194,6 +199,7 @@ fn build_trade(fields: TradeFields) -> Result<StockBuy, ValidationError> {
             value: parse_amount(&fields.price, AmountField::Price)?,
             currency: fields.price_currency,
         },
+        amount: fields.amount,
         fee: Amount {
             value: parse_amount(&fields.fee, AmountField::Fee)?,
             currency: fields.fee_currency,
@@ -220,9 +226,17 @@ fn validate(stock: &Stock) -> Result<(), ValidationError> {
     validate_year(tax_date(stock.time).year())?;
     validate_not_empty(&stock.ticker, TextField::Ticker)?;
     match &stock.action {
-        StockAction::Buy(buy) => validate_trade(buy.number, &buy.price, &buy.fee, &buy.provider),
+        StockAction::Buy(buy) => {
+            validate_trade(buy.number, &buy.price, buy.amount, &buy.fee, &buy.provider)
+        }
         StockAction::Sell(sell) => {
-            validate_trade(sell.number, &sell.price, &sell.fee, &sell.provider)?;
+            validate_trade(
+                sell.number,
+                &sell.price,
+                sell.amount,
+                &sell.fee,
+                &sell.provider,
+            )?;
             sell.tax_paid.map_or(Ok(()), |tax_paid| {
                 validate_not_negative(tax_paid.value, AmountField::TaxPaid)
             })
@@ -237,11 +251,15 @@ fn validate(stock: &Stock) -> Result<(), ValidationError> {
 fn validate_trade(
     shares: Decimal,
     price: &Amount,
+    amount: Option<Decimal>,
     fee: &Amount,
     provider: &str,
 ) -> Result<(), ValidationError> {
     validate_positive(shares, AmountField::Shares)?;
     validate_not_negative(price.value, AmountField::Price)?;
+    if let Some(amount) = amount {
+        validate_not_negative(amount, AmountField::Amount)?;
+    }
     validate_not_negative(fee.value, AmountField::Fee)?;
     validate_not_empty(provider, TextField::Provider)
 }
@@ -318,14 +336,13 @@ pub async fn load_stocks(app: &App, year: i32) -> Result<StockData, Error> {
     })
 }
 
-// Up to 31.12 of the year: a year view never shows what happened later.
 pub async fn load_history(
     app: &App,
     ticker: &str,
     provider: &str,
-    year: i32,
+    year: Option<i32>,
 ) -> Result<StockHistory, Error> {
-    validate_year(year)?;
+    validate_optional_year(year)?;
     let records = app
         .db
         .stock_repo()
@@ -356,7 +373,7 @@ pub async fn preview_stock(
     let records = app
         .db
         .stock_repo()
-        .get_by_ticker_through_year(&draft.ticker, None, tax_date(draft.time).year())
+        .get_by_ticker_through_year(&draft.ticker, None, Some(tax_date(draft.time).year()))
         .await?;
     let mut instruments = app.db.instrument_repo().list().await?;
     instruments.retain(|instrument| instrument.ticker == draft.ticker);
