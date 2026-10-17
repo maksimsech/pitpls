@@ -2,7 +2,10 @@ use crate::{components::tabs::TabItem, format::DisplayText, theme::palette};
 use gpui_kit::{
     assets::IconName,
     base::InteractiveElementExt,
-    component::{Icon, h_flex, scroll::ScrollableElement},
+    component::{
+        Icon, h_flex,
+        scroll::{Scrollbar, ScrollbarMode},
+    },
     *,
 };
 use std::rc::Rc;
@@ -33,6 +36,10 @@ pub trait PortfolioView: Default + Send + 'static {
 
     fn records_note(&self) -> SharedString {
         SharedString::default()
+    }
+
+    fn callout(&self) -> Option<SharedString> {
+        None
     }
 
     fn filtered_count(&self, _: usize, _: &str) -> Option<(usize, usize)> {
@@ -94,5 +101,5 @@ pub fn scroll_table(rows: Div, width: Pixels, scroll: &ScrollHandle) -> Stateful
                 .track_scroll(scroll)
                 .child(rows.w(width).flex_none()),
         )
-        .horizontal_scrollbar(scroll)
+        .child(Scrollbar::horizontal(scroll).mode(ScrollbarMode::Hover))
 }

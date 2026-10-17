@@ -8,7 +8,7 @@ use crate::{
     navigation::Page,
     services::Error as ServiceError,
 };
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, NaiveDate, Utc};
 use gpui_kit::{
     component::{date_picker::DatePickerState, input::InputState},
     *,
@@ -23,6 +23,7 @@ use pitpls_core::{
     tax::POLAND_TAX,
 };
 use pitpls_importers::OutputType;
+use portfolio::InterestPortfolioView;
 use rust_decimal::Decimal;
 use rust_i18n::t;
 use std::{borrow::Cow, sync::Arc};
@@ -31,7 +32,7 @@ pub struct Interests;
 
 impl RecordKind for Interests {
     type Record = CalculatedInterest;
-    type Portfolio = ();
+    type Portfolio = InterestPortfolioView;
     type Form = InterestForm;
 
     const PAGE: Page = Page::Interests;
@@ -104,6 +105,56 @@ impl RecordKind for Interests {
         let value = records.iter().map(|record| record.calculated_value).sum();
         let to_pay = records.iter().map(|record| record.to_pay).sum();
         vec![(None, value), (Some("records.subtotal_to_pay"), to_pay)]
+    }
+
+    fn portfolio_columns() -> Vec<RecordColumn> {
+        let mut columns = Self::columns();
+        columns.pop();
+        columns
+    }
+
+    fn portfolio_display(record: &CalculatedInterest) -> RowDisplay {
+        let mut row = Self::display(record);
+        row.cells.pop();
+        row.steps.truncate(1);
+        row
+    }
+
+    fn portfolio_preview(record: &CalculatedInterest) -> Preview {
+        let mut preview = Self::preview_display(record);
+        preview.results.clear();
+        preview
+    }
+
+    fn portfolio_subtotal(records: &[&CalculatedInterest]) -> Vec<(Option<&'static str>, Decimal)> {
+        vec![(
+            None,
+            records.iter().map(|record| record.calculated_value).sum(),
+        )]
+    }
+
+    async fn load_portfolio(
+        app: Arc<pitpls_app::App>,
+        today: NaiveDate,
+    ) -> Result<(InterestPortfolioView, Vec<CalculatedInterest>), ServiceError> {
+        let mut data =
+            pitpls_app::use_case::portfolio::load_interest_portfolio(&app, today).await?;
+        data.data.calculated.sort_unstable_by(|left, right| {
+            right
+                .time
+                .cmp(&left.time)
+                .then_with(|| left.id.cmp(&right.id))
+        });
+        Ok((
+            InterestPortfolioView::new(
+                data.months,
+                data.years,
+                data.providers,
+                data.last_12_months,
+                today,
+            ),
+            data.data.calculated,
+        ))
     }
 
     fn imported(output: &OutputType) -> bool {
@@ -285,3 +336,4 @@ impl RecordForm for InterestForm {
             ))
     }
 }
+mod portfolio;

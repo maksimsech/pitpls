@@ -1641,6 +1641,63 @@ dividends:
     pl: Dodaj dywidendę
 
 interests:
+  currency:
+    en: Currency
+    pl: Waluta
+  received:
+    en: Received
+    pl: Otrzymano
+  last_12_months:
+    en: Last 12 months
+    pl: Ostatnie 12 miesięcy
+  providers:
+    en: Providers
+    pl: Platformy
+  since:
+    en: "since %{month}"
+    pl: "od %{month}"
+  by_month:
+    en: By month
+    pl: Według miesiąca
+  by_provider:
+    en: By provider
+    pl: Według platformy
+  chart_title:
+    en: Interest by month
+    pl: Odsetki według miesiąca
+  chart_caption:
+    en: PLN at each record's NBP rate
+    pl: PLN po kursie NBP z każdego wpisu
+  interest:
+    en: Interest
+    pl: Odsetki
+  records:
+    en: Records
+    pl: Wpisy
+  total_pln:
+    en: Total, PLN
+    pl: Razem, PLN
+  first:
+    en: First
+    pl: Pierwszy wpis
+  last:
+    en: Last
+    pl: Ostatni wpis
+  received_pln:
+    en: Received, PLN
+    pl: Otrzymano, PLN
+  provider_caption:
+    en: Where the interest came from
+    pl: Skąd pochodzą odsetki
+  provider_note:
+    en: Last is the latest record from that provider.
+    pl: Ostatni wpis to najnowszy wpis z danej platformy.
+  records_caption:
+    en: Every interest record, newest first
+    pl: Wszystkie wpisy odsetek, od najnowszych
+  records_note:
+    en: Same table as a tax year without the To pay column; an opened row shows only the conversion.
+    pl: Ta sama tabela co w widoku podatkowym, bez kolumny Do zapłaty; rozwinięty wpis pokazuje tylko przeliczenie na PLN.
   empty:
     en: No interest yet
     pl: Brak odsetek
@@ -1665,6 +1722,69 @@ interests:
     pl: Dodaj odsetki
 
 crypto:
+  put_in:
+    en: Put in
+    pl: Włożono
+  taken_out:
+    en: Taken out
+    pl: Wycofano
+  net:
+    en: Net
+    pl: Netto
+  buys_and_fees:
+    en: · buys and fees
+    pl: · zakupy i prowizje
+  sales:
+    en: · sales
+    pl: · sprzedaże
+  by_year:
+    en: By year
+    pl: Według roku
+  cash_note:
+    en: Crypto records hold only the PLN or fiat side of a buy or sale, not the coin or its amount, so there is no holding, value or profit here. Net is cash out minus cash in.
+    pl: Wpisy krypto zawierają tylko kwotę zakupu lub sprzedaży w PLN albo innej walucie tradycyjnej, bez nazwy i ilości kryptowaluty. Nie pokazujemy więc stanu posiadania, jego wartości ani zysku. Netto to kwota wycofana minus włożona.
+  chart_title:
+    en: Net cash by year
+    pl: Przepływy netto według roku
+  chart_caption:
+    en: "sales − buys − fees · below zero: more went in than came out"
+    pl: "sprzedaże − zakupy − prowizje · poniżej zera: włożono więcej, niż wycofano"
+  bought:
+    en: Bought
+    pl: Zakupy
+  sold:
+    en: Sold
+    pl: Sprzedaże
+  fees:
+    en: Fees
+    pl: Prowizje
+  buys:
+    en: Buys
+    pl: Zakupy
+  sells:
+    en: Sells
+    pl: Sprzedaże
+  bought_pln:
+    en: Bought, PLN
+    pl: Zakupy, PLN
+  sold_pln:
+    en: Sold, PLN
+    pl: Sprzedaże, PLN
+  fees_pln:
+    en: Fees, PLN
+    pl: Prowizje, PLN
+  net_pln:
+    en: Net, PLN
+    pl: Netto, PLN
+  year_note:
+    en: A year opens as a tax year with E-36 and E-37.
+    pl: Wybrany rok otwiera widok podatkowy z E-36 i E-37.
+  records_caption:
+    en: Every crypto record, newest first
+    pl: Wszystkie wpisy krypto, od najnowszych
+  records_note:
+    en: 'Same table as a tax year. An opened row shows the conversion only, without the "adds to E-36 / E-37" lines.'
+    pl: Ta sama tabela co w widoku podatkowym. Rozwinięty wpis pokazuje tylko przeliczenie na PLN, bez pozycji trafiających do E-36 i E-37.
   empty:
     en: No crypto yet
     pl: Brak kryptowalut

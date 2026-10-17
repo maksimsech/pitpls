@@ -124,6 +124,9 @@ pub trait RecordKind: 'static {
     fn portfolio_preview(record: &Self::Record) -> Preview {
         Self::preview_display(record)
     }
+    fn portfolio_subtotal(records: &[&Self::Record]) -> Vec<(Option<&'static str>, Decimal)> {
+        Self::subtotal(records)
+    }
     fn save(
         app: Arc<pitpls_app::App>,
         submission: <Self::Form as RecordForm>::Submission,
@@ -329,10 +332,14 @@ impl<K: RecordKind> RecordsPage<K> {
                 .map(|&index| &self.records[index])
                 .collect::<Vec<_>>();
             group.count = record_count(records.len() as u32).into();
-            group.summary = K::subtotal(&records)
-                .into_iter()
-                .map(|(label, value)| (label, pln(value)))
-                .collect();
+            group.summary = (if self.is_portfolio() {
+                K::portfolio_subtotal(&records)
+            } else {
+                K::subtotal(&records)
+            })
+            .into_iter()
+            .map(|(label, value)| (label, pln(value)))
+            .collect();
         }
         self.table.set_groups(groups);
     }
@@ -1109,6 +1116,19 @@ impl<K: RecordKind> Render for RecordsPage<K> {
             let empty = no_match(&self.query, cx);
             body = body.child(self.totals(compact, cx));
             if let Some(portfolio) = &self.portfolio {
+                if let Some(callout) = portfolio.callout() {
+                    body = body.child(
+                        notice::info(callout, cx)
+                            .flex_shrink_0()
+                            .mx(px(20.))
+                            .mb(px(8.))
+                            .p(px(12.))
+                            .rounded(px(10.))
+                            .border_1()
+                            .border_color(palette(cx).line)
+                            .bg(palette(cx).hover),
+                    );
+                }
                 let mut items = portfolio
                     .tabs()
                     .into_iter()

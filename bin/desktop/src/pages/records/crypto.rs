@@ -8,7 +8,7 @@ use crate::{
     navigation::Page,
     services::Error as ServiceError,
 };
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, NaiveDate, Utc};
 use gpui_kit::{
     component::{date_picker::DatePickerState, input::InputState},
     *,
@@ -22,6 +22,7 @@ use pitpls_core::{
     crypto::{self as core_crypto, Action, CalculatedCrypto},
 };
 use pitpls_importers::OutputType;
+use portfolio::CryptoPortfolioView;
 use rust_decimal::Decimal;
 use rust_i18n::t;
 use std::{borrow::Cow, sync::Arc};
@@ -30,7 +31,7 @@ pub struct Crypto;
 
 impl RecordKind for Crypto {
     type Record = CalculatedCrypto;
-    type Portfolio = ();
+    type Portfolio = CryptoPortfolioView;
     type Form = CryptoForm;
 
     const PAGE: Page = Page::Crypto;
@@ -158,6 +159,57 @@ impl RecordKind for Crypto {
 
     fn imported(output: &OutputType) -> bool {
         matches!(output, OutputType::Crypto)
+    }
+
+    fn portfolio_display(record: &CalculatedCrypto) -> RowDisplay {
+        let mut row = Self::display(record);
+        row.steps.truncate(2);
+        row
+    }
+
+    fn portfolio_columns() -> Vec<RecordColumn> {
+        let mut columns = Self::columns();
+        columns[1] = RecordColumn::new("column.action", CellStyle::Tag, 96., 84.);
+        columns
+    }
+
+    fn portfolio_preview(record: &CalculatedCrypto) -> Preview {
+        let mut preview = Self::preview_display(record);
+        preview.results.truncate(1);
+        preview
+    }
+
+    fn portfolio_subtotal(records: &[&CalculatedCrypto]) -> Vec<(Option<&'static str>, Decimal)> {
+        Self::subtotal(records)
+            .into_iter()
+            .map(|(label, value)| {
+                (
+                    Some(if label == Some("records.subtotal_income") {
+                        "crypto.taken_out"
+                    } else {
+                        "crypto.put_in"
+                    }),
+                    value,
+                )
+            })
+            .collect()
+    }
+
+    async fn load_portfolio(
+        app: Arc<pitpls_app::App>,
+        today: NaiveDate,
+    ) -> Result<(CryptoPortfolioView, Vec<CalculatedCrypto>), ServiceError> {
+        let mut data = pitpls_app::use_case::portfolio::load_crypto_portfolio(&app).await?;
+        data.data.calculated.sort_unstable_by(|left, right| {
+            right
+                .time
+                .cmp(&left.time)
+                .then_with(|| left.id.cmp(&right.id))
+        });
+        Ok((
+            CryptoPortfolioView::new(data.years, data.totals, today),
+            data.data.calculated,
+        ))
     }
 
     fn count(year: &YearInfo) -> u32 {
@@ -416,3 +468,4 @@ impl RecordForm for CryptoForm {
             ))
     }
 }
+mod portfolio;

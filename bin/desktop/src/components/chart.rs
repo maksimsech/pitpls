@@ -49,7 +49,6 @@ impl<T: 'static> BarChart<T> {
         self
     }
 
-    #[expect(dead_code, reason = "The Interests portfolio adopts this in task 9.")]
     pub fn months(mut self, month: impl Fn(&T) -> (i32, u32) + 'static) -> Self {
         self.month = Some(Box::new(month));
         self
@@ -181,6 +180,9 @@ impl<T: 'static> RenderOnce for BarChart<T> {
                         .left_0()
                         .w_full()
                         .text_center()
+                        .when(self.month.is_some(), |label| {
+                            label.text_left().whitespace_nowrap()
+                        })
                         .text_size(px(12.))
                         .text_color(p.muted)
                         .child(band_label),
@@ -219,8 +221,8 @@ impl<T: 'static> RenderOnce for BarChart<T> {
                             .child(
                                 div()
                                     .w(px(24.))
-                                    .max_w_full()
-                                    .h(px(length))
+                                    .max_w(relative(if self.month.is_some() { 0.7 } else { 1. }))
+                                    .h(px(if decimal.is_zero() { 0. } else { length }))
                                     .bg(if negative { p.negative } else { p.series })
                                     .when_else(
                                         negative,
