@@ -31,6 +31,7 @@ pub struct Interests;
 
 impl RecordKind for Interests {
     type Record = CalculatedInterest;
+    type Portfolio = ();
     type Form = InterestForm;
 
     const PAGE: Page = Page::Interests;

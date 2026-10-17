@@ -65,14 +65,18 @@ impl YearTable {
             .child(div().w(px(28.)).flex_shrink_0())
     }
 
-    fn cells(&self, cells: Vec<DisplayText>, cx: &App) -> Vec<Div> {
+    fn cells(&self, cells: Vec<DisplayText>, cx: &App) -> Vec<Stateful<Div>> {
         cells
             .iter()
             .enumerate()
             .map(|(index, cell)| {
-                self.cell(index + 1)
-                    .text_color(palette(cx).text)
-                    .child(value::text(cell, true, false, cx))
+                value::full_tooltip(
+                    self.cell(index + 1)
+                        .id(("year-value", index))
+                        .text_color(palette(cx).text)
+                        .child(value::text(cell, true, false, cx)),
+                    cell,
+                )
             })
             .collect()
     }

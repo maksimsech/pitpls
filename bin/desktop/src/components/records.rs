@@ -432,6 +432,11 @@ pub enum StepLine {
     Formula(Vec<DisplayText>),
     Result(Vec<DisplayText>),
     Caption(SharedString),
+    ValueCaption {
+        label: SharedString,
+        value: DisplayText,
+        caption: SharedString,
+    },
     Entry {
         label: SharedString,
         value: Vec<DisplayText>,
@@ -537,6 +542,23 @@ fn step(index: usize, step: &Step, copy: bool, cx: &App) -> Stateful<Div> {
                     .text_color(p.faint)
                     .child(text.clone())
                     .into_any_element(),
+                StepLine::ValueCaption {
+                    label,
+                    value,
+                    caption,
+                } => h_flex()
+                    .mt(px(3.))
+                    .flex_wrap()
+                    .gap_x(px(4.))
+                    .text_size(px(12.))
+                    .text_color(p.faint)
+                    .child(label.clone())
+                    .child(value::full_tooltip(
+                        div().id(id).child(value::text(value, false, true, cx)),
+                        value,
+                    ))
+                    .child(div().min_w_0().max_w_full().child(caption.clone()))
+                    .into_any_element(),
                 StepLine::Entry {
                     label,
                     value,
@@ -605,7 +627,7 @@ pub fn preview_error(error: SharedString, cx: &App) -> Div {
     preview_frame(None, cx).child(div().text_color(palette(cx).warning).child(error))
 }
 
-pub fn preview_band(preview: &Result<Preview, SharedString>, cx: &App) -> Div {
+pub fn preview_band(preview: &Result<Preview, SharedString>, copy: bool, cx: &App) -> Div {
     let p = *palette(cx);
     match preview {
         Ok(preview) => preview_frame(
@@ -618,14 +640,14 @@ pub fn preview_band(preview: &Result<Preview, SharedString>, cx: &App) -> Div {
                 .gap_x(px(4.))
                 .text_color(p.muted)
                 .children(preview.formula.iter().enumerate().map(|(index, part)| {
-                    preview_value(("preview-formula", index), part, div(), true, cx)
+                    preview_value(("preview-formula", index), part, div(), copy, cx)
                 }))
                 .child("=")
                 .child(preview_value(
                     "preview-value",
                     &preview.value,
                     div().font_semibold().text_color(p.text),
-                    true,
+                    copy,
                     cx,
                 )),
         )
@@ -642,7 +664,7 @@ pub fn preview_band(preview: &Result<Preview, SharedString>, cx: &App) -> Div {
                             *label,
                             result,
                             div().text_color(p.text),
-                            true,
+                            copy,
                             cx,
                         ))
                     })),

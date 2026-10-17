@@ -1,19 +1,22 @@
 mod crypto;
 mod dividends;
 mod interests;
+mod portfolio;
 mod table;
 
 pub use self::{
     crypto::Crypto,
     dividends::Dividends,
     interests::Interests,
+    portfolio::{OpenYear, PortfolioStat, PortfolioView},
     table::{RecordTable, TableHost, selection_bar, table},
 };
 
 use crate::{
     components::{
-        ButtonText, Status, dialog, form, header, nbp, notice,
+        ButtonText, Status, dialog, form, header, measure_width, nbp, notice,
         records::{Preview, RecordColumn, RowDisplay, preview_band},
+        tabs::{TabItem, tabs},
         value,
     },
     format::{DisplayText, amount, date, pln, record_count},
@@ -22,7 +25,7 @@ use crate::{
     services::Error as ServiceError,
     theme::{palette, tabular_digits},
 };
-use chrono::{DateTime, Datelike, NaiveTime, Utc};
+use chrono::{DateTime, Datelike, NaiveDate, NaiveTime, Utc};
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::{
     assets::IconName,
@@ -42,7 +45,7 @@ use pitpls_core::{common::Amount, time};
 use pitpls_importers::{IMPORTERS, OutputType};
 use rust_decimal::Decimal;
 use rust_i18n::t;
-use std::{borrow::Cow, collections::HashSet, future::Future, sync::Arc};
+use std::{borrow::Cow, collections::HashSet, future::Future, rc::Rc, sync::Arc};
 
 pub enum Submission<C, U> {
     Create(C),
@@ -79,6 +82,7 @@ type Draft<K> = <<K as RecordKind>::Form as RecordForm>::Draft;
 pub trait RecordKind: 'static {
     type Record: Send + 'static;
     type Form: RecordForm<Record = Self::Record>;
+    type Portfolio: PortfolioView;
 
     const PAGE: Page;
     /// Message keys, as are the labels below; `OTHER_YEAR` takes a count.
@@ -101,6 +105,25 @@ pub trait RecordKind: 'static {
         app: Arc<pitpls_app::App>,
         year: Option<i32>,
     ) -> impl Future<Output = Result<(Vec<Decimal>, Vec<Self::Record>), ServiceError>> + Send;
+    fn load_portfolio(
+        app: Arc<pitpls_app::App>,
+        _today: NaiveDate,
+    ) -> impl Future<Output = Result<(Self::Portfolio, Vec<Self::Record>), ServiceError>> + Send
+    {
+        async move {
+            let (_, records) = Self::load(app, None).await?;
+            Ok((Self::Portfolio::default(), records))
+        }
+    }
+    fn portfolio_columns() -> Vec<RecordColumn> {
+        Self::columns()
+    }
+    fn portfolio_display(record: &Self::Record) -> RowDisplay {
+        Self::display(record)
+    }
+    fn portfolio_preview(record: &Self::Record) -> Preview {
+        Self::preview_display(record)
+    }
     fn save(
         app: Arc<pitpls_app::App>,
         submission: <Self::Form as RecordForm>::Submission,
@@ -161,6 +184,9 @@ pub struct RecordsPage<K: RecordKind> {
     year: Option<i32>,
     status: Status,
     records: Vec<K::Record>,
+    portfolio: Option<K::Portfolio>,
+    portfolio_tab: Option<usize>,
+    portfolio_scroll: ScrollHandle,
     totals: Vec<(&'static str, DisplayText)>,
     table: RecordTable,
     filter: Entity<InputState>,
@@ -171,6 +197,7 @@ pub struct RecordsPage<K: RecordKind> {
     deleting: HashSet<String>,
     nbp_year: Option<Entity<InputState>>,
     missing_rate: Option<SharedString>,
+    missing_rate_year: Option<i32>,
     other_year: Option<(i32, u32)>,
     focus: FocusHandle,
     _subscriptions: [Subscription; 2],
@@ -210,13 +237,26 @@ impl<K: RecordKind> RecordsPage<K> {
                 window.focus(&this.focus, cx);
             }
         });
+        let portfolio = year.is_none() && !K::Portfolio::LABELS.is_empty();
         let mut view = Self {
             context,
             year,
             status: Status::default(),
             records: Vec::new(),
             totals: Vec::new(),
-            table: RecordTable::new("records-horizontal", K::columns(), true, width),
+            portfolio: None,
+            portfolio_tab: portfolio.then_some(0),
+            portfolio_scroll: ScrollHandle::default(),
+            table: RecordTable::new(
+                "records-horizontal",
+                if portfolio {
+                    K::portfolio_columns()
+                } else {
+                    K::columns()
+                },
+                true,
+                width,
+            ),
             filter,
             query: String::new(),
             page_scroll: ScrollHandle::default(),
@@ -225,12 +265,17 @@ impl<K: RecordKind> RecordsPage<K> {
             deleting: HashSet::new(),
             nbp_year: None,
             missing_rate: None,
+            missing_rate_year: None,
             other_year: None,
             focus: cx.focus_handle(),
             _subscriptions: [filter_subscription, focus_subscription],
         };
         view.refresh(window, cx);
         view
+    }
+
+    fn is_portfolio(&self) -> bool {
+        self.year.is_none() && !K::Portfolio::LABELS.is_empty()
     }
 
     fn locked(&self) -> bool {
@@ -248,6 +293,7 @@ impl<K: RecordKind> RecordsPage<K> {
     fn apply(
         &mut self,
         totals: Vec<Decimal>,
+        portfolio: Option<K::Portfolio>,
         records: Vec<K::Record>,
         other_year: Option<(i32, u32)>,
     ) {
@@ -256,10 +302,18 @@ impl<K: RecordKind> RecordsPage<K> {
             .copied()
             .zip(totals.into_iter().map(pln))
             .collect();
+        self.portfolio = portfolio;
         self.other_year = other_year;
-        let changed = self
-            .table
-            .set_rows(records.iter().map(K::display).collect());
+        let changed = self.table.set_rows(
+            records
+                .iter()
+                .map(if self.is_portfolio() {
+                    K::portfolio_display
+                } else {
+                    K::display
+                })
+                .collect(),
+        );
         self.records = records;
         if changed {
             self.regroup();
@@ -310,16 +364,23 @@ impl<K: RecordKind> RecordsPage<K> {
         if draft == editor.draft {
             return;
         }
+        let portfolio = self.is_portfolio();
         let task = draft.clone().map(|draft| {
             self.context.services.run(
                 window,
                 cx,
                 move |app| K::preview(app, draft),
-                |this, result, _, cx| {
+                move |this, result, _, cx| {
                     if let Some(editor) = &mut this.editor {
                         editor.preview = Some(
                             result
-                                .map(|record| K::preview_display(&record))
+                                .map(|record| {
+                                    if portfolio {
+                                        K::portfolio_preview(&record)
+                                    } else {
+                                        K::preview_display(&record)
+                                    }
+                                })
                                 .map_err(SharedString::from),
                         );
                         cx.notify();
@@ -483,7 +544,7 @@ impl<K: RecordKind> RecordsPage<K> {
                 )
             })
             .when_some(editor.preview.as_ref(), |body, preview| {
-                body.child(preview_band(preview, cx).mt(px(16.)))
+                body.child(preview_band(preview, !self.is_portfolio(), cx).mt(px(16.)))
             });
         dialog::editor(
             self,
@@ -560,7 +621,10 @@ impl<K: RecordKind> RecordsPage<K> {
         if self.disabled() {
             return;
         }
-        let year = self.year.unwrap_or_else(|| chrono::Local::now().year());
+        let year = self
+            .year
+            .or(self.missing_rate_year)
+            .unwrap_or_else(|| time::tax_date(Utc::now()).year());
         self.nbp_year = Some(nbp::open(year, Self::nbp_dialog, window, cx));
         self.status.error = None;
         self.status.message = None;
@@ -625,14 +689,18 @@ impl<K: RecordKind> RecordsPage<K> {
         let disabled = self.disabled();
         let filterable = self.status.ready && !self.records.is_empty();
         let filter_disabled = self.editor.is_some() || self.nbp_year.is_some();
-        let shown = self.table.shown();
         let narrow = self
             .table
             .state
             .viewport_width
             .is_some_and(|width| width < px(NARROW));
-        let count =
-            (!self.query.is_empty()).then(|| filter_count(shown, self.records.len(), narrow));
+        let counts = match (&self.portfolio, self.portfolio_tab) {
+            (Some(portfolio), Some(tab)) => portfolio.filtered_count(tab, &self.query),
+            _ => Some((self.table.shown(), self.records.len())),
+        };
+        let count = counts
+            .filter(|_| !self.query.is_empty())
+            .map(|(shown, total)| filter_count(shown, total, narrow));
         let import = import_button(narrow);
         header::page(
             K::PAGE.title(),
@@ -680,6 +748,18 @@ impl<K: RecordKind> RecordsPage<K> {
     }
 
     fn totals(&self, compact: bool, cx: &App) -> Div {
+        if let Some(portfolio) = &self.portfolio {
+            return totals_row(compact).children(portfolio.stats().into_iter().map(|stat| {
+                value::plain_stat(
+                    stat.label,
+                    t!(stat.label),
+                    &stat.value,
+                    stat.unit,
+                    stat.caption,
+                    cx,
+                )
+            }));
+        }
         totals_row(compact).children(self.totals.iter().map(|(label, value)| {
             value::stat(
                 SharedString::from(format!("total-{label}")),
@@ -698,9 +778,13 @@ impl<K: RecordKind> RecordsPage<K> {
             .min_h_0()
             .child(
                 totals_row(compact).children(
-                    K::TOTAL_LABELS
-                        .iter()
-                        .map(|label| value::stat_skeleton(t!(*label), visible, cx)),
+                    (if self.is_portfolio() {
+                        K::Portfolio::LABELS
+                    } else {
+                        K::TOTAL_LABELS
+                    })
+                    .iter()
+                    .map(|label| value::stat_skeleton(t!(*label), visible, cx)),
                 ),
             )
             .child(skeleton)
@@ -758,7 +842,7 @@ impl<K: RecordKind> RecordsPage<K> {
     fn missing_rate_state(&self, error: &SharedString, cx: &mut Context<Self>) -> Empty {
         notice::missing_rate(
             self.year,
-            self.year,
+            self.year.or(self.missing_rate_year),
             error.clone(),
             self.disabled(),
             cx.listener(|this, _, window, cx| this.open_nbp(window, cx)),
@@ -789,6 +873,10 @@ impl<K: RecordKind> TableHost for RecordsPage<K> {
 
     fn page_focus(&self) -> &FocusHandle {
         &self.focus
+    }
+
+    fn copyable(&self) -> bool {
+        !self.is_portfolio()
     }
 
     fn editable(&self) -> bool {
@@ -939,32 +1027,44 @@ impl<K: RecordKind> RecordsPage<K> {
         }
         self.status.begin_load(window, cx, |this| &mut this.status);
         let year = self.year;
+        let portfolio = self.is_portfolio();
+        let today = time::tax_date(Utc::now());
         self.status.task = Some(self.context.services.run(
             window,
             cx,
             move |app| async move {
-                let (totals, records) = K::load(app.clone(), year).await?;
+                let (totals, portfolio, records) = if portfolio {
+                    let (portfolio, records) = K::load_portfolio(app.clone(), today).await?;
+                    (Vec::new(), Some(portfolio), records)
+                } else {
+                    let (totals, records) = K::load(app.clone(), year).await?;
+                    (totals, None, records)
+                };
                 let other_year = if records.is_empty() {
                     let years = year::list_year_info(&app).await.unwrap_or_default();
                     other_year::<K>(year, &years)
                 } else {
                     None
                 };
-                Ok((totals, records, other_year))
+                Ok((totals, portfolio, records, other_year))
             },
             |this, result, _, cx| {
                 let missing_rate = result
                     .as_ref()
                     .err()
                     .is_some_and(|error| error.missing_rate());
+                this.missing_rate_year = result
+                    .as_ref()
+                    .err()
+                    .and_then(|error| error.missing_rate_year());
                 let loaded = this.status.loaded(result);
                 this.missing_rate = if missing_rate {
                     this.status.error.take().map(|error| error.text())
                 } else {
                     None
                 };
-                if let Some((totals, records, other_year)) = loaded {
-                    this.apply(totals, records, other_year);
+                if let Some((totals, portfolio, records, other_year)) = loaded {
+                    this.apply(totals, portfolio, records, other_year);
                 }
                 this.context.loaded(cx);
                 cx.notify();
@@ -1007,9 +1107,61 @@ impl<K: RecordKind> Render for RecordsPage<K> {
         } else if self.status.ready {
             let compact = self.table.compact();
             let empty = no_match(&self.query, cx);
-            body = body
-                .child(self.totals(compact, cx))
-                .child(table(self, (), empty, window, cx));
+            body = body.child(self.totals(compact, cx));
+            if let Some(portfolio) = &self.portfolio {
+                let mut items = portfolio
+                    .tabs()
+                    .into_iter()
+                    .map(|tab| TabItem {
+                        key: Some(tab.key),
+                        label: tab.label,
+                        count: tab.count,
+                    })
+                    .collect::<Vec<_>>();
+                items.push(TabItem {
+                    key: None,
+                    label: t!("records.tab_records").into(),
+                    count: self.records.len(),
+                });
+                body = body.child(tabs(
+                    "record-tabs",
+                    K::PAGE.title(),
+                    items,
+                    self.portfolio_tab,
+                    cx.listener(|this, tab, _, cx| {
+                        if !this.disabled() {
+                            this.portfolio_tab = *tab;
+                            this.portfolio_scroll.set_offset(point(px(0.), px(0.)));
+                            this.page_scroll.set_offset(point(px(0.), px(0.)));
+                            cx.notify();
+                        }
+                    }),
+                    portfolio.caption(self.portfolio_tab),
+                    cx,
+                ));
+                if let Some(tab) = self.portfolio_tab {
+                    let on_open = Rc::new(cx.listener(|this, year: &i32, _, cx| {
+                        if !this.disabled() {
+                            this.context.select_year(Some(*year), cx);
+                        }
+                    }));
+                    body = body.child(portfolio.render(
+                        tab,
+                        &self.query,
+                        &self.portfolio_scroll,
+                        self.table.state.viewport_width.unwrap_or(px(940.)),
+                        Rc::new(move |year, window, cx| on_open(&year, window, cx)),
+                        cx,
+                    ));
+                } else {
+                    let note = portfolio.records_note();
+                    body = body
+                        .child(table(self, (), empty, window, cx))
+                        .child(portfolio::note(note, cx));
+                }
+            } else {
+                body = body.child(table(self, (), empty, window, cx));
+            }
         } else if self.status.loading {
             body = body.child(self.loading(cx));
         } else {
@@ -1024,7 +1176,9 @@ impl<K: RecordKind> Render for RecordsPage<K> {
                 ),
             );
         }
-        let selecting = self.status.ready && !self.table.selected.is_empty();
+        let selecting = self.status.ready
+            && (!self.is_portfolio() || self.portfolio_tab.is_none())
+            && !self.table.selected.is_empty();
         v_flex()
             .size_full()
             .min_h_0()
@@ -1034,6 +1188,16 @@ impl<K: RecordKind> Render for RecordsPage<K> {
                     .relative()
                     .flex_1()
                     .min_h_0()
+                    .when(
+                        self.is_portfolio() && self.portfolio_tab.is_some(),
+                        |view| {
+                            view.child(measure_width(
+                                self.table.state.viewport_width,
+                                |this: &mut Self| &mut this.table.state.viewport_width,
+                                cx,
+                            ))
+                        },
+                    )
                     .child(body)
                     .vertical_scrollbar(&self.page_scroll)
                     .when(selecting, |view| {

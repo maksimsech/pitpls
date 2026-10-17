@@ -1,3 +1,5 @@
+mod portfolio;
+
 use super::{RecordForm, RecordKind, Submission, conversion, date_label, day, percent};
 use crate::{
     components::{
@@ -8,7 +10,7 @@ use crate::{
     navigation::Page,
     services::Error as ServiceError,
 };
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Datelike, NaiveDate, Utc};
 use gpui_kit::{
     component::{date_picker::DatePickerState, input::InputState},
     *,
@@ -21,8 +23,10 @@ use pitpls_core::{
     common::{Amount, Country, Currency},
     dividend::{CalculatedDividend, Dividend},
     tax::{POLAND_TAX, get_treaty_tax},
+    time,
 };
 use pitpls_importers::OutputType;
+use portfolio::DividendPortfolioView;
 use rust_decimal::Decimal;
 use rust_i18n::t;
 use std::{borrow::Cow, sync::Arc};
@@ -32,6 +36,7 @@ pub struct Dividends;
 impl RecordKind for Dividends {
     type Record = CalculatedDividend;
     type Form = DividendForm;
+    type Portfolio = DividendPortfolioView;
 
     const PAGE: Page = Page::Dividends;
     const EMPTY: &'static str = "dividends.empty";
@@ -139,6 +144,60 @@ impl RecordKind for Dividends {
             label: format!("{} {}", record.ticker, date_label(record.time)).into(),
             ..Default::default()
         }
+    }
+
+    fn portfolio_display(record: &CalculatedDividend) -> RowDisplay {
+        let mut row = Self::display(record);
+        row.steps.truncate(1);
+        row.steps.push(Step {
+            title: "dividends.step_withheld",
+            lines: vec![
+                StepLine::Formula(conversion(record.tax_paid, record.tax_paid_nbp_rate)),
+                StepLine::Result(vec![pln(record.calculated_tax_paid)]),
+                StepLine::ValueCaption {
+                    label: t!("dividends.net").into(),
+                    value: pln(record.calculated_value - record.calculated_tax_paid),
+                    caption: t!(
+                        "dividends.tax_year_note",
+                        year = time::tax_date(record.time).year()
+                    )
+                    .into(),
+                },
+            ],
+        });
+        row
+    }
+
+    fn portfolio_preview(record: &CalculatedDividend) -> Preview {
+        Preview {
+            nbp_date: record.nbp_date,
+            formula: conversion(record.value, record.nbp_rate),
+            value: pln(record.calculated_value),
+            results: vec![
+                ("dividends.withheld", pln(record.calculated_tax_paid)),
+                (
+                    "dividends.net",
+                    pln(record.calculated_value - record.calculated_tax_paid),
+                ),
+            ],
+        }
+    }
+
+    async fn load_portfolio(
+        app: Arc<pitpls_app::App>,
+        today: NaiveDate,
+    ) -> Result<(DividendPortfolioView, Vec<CalculatedDividend>), ServiceError> {
+        let mut data = pitpls_app::use_case::portfolio::load_dividend_portfolio(&app).await?;
+        data.data.calculated.sort_unstable_by(|left, right| {
+            right
+                .time
+                .cmp(&left.time)
+                .then_with(|| left.id.cmp(&right.id))
+        });
+        Ok((
+            DividendPortfolioView::new(data.years, data.payers, today),
+            data.data.calculated,
+        ))
     }
 
     fn subtotal(records: &[&CalculatedDividend]) -> Vec<(Option<&'static str>, Decimal)> {

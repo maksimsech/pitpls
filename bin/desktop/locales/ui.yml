@@ -203,6 +203,12 @@ data:
       pl: "sprzed %{count} dni"
 
 records:
+  tab_records:
+    en: Records
+    pl: Wpisy
+  open_year_caption:
+    en: Click a year to open it as a tax year
+    pl: Kliknij rok, aby otworzyć widok podatkowy
   none:
     en: no records
     pl: brak wpisów
@@ -1508,6 +1514,91 @@ month:
     pl: Grudzień
 
 dividends:
+  gross:
+    en: Gross
+    pl: Brutto
+  withheld:
+    en: Withheld abroad
+    pl: Potrącone za granicą
+  net:
+    en: Net
+    pl: Netto
+  payers:
+    en: Payers
+    pl: Płatnicy
+  payments:
+    en: Payments
+    pl: Wypłaty
+  payments_count:
+    one:
+      en: 1 payment
+      pl: 1 wypłata
+    other:
+      en: "%{count} payments"
+    few:
+      pl: "%{count} wypłaty"
+    many:
+      pl: "%{count} wypłat"
+  payments_since:
+    en: "%{payments} since %{year}"
+    pl: "%{payments} od %{year} r."
+  by_year:
+    en: By year
+    pl: Według roku
+  by_ticker:
+    en: By ticker
+    pl: Według tickera
+  by_ticker_caption:
+    en: Every payer since the first record, largest first
+    pl: Wszyscy płatnicy od pierwszego wpisu, od największych kwot
+  chart_title:
+    en: Gross dividends by year
+    pl: Dywidendy brutto według roku
+  chart_caption:
+    en: PLN at each payment's NBP rate
+    pl: PLN po kursie NBP z każdej wypłaty
+  year:
+    en: Year
+    pl: Rok
+  years:
+    en: Years
+    pl: Lata
+  gross_pln:
+    en: Gross, PLN
+    pl: Brutto, PLN
+  withheld_pln:
+    en: Withheld abroad, PLN
+    pl: Potrącone za granicą, PLN
+  withheld_short_pln:
+    en: Withheld, PLN
+    pl: Potrącone, PLN
+  net_pln:
+    en: Net, PLN
+    pl: Netto, PLN
+  by_year_note:
+    en: Net = gross − tax withheld abroad, before any Polish tax. A year opens as a tax year with I-65, G-47 and G-48.
+    pl: Netto = brutto − podatek potrącony za granicą, przed polskim podatkiem. Wybrany rok otwiera widok podatkowy z I-65, G-47 i G-48.
+  by_ticker_note:
+    en: One row per ticker and provider, like Stocks. Gross is the sum in the payment currency; PLN uses each payment's NBP rate. Share is of the gross PLN.
+    pl: Jeden wiersz na ticker i platformę, jak w Akcjach. Brutto to suma w walucie wypłat; kwoty w PLN są przeliczone po kursie NBP z każdej wypłaty. Udział dotyczy kwoty brutto w PLN.
+  share:
+    en: Share
+    pl: Udział
+  share_caption:
+    en: "% of gross dividends"
+    pl: "% dywidend brutto"
+  records_caption:
+    en: Every dividend, newest first
+    pl: Wszystkie dywidendy, od najnowszych
+  records_note:
+    en: "Same table as a tax year. An opened row stops at the PLN conversion: the Polish tax and foreign tax credit steps belong to the tax year."
+    pl: Ta sama tabela co w widoku podatkowym. Rozwinięty wpis pokazuje przeliczenie na PLN; polski podatek i odliczenie podatku zagranicznego są w widoku danego roku.
+  step_withheld:
+    en: Tax paid abroad
+    pl: Podatek zapłacony za granicą
+  tax_year_note:
+    en: "· Polish tax and the credit open in tax year %{year}"
+    pl: "· Polski podatek i odliczenie są w widoku podatkowym roku %{year}"
   empty:
     en: No dividends yet
     pl: Brak dywidend

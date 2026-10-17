@@ -30,6 +30,7 @@ pub struct Crypto;
 
 impl RecordKind for Crypto {
     type Record = CalculatedCrypto;
+    type Portfolio = ();
     type Form = CryptoForm;
 
     const PAGE: Page = Page::Crypto;
