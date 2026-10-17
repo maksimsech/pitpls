@@ -32,7 +32,7 @@ pub enum HistoryEvent {
 pub struct HistoryView {
     context: PageContext,
     key: InstrumentKey,
-    year: i32,
+    year: Option<i32>,
     status: Status,
     display: Option<HistoryDisplay>,
     catalog: Entity<Catalog>,
@@ -51,7 +51,7 @@ impl HistoryView {
     pub fn new(
         context: PageContext,
         key: InstrumentKey,
-        year: i32,
+        year: Option<i32>,
         catalog: Entity<Catalog>,
         width: Option<Pixels>,
         window: &mut Window,
@@ -138,8 +138,7 @@ impl HistoryView {
             window,
             cx,
             move |app| async move {
-                let history =
-                    stock::load_history(&app, &key.ticker, &key.provider, Some(year)).await?;
+                let history = stock::load_history(&app, &key.ticker, &key.provider, year).await?;
                 Ok(HistoryDisplay::new(&history, &key, year))
             },
             |this, result, _, cx| {
@@ -195,12 +194,10 @@ impl HistoryView {
             .border_color(p.line)
             .bg(p.raised);
         if display.lots.is_empty() {
-            return card.child(
-                div()
-                    .py(px(8.))
-                    .text_color(p.muted)
-                    .child(t!("history.no_buys", year = self.year)),
-            );
+            return card.child(div().py(px(8.)).text_color(p.muted).child(match self.year {
+                Some(year) => t!("history.no_buys", year = year),
+                None => t!("stocks.history_no_buys"),
+            }));
         }
         card.children(
             display
@@ -268,22 +265,19 @@ impl HistoryView {
                 ),
         );
         for group in &display.years {
-            rows = rows.child(year_row(group, &table, cx));
+            rows = rows.child(year_row(group, &table, self.year.is_some(), cx));
             for index in group.rows.clone() {
                 let row = &display.rows[index];
                 let notes = &display.notes[index];
                 let cells = table
                     .shown(row.cells.iter().zip(&self.columns).enumerate())
                     .map(|((column, (value, kind)), width)| {
-                        cell(
-                            SharedString::from(format!("event-{index}-{column}")),
-                            value,
-                            kind,
-                            width,
-                            table.compact,
-                            false,
-                            cx,
-                        )
+                        let id = SharedString::from(format!("event-{index}-{column}"));
+                        if self.year.is_some() {
+                            cell(id, value, kind, width, table.compact, false, cx)
+                        } else {
+                            records::plain_cell(id, value, kind, width, table.compact, cx)
+                        }
                     });
                 rows = rows.child(
                     v_flex()
@@ -340,6 +334,7 @@ impl HistoryView {
     }
 
     fn carried(&self, display: &HistoryDisplay, cx: &App) -> Option<Div> {
+        let year = self.year?;
         let p = *palette(cx);
         (!display.carried.is_empty()).then(|| {
             h_flex()
@@ -358,7 +353,7 @@ impl HistoryView {
                     div()
                         .flex_shrink_0()
                         .font_medium()
-                        .child(t!("history.into", year = self.year + 1)),
+                        .child(t!("history.into", year = year + 1)),
                 )
                 .child(
                     v_flex()
@@ -464,7 +459,7 @@ fn lot_row(index: usize, lot: &LotBar, p: &Palette) -> Div {
         )
 }
 
-fn year_row(group: &YearGroup, table: &TableLayout, cx: &App) -> Div {
+fn year_row(group: &YearGroup, table: &TableLayout, copy: bool, cx: &App) -> Div {
     let p = *palette(cx);
     records::row(table)
         .h(px(34.))
@@ -493,14 +488,17 @@ fn year_row(group: &YearGroup, table: &TableLayout, cx: &App) -> Div {
                 .font_features(tabular_digits())
                 .child(group.counts.clone())
                 .when_some(group.profit.as_ref(), |summary, profit| {
+                    let number = div()
+                        .id(SharedString::from(format!("year-profit-{}", group.year)))
+                        .child(value::text(profit, false, true, cx));
+                    let separator = if group.counts.is_empty() { "" } else { " · " };
                     summary
-                        .child(format!(" · {} ", t!("records.subtotal_profit")))
-                        .child(value::reveal_full(
-                            div()
-                                .id(SharedString::from(format!("year-profit-{}", group.year)))
-                                .child(value::text(profit, false, true, cx)),
-                            profit,
-                        ))
+                        .child(format!("{separator}{} ", t!("records.subtotal_profit")))
+                        .child(if copy {
+                            value::reveal_full(number, profit).into_any_element()
+                        } else {
+                            value::full_tooltip(number, profit).into_any_element()
+                        })
                 }),
         )
 }

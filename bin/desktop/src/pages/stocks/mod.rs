@@ -3,6 +3,7 @@ mod editor;
 mod exchange;
 mod history;
 mod holdings;
+mod portfolio;
 mod set_exchange;
 
 use crate::{
@@ -21,6 +22,7 @@ use crate::{
     },
     theme::palette,
 };
+use chrono::{Datelike, Utc};
 use display::{Action, InstrumentKey, StockDisplay, WarningAction, WarningCard};
 use editor::StockEditor;
 use exchange::Catalog;
@@ -39,9 +41,10 @@ use gpui_kit::{
 };
 use history::{HistoryEvent, HistoryView};
 use pitpls_app::use_case::{
-    stock,
+    portfolio as portfolio_use_case, stock,
     year::{self, YearInfo},
 };
+use pitpls_core::time::tax_date;
 use pitpls_importers::{IMPORTERS, OutputType};
 use rust_decimal::Decimal;
 use rust_i18n::t;
@@ -53,6 +56,7 @@ const NARROW: f32 = 600.;
 #[derive(Clone, Copy, PartialEq)]
 enum Tab {
     Sales,
+    Realized,
     Records,
     Holdings,
 }
@@ -72,6 +76,7 @@ pub struct StocksPage {
     sales: RecordTable,
     records: RecordTable,
     holdings: holdings::Layout,
+    portfolio: portfolio::Layout,
     filter: Entity<InputState>,
     query: String,
     page_scroll: ScrollHandle,
@@ -82,6 +87,7 @@ pub struct StocksPage {
     deleting: HashSet<String>,
     nbp_year: Option<Entity<InputState>>,
     missing_rate: Option<SharedString>,
+    missing_rate_year: Option<i32>,
     other_year: Option<(i32, u32)>,
     history: Option<(Entity<HistoryView>, Subscription)>,
     focus: FocusHandle,
@@ -153,11 +159,16 @@ impl StocksPage {
             context,
             year,
             status: Status::default(),
-            tab: Tab::Sales,
+            tab: if year.is_some() {
+                Tab::Sales
+            } else {
+                Tab::Holdings
+            },
             display: None,
             sales: RecordTable::new("stock-sales", sale_columns(), false, width),
             records: RecordTable::new("stock-records", record_columns(), true, width),
             holdings: holdings::Layout::new(width),
+            portfolio: portfolio::Layout::default(),
             filter,
             query: String::new(),
             page_scroll: ScrollHandle::default(),
@@ -168,6 +179,7 @@ impl StocksPage {
             deleting: HashSet::new(),
             nbp_year: None,
             missing_rate: None,
+            missing_rate_year: None,
             other_year: None,
             history: None,
             focus: cx.focus_handle(),
@@ -179,6 +191,9 @@ impl StocksPage {
 
     fn is_empty(&self) -> bool {
         self.display.as_ref().is_none_or(|display| {
+            if self.year.is_none() {
+                return display.stocks.is_empty();
+            }
             self.sales.state.rows.is_empty()
                 && self.records.state.rows.is_empty()
                 && display.holdings.is_empty()
@@ -200,7 +215,7 @@ impl StocksPage {
 
     fn width(&self) -> Option<Pixels> {
         match self.tab {
-            Tab::Sales => self.sales.state.viewport_width,
+            Tab::Sales | Tab::Realized => self.sales.state.viewport_width,
             Tab::Records => self.records.state.viewport_width,
             Tab::Holdings => self.holdings.width,
         }
@@ -214,7 +229,7 @@ impl StocksPage {
         let width = self.width();
         self.tab = tab;
         match tab {
-            Tab::Sales => self.sales.state.viewport_width = width,
+            Tab::Sales | Tab::Realized => self.sales.state.viewport_width = width,
             Tab::Records => self.records.state.viewport_width = width,
             Tab::Holdings => self.holdings.width = width,
         }
@@ -222,9 +237,7 @@ impl StocksPage {
     }
 
     fn open_history(&mut self, key: InstrumentKey, window: &mut Window, cx: &mut Context<Self>) {
-        let Some(year) = self.year else {
-            return;
-        };
+        let year = self.year;
         if self.disabled() {
             return;
         }
@@ -370,7 +383,8 @@ impl StocksPage {
         }
         let year = self
             .year
-            .unwrap_or_else(|| chrono::Datelike::year(&chrono::Local::now()));
+            .or(self.missing_rate_year)
+            .unwrap_or_else(|| tax_date(Utc::now()).year());
         self.nbp_year = Some(nbp::open(year, Self::nbp_dialog, window, cx));
         self.status.error = None;
         self.status.message = None;
@@ -437,46 +451,58 @@ impl StocksPage {
         let narrow = self.width().is_some_and(|width| width < px(NARROW));
         let (shown, total) = match self.tab {
             Tab::Sales => (self.sales.shown(), self.sales.state.rows.len()),
+            Tab::Realized => (0, 0),
             Tab::Records => (self.records.shown(), self.records.state.rows.len()),
-            Tab::Holdings => self.display.as_ref().map_or((0, 0), |display| {
-                (
-                    holdings::shown(display, &self.query),
-                    display.holdings.len(),
-                )
-            }),
+            Tab::Holdings => {
+                self.display
+                    .as_ref()
+                    .map_or((0, 0), |display| match &display.portfolio {
+                        Some(portfolio) => {
+                            (portfolio.shown(&self.query), portfolio.positions.len())
+                        }
+                        None => (
+                            holdings::shown(display, &self.query),
+                            display.holdings.len(),
+                        ),
+                    })
+            }
         };
         let count = (!self.query.is_empty()).then(|| filter_count(shown, total, narrow));
-        header::page(
-            Page::Stocks.title(),
-            Some(header::year_label(self.year)),
-            window,
-            cx,
-        )
-        .when(filterable, |row| {
-            row.child(filter_field(
-                &self.filter,
-                count,
-                self.editor.is_some() || self.nbp_year.is_some(),
-                cx,
-            ))
-        })
-        .child(
-            header::actions()
-                .child(self.status.refreshing(cx))
-                .child(header::refresh(disabled, cx).on_click(cx.listener(
-                    |this, _, window, cx| {
-                        this.context.years_changed(cx);
-                        this.refresh(window, cx);
-                    },
-                )))
-                .child(import_button(narrow).disabled(disabled).on_click(
-                    cx.listener(|this, _, _, cx| this.context.navigate(Page::Imports, cx)),
+        let meta = match (&self.display, self.year) {
+            (Some(display), None) => format!(
+                "{} · {}",
+                header::year_label(None),
+                plural("count.stocks", display.stocks.len() as u64)
+            )
+            .into(),
+            _ => header::year_label(self.year),
+        };
+        header::page(Page::Stocks.title(), Some(meta), window, cx)
+            .when(filterable, |row| {
+                row.child(filter_field(
+                    &self.filter,
+                    count,
+                    self.editor.is_some() || self.nbp_year.is_some(),
+                    cx,
                 ))
-                .child(
-                    self.add_button("add-record", Some(IconName::Plus), disabled, cx)
-                        .primary(),
-                ),
-        )
+            })
+            .child(
+                header::actions()
+                    .child(self.status.refreshing(cx))
+                    .child(header::refresh(disabled, cx).on_click(cx.listener(
+                        |this, _, window, cx| {
+                            this.context.years_changed(cx);
+                            this.refresh(window, cx);
+                        },
+                    )))
+                    .child(import_button(narrow).disabled(disabled).on_click(
+                        cx.listener(|this, _, _, cx| this.context.navigate(Page::Imports, cx)),
+                    ))
+                    .child(
+                        self.add_button("add-record", Some(IconName::Plus), disabled, cx)
+                            .primary(),
+                    ),
+            )
     }
 
     fn add_button(
@@ -492,6 +518,13 @@ impl StocksPage {
     }
 
     fn stats(&self, compact: bool, cx: &App) -> Div {
+        if let Some(portfolio) = self
+            .display
+            .as_ref()
+            .and_then(|display| display.portfolio.as_ref())
+        {
+            return portfolio.stats(compact, cx);
+        }
         let stats = self.display.iter().flat_map(|display| &display.stats);
         totals_row(compact).children(stats.map(|(label, value)| {
             value::stat(
@@ -595,9 +628,17 @@ impl StocksPage {
         let Some(display) = &self.display else {
             return div();
         };
+        if let Some(portfolio) = &display.portfolio {
+            return portfolio.tabs(
+                self.tab,
+                display.stocks.len(),
+                cx.listener(|this, tab, _, cx| this.select_tab(*tab, cx)),
+                cx,
+            );
+        }
         let year = self.year.unwrap_or_default();
         let caption = match self.tab {
-            Tab::Sales => t!("stocks.sales_caption"),
+            Tab::Sales | Tab::Realized => t!("stocks.sales_caption"),
             Tab::Records => t!("stocks.records_caption", year = year),
             Tab::Holdings => t!("stocks.holdings_caption", year = year),
         };
@@ -630,6 +671,12 @@ impl StocksPage {
     }
 
     fn tab_content(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
+        if self.year.is_none() {
+            return match self.tab {
+                Tab::Holdings => self.portfolio_holdings(cx),
+                _ => div().into_any_element(),
+            };
+        }
         let year = self.year.unwrap_or_default();
         let empty = |rows: usize, none: SharedString, cx: &App| {
             if rows == 0 {
@@ -643,6 +690,7 @@ impl StocksPage {
             }
         };
         match self.tab {
+            Tab::Realized => div().into_any_element(),
             Tab::Sales => {
                 let empty = empty(
                     self.sales.state.rows.len(),
@@ -671,8 +719,18 @@ impl StocksPage {
             .min_h_0()
             .child(
                 totals_row(compact).children(
-                    ["tax.income_c22", "tax.costs_c23"]
-                        .map(|label| value::stat_skeleton(t!(label), visible, cx)),
+                    if self.year.is_some() {
+                        vec!["tax.income_c22", "tax.costs_c23"]
+                    } else {
+                        vec![
+                            "stocks.portfolio_cost",
+                            "stocks.realized_profit",
+                            "stocks.positions",
+                            "stocks.sales",
+                        ]
+                    }
+                    .into_iter()
+                    .map(|label| value::stat_skeleton(t!(label), visible, cx)),
                 ),
             )
             .child(skeleton)
@@ -722,7 +780,11 @@ impl StocksPage {
         notice::notice(
             Page::Stocks.icon(),
             false,
-            t!("stocks.empty_year", year = year),
+            if self.year.is_some() {
+                t!("stocks.empty_year", year = year)
+            } else {
+                t!("stocks.empty_all")
+            },
             t!("records.empty_detail", providers = or_list(&providers)),
             cx,
         )
@@ -739,23 +801,10 @@ impl StocksPage {
         )
     }
 
-    // TODO: Revisit with the all-years page; until then stocks are only
-    // calculated for a chosen tax year (docs/stocks/README.md, decision 11).
-    fn all_years_state(&self, cx: &mut Context<Self>) -> Empty {
-        notice::notice(
-            Page::Stocks.icon(),
-            false,
-            t!("stocks.pick_year"),
-            t!("stocks.pick_year_detail"),
-            cx,
-        )
-        .content(EmptyContent::new().children(self.year_link(cx)))
-    }
-
     fn missing_rate_state(&self, error: &SharedString, cx: &mut Context<Self>) -> Empty {
         notice::missing_rate(
             self.year,
-            self.year,
+            self.year.or(self.missing_rate_year),
             error.clone(),
             self.disabled(),
             cx.listener(|this, _, window, cx| this.open_nbp(window, cx)),
@@ -775,8 +824,8 @@ impl StocksPage {
             cx,
             move |app| async move {
                 let Some(year) = selected else {
-                    let years = year::list_year_info(&app).await?;
-                    return Ok((None, latest_year(&years)));
+                    let portfolio = portfolio_use_case::load_stock_portfolio(&app).await?;
+                    return Ok((Some(StockDisplay::all_years(&portfolio)), None));
                 };
                 let data = stock::load_stocks(&app, year).await?;
                 // A sale traded in the previous year can settle in this one.
@@ -793,6 +842,10 @@ impl StocksPage {
                 Ok((Some(display), other_year))
             },
             |this, result, _, cx| {
+                this.missing_rate_year = result
+                    .as_ref()
+                    .err()
+                    .and_then(|error| error.missing_rate_year());
                 let missing_rate = result
                     .as_ref()
                     .err()
@@ -820,14 +873,6 @@ fn other_year(selected: i32, years: &[YearInfo]) -> Option<(i32, u32)> {
         .iter()
         .filter(|info| info.year != selected && info.stocks > 0)
         .min_by_key(|info| ((info.year - selected).abs(), -info.year))
-        .map(|info| (info.year, info.stocks))
-}
-
-fn latest_year(years: &[YearInfo]) -> Option<(i32, u32)> {
-    years
-        .iter()
-        .filter(|info| info.stocks > 0)
-        .max_by_key(|info| info.year)
         .map(|info| (info.year, info.stocks))
 }
 
@@ -943,8 +988,6 @@ impl Render for StocksPage {
             );
         if let Some(error) = self.missing_rate.clone() {
             body = body.child(self.missing_rate_state(&error, cx));
-        } else if self.status.ready && self.year.is_none() {
-            body = body.child(self.all_years_state(cx));
         } else if self.status.ready && self.is_empty() {
             body = body.child(self.empty_state(cx));
         } else if self.status.ready {
@@ -968,7 +1011,7 @@ impl Render for StocksPage {
                 .child(self.tabs(cx))
                 .child(self.tab_content(window, cx));
         } else if self.status.loading {
-            body = body.when(self.year.is_some(), |body| body.child(self.loading(cx)));
+            body = body.child(self.loading(cx));
         } else {
             let disabled = self.status.busy || self.pending_delete.is_some();
             body = body.child(

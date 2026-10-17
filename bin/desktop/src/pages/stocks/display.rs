@@ -92,6 +92,7 @@ impl InstrumentKey {
 }
 
 pub struct StockDisplay {
+    pub portfolio: Option<super::portfolio::PortfolioDisplay>,
     /// The labels are message keys.
     pub stats: Vec<(&'static str, DisplayText)>,
     pub warnings: Vec<WarningCard>,
@@ -107,6 +108,22 @@ pub struct StockDisplay {
 }
 
 impl StockDisplay {
+    pub fn all_years(data: &pitpls_app::use_case::portfolio::StockPortfolio) -> Self {
+        Self {
+            portfolio: Some(super::portfolio::PortfolioDisplay::new(data)),
+            stats: Vec::new(),
+            warnings: Vec::new(),
+            sales: Vec::new(),
+            profits: Vec::new(),
+            records: Vec::new(),
+            stocks: data.records.clone(),
+            actions: Vec::new(),
+            holdings: Vec::new(),
+            sold_out: Vec::new(),
+            histories: HashMap::new(),
+        }
+    }
+
     pub fn new(data: &StockData, year: i32) -> Self {
         let tax = &data.tax;
         let listings = &data.listings;
@@ -135,6 +152,7 @@ impl StockDisplay {
             .collect();
         let (holdings, sold_out) = holdings(tax, listings);
         Self {
+            portfolio: None,
             stats: vec![
                 ("tax.income_c22", pln(tax.income)),
                 ("tax.costs_c23", pln(tax.costs)),

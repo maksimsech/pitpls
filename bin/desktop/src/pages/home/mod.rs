@@ -1,3 +1,5 @@
+mod portfolio;
+
 use crate::{
     components::{self, ButtonText, Status, data, header, nbp, notice, value},
     config::LastImport,
@@ -7,7 +9,7 @@ use crate::{
     services::Error as ServiceError,
     theme::{palette, tabular_digits},
 };
-use chrono::{Datelike, Local};
+use chrono::{Datelike, Utc};
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::{
     assets::IconName,
@@ -15,12 +17,13 @@ use gpui_kit::{
     *,
 };
 use pitpls_app::use_case::{
+    portfolio::{self as portfolio_use_case, PortfolioSummary},
     rate::{self, RateCoverage},
     stock::Listings,
-    tax::{self, Error as TaxError, TaxSummaryData},
+    tax::{self, TaxSummaryData},
     year::{self, YearInfo},
 };
-use pitpls_core::{stock::Warning, summary::StockTaxSummary};
+use pitpls_core::{stock::Warning, summary::StockTaxSummary, time::tax_date};
 use pitpls_importers::{IMPORTERS, InputType};
 use rust_decimal::Decimal;
 use rust_i18n::t;
@@ -136,7 +139,8 @@ impl PitZg {
 
 enum Totals {
     Ready(Box<Forms>),
-    MissingRate(SharedString),
+    Portfolio(Box<PortfolioSummary>),
+    MissingRate(SharedString, Option<i32>),
     Failed(SharedString),
 }
 
@@ -147,8 +151,8 @@ struct Overview {
     stocks: u32,
     first_run: bool,
     coverage: Option<RateCoverage>,
-    // None on All years: tax totals only mean something per tax year.
-    totals: Option<Totals>,
+    totals: Totals,
+    year_range: Option<(i32, i32)>,
 }
 
 impl Overview {
@@ -156,7 +160,7 @@ impl Overview {
         year: Option<i32>,
         years: &[YearInfo],
         coverage: Option<RateCoverage>,
-        summary: Option<Result<TaxSummaryData, TaxError>>,
+        totals: Totals,
     ) -> Self {
         let selected = years
             .iter()
@@ -172,19 +176,16 @@ impl Overview {
                 )
             },
         );
-        let totals = summary.map(|summary| match summary {
-            Ok(summary) => Totals::Ready(Box::new(Forms::new(&summary))),
-            Err(error) => {
-                let error = ServiceError::from(error);
-                let missing_rate = error.missing_rate();
-                let message = error.into();
-                if missing_rate {
-                    Totals::MissingRate(message)
-                } else {
-                    Totals::Failed(message)
-                }
-            }
-        });
+        let earned_years = match &totals {
+            Totals::Portfolio(summary) => summary.earned.as_slice(),
+            _ => &[],
+        };
+        let record_years = years
+            .iter()
+            .filter(|info| info.records() > 0)
+            .map(|info| info.year)
+            .chain(earned_years.iter().map(|row| row.year));
+        let year_range = record_years.clone().min().zip(record_years.max());
         Self {
             dividends,
             interests,
@@ -193,6 +194,7 @@ impl Overview {
             first_run: coverage.is_none() && years.iter().all(|info| info.records() == 0),
             coverage,
             totals,
+            year_range,
         }
     }
 
@@ -260,7 +262,7 @@ impl HomePage {
             return;
         }
         self.updating = true;
-        self.import_rates(Local::now().year(), window, cx);
+        self.import_rates(tax_date(Utc::now()).year(), window, cx);
     }
 
     fn import_rates(&mut self, year: i32, window: &mut Window, cx: &mut Context<Self>) {
@@ -289,7 +291,17 @@ impl HomePage {
         if self.disabled() {
             return;
         }
-        let year = self.year.unwrap_or_else(|| Local::now().year());
+        let missing_year = self
+            .overview
+            .as_ref()
+            .and_then(|overview| match &overview.totals {
+                Totals::MissingRate(_, year) => *year,
+                _ => None,
+            });
+        let year = self
+            .year
+            .or(missing_year)
+            .unwrap_or_else(|| tax_date(Utc::now()).year());
         self.nbp_year = Some(nbp::open(year, Self::nbp_dialog, window, cx));
         self.status.error = None;
         self.status.message = None;
@@ -346,10 +358,24 @@ impl HomePage {
                 let years = year::list_year_info(&app).await?;
                 let coverage = rate::rate_coverage(&app).await?;
                 let summary = match year {
-                    Some(year) => Some(tax::load_tax_summary(&app, year).await),
-                    None => None,
+                    Some(year) => tax::load_tax_summary(&app, year)
+                        .await
+                        .map(|summary| Totals::Ready(Box::new(Forms::new(&summary))))
+                        .map_err(ServiceError::from),
+                    None => portfolio_use_case::load_summary(&app, tax_date(Utc::now()))
+                        .await
+                        .map(|summary| Totals::Portfolio(Box::new(summary)))
+                        .map_err(ServiceError::from),
                 };
-                Ok(Overview::new(year, &years, coverage, summary))
+                let totals = summary.unwrap_or_else(|error| {
+                    if error.missing_rate() {
+                        let missing_year = error.missing_rate_year();
+                        Totals::MissingRate(error.into(), missing_year)
+                    } else {
+                        Totals::Failed(error.into())
+                    }
+                });
+                Ok(Overview::new(year, &years, coverage, totals))
             },
             |this, result, _, cx| {
                 if let Some(overview) = this.status.loaded(result) {
@@ -397,7 +423,22 @@ impl HomePage {
         }
         let year = header::year_label(self.year);
         let label = match &self.overview {
-            Some(overview) => format!("{year} · {}", record_count(overview.records())).into(),
+            Some(overview) => {
+                let range =
+                    overview
+                        .year_range
+                        .filter(|_| self.year.is_none())
+                        .map(|(first, last)| {
+                            if first == last {
+                                first.to_string()
+                            } else {
+                                format!("{first}–{last}")
+                            }
+                        });
+                let year =
+                    range.map_or_else(|| year.to_string(), |range| format!("{year} · {range}"));
+                format!("{year} · {}", record_count(overview.records())).into()
+            }
             None => year,
         };
         let disabled = self.disabled();
@@ -423,7 +464,7 @@ impl HomePage {
     fn summary(&self, cx: &mut Context<Self>) -> Div {
         let column = v_flex()
             .w_full()
-            .max_w(px(680.))
+            .max_w(px(if self.year.is_none() { 800. } else { 680. }))
             .mx_auto()
             .pt(px(14.))
             .pb(px(32.))
@@ -435,17 +476,17 @@ impl HomePage {
             );
         let column = match &self.overview {
             Some(overview) => column
-                .children(
-                    overview
-                        .totals
-                        .as_ref()
-                        .map(|totals| self.totals(totals, overview, cx)),
-                )
+                .child(self.totals(&overview.totals, overview, cx))
                 .child(self.data_card(overview, cx))
+                .when(self.year.is_none(), |column| {
+                    column.child(notice::info(t!("home.nbp_note"), cx).px(px(16.)))
+                })
                 .child(notice::disclaimer(cx)),
-            None if self.status.loading_visible => column.when(self.year.is_some(), |column| {
-                column.children(self.skeleton(cx))
-            }),
+            None if self.status.loading_visible => column.when_else(
+                self.year.is_some(),
+                |column| column.children(self.skeleton(cx)),
+                |column| column.children(portfolio::skeleton(cx)),
+            ),
             None if !self.status.loading => column.child(
                 h_flex().child(
                     Button::new("retry")
@@ -518,9 +559,12 @@ impl HomePage {
                     )
                     .into_any_element()
             }
-            Totals::MissingRate(error) => notice::missing_rate(
+            Totals::Portfolio(summary) => {
+                portfolio::cards(summary, &self.context, disabled, cx).into_any_element()
+            }
+            Totals::MissingRate(error, missing_year) => notice::missing_rate(
                 self.year,
-                self.year,
+                self.year.or(*missing_year),
                 error.clone(),
                 self.disabled(),
                 cx.listener(|this, _, window, cx| this.open_nbp(window, cx)),

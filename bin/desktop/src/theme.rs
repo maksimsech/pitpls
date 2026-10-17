@@ -23,11 +23,8 @@ pub struct Palette {
     pub warning: Hsla,
     pub danger: Hsla,
     pub ok: Hsla,
-    #[expect(dead_code, reason = "Portfolio pages adopt this in tasks 5–9.")]
     pub series: Hsla,
-    #[expect(dead_code, reason = "Portfolio pages adopt this in tasks 5–9.")]
     pub series_2: Hsla,
-    #[expect(dead_code, reason = "Portfolio pages adopt this in tasks 5–9.")]
     pub negative: Hsla,
 }
 
@@ -84,7 +81,6 @@ impl Palette {
         }
     }
 
-    #[expect(dead_code, reason = "Portfolio pages adopt this in tasks 5–9.")]
     pub fn currency_series(&self, index: usize) -> Hsla {
         let color = if index.is_multiple_of(2) {
             self.series

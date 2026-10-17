@@ -160,6 +160,13 @@ pub fn reveal_full(element: Stateful<Div>, value: &DisplayText) -> AnyElement {
         .into_any_element()
 }
 
+pub fn full_tooltip(element: Stateful<Div>, value: &DisplayText) -> Stateful<Div> {
+    element.when(value.more, |element| {
+        let full = value.full.clone();
+        element.tooltip(move |window, cx| Tooltip::new(full.clone()).build(window, cx))
+    })
+}
+
 fn baseline_drop(size: Pixels, unit: Pixels, cx: &App) -> Pixels {
     let system = cx.text_system();
     let font = system.resolve_font(&font(cx.theme().font_family.clone()));
@@ -238,7 +245,6 @@ pub fn stat(
         )
 }
 
-#[expect(dead_code, reason = "Portfolio pages adopt this in tasks 5–9.")]
 pub fn plain_stat(
     id: impl Into<ElementId>,
     label: impl Into<SharedString>,
@@ -266,12 +272,7 @@ pub fn plain_stat(
                         .text_size(px(18.))
                         .font_medium()
                         .font_features(tabular_digits())
-                        .when(value.more, |element| {
-                            let full = value.full.clone();
-                            element.tooltip(move |window, cx| {
-                                Tooltip::new(full.clone()).build(window, cx)
-                            })
-                        })
+                        .map(|element| full_tooltip(element, value))
                         .child(text(value, false, false, cx)),
                 )
                 .when_some(unit, |row, unit| {

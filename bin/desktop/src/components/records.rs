@@ -325,6 +325,33 @@ pub fn cell(
     }
 }
 
+pub fn plain_cell(
+    id: impl Into<ElementId>,
+    number: &DisplayText,
+    column: &RecordColumn,
+    width: Pixels,
+    compact: bool,
+    cx: &App,
+) -> AnyElement {
+    if !matches!(column.style, CellStyle::Number) {
+        return cell(id, number, column, width, compact, false, cx);
+    }
+    value::full_tooltip(
+        div()
+            .id(id)
+            .w(width)
+            .flex_shrink_0()
+            .min_w_0()
+            .truncate()
+            .pl(px(NUMBER_INSET))
+            .text_right()
+            .font_features(tabular_digits())
+            .child(value::text(number, true, true, cx)),
+        number,
+    )
+    .into_any_element()
+}
+
 /// With tabular digits the longest value in each unit is the widest, so only
 /// those are measured.
 pub fn fit_widths(

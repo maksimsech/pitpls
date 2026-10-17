@@ -49,6 +49,7 @@ impl<T: 'static> BarChart<T> {
         self
     }
 
+    #[expect(dead_code, reason = "The Interests portfolio adopts this in task 9.")]
     pub fn months(mut self, month: impl Fn(&T) -> (i32, u32) + 'static) -> Self {
         self.month = Some(Box::new(month));
         self

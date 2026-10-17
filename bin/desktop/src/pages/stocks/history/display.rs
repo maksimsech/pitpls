@@ -139,7 +139,7 @@ impl<'a> Replayed<'a> {
 }
 
 impl HistoryDisplay {
-    pub fn new(history: &StockHistory, key: &InstrumentKey, year: i32) -> Self {
+    pub fn new(history: &StockHistory, key: &InstrumentKey, year: Option<i32>) -> Self {
         let replay = &history.replay;
         let mut records = history.records.iter().collect::<Vec<_>>();
         records.sort_by(|a, b| sort_key(a).cmp(&sort_key(b)));
@@ -198,7 +198,12 @@ impl HistoryDisplay {
         };
         let facts = vec![
             Fact {
-                label: t!("history.exchange").into(),
+                label: if year.is_some() {
+                    t!("history.exchange")
+                } else {
+                    t!("stocks.history_exchange")
+                }
+                .into(),
                 value: exchange.into(),
                 warning,
             },
@@ -212,7 +217,11 @@ impl HistoryDisplay {
                 warning: false,
             },
             Fact {
-                label: t!("history.holding_on", year = year).into(),
+                label: match year {
+                    Some(year) => t!("history.holding_on", year = year),
+                    None => t!("stocks.history_holding_today"),
+                }
+                .into(),
                 value: holding.into(),
                 warning: false,
             },
@@ -227,17 +236,29 @@ impl HistoryDisplay {
         } else {
             t!("history.lots_caption_split")
         };
-        let timeline_caption = match splits {
-            0 => "history.timeline_caption",
-            1 => "history.timeline_caption_split",
-            _ => "history.timeline_caption_splits",
+        let timeline_caption = match year {
+            Some(year) => {
+                let caption = match splits {
+                    0 => "history.timeline_caption",
+                    1 => "history.timeline_caption_split",
+                    _ => "history.timeline_caption_splits",
+                };
+                t!(
+                    caption,
+                    ticker = key.ticker,
+                    provider = key.provider,
+                    year = year
+                )
+            }
+            None => {
+                let caption = match splits {
+                    0 => "stocks.history_timeline_all",
+                    1 => "stocks.history_timeline_all_split",
+                    _ => "stocks.history_timeline_all_splits",
+                };
+                t!(caption, ticker = key.ticker, provider = key.provider)
+            }
         };
-        let timeline_caption = t!(
-            timeline_caption,
-            ticker = key.ticker,
-            provider = key.provider,
-            year = year
-        );
 
         let mut legend = replay
             .sales
@@ -250,7 +271,7 @@ impl HistoryDisplay {
                 ))
             })
             .collect::<Vec<_>>();
-        if !open.is_zero() {
+        if let Some(year) = year.filter(|_| !open.is_zero()) {
             legend.push((
                 Shade::Open,
                 t!("history.open_moves", year = year + 1).into(),
@@ -299,6 +320,20 @@ impl HistoryDisplay {
             }
             rows.push(row);
             notes.push(note);
+        }
+        if year.is_none() {
+            // A December trade can settle in a year without any trade records.
+            for year in profits.keys() {
+                if !years.iter().any(|group| group.year == *year) {
+                    years.push(YearGroup {
+                        year: *year,
+                        counts: SharedString::default(),
+                        profit: None,
+                        rows: 0..0,
+                    });
+                }
+            }
+            years.sort_by_key(|group| group.year);
         }
         for group in &mut years {
             let [buys, sales, splits] = counts.get(&group.year).copied().unwrap_or_default();
@@ -373,7 +408,7 @@ fn lot_bars(
     records: &[&Stock],
     replayed: &Replayed,
     shades: &HashMap<&str, Shade>,
-    year: i32,
+    year: Option<i32>,
 ) -> Vec<LotBar> {
     let lots = records
         .iter()
@@ -429,12 +464,18 @@ fn lot_bars(
                 parts.push(BarPart {
                     weight: weight(lot.open),
                     label: t!("history.part_open", shares = shares_text(lot.open)).into(),
-                    tooltip: t!(
-                        "history.part_open_tooltip",
-                        shares = shares_count(lot.open),
-                        year = year,
-                        next = year + 1
-                    )
+                    tooltip: match year {
+                        Some(year) => t!(
+                            "history.part_open_tooltip",
+                            shares = shares_count(lot.open),
+                            year = year,
+                            next = year + 1
+                        ),
+                        None => t!(
+                            "stocks.history_open_today_tooltip",
+                            shares = shares_count(lot.open)
+                        ),
+                    }
                     .into(),
                     shade: Shade::Open,
                 });

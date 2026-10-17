@@ -835,6 +835,121 @@ tax:
     pl: Zapłacony (G-48)
 
 home:
+  interest:
+    en: Interest
+    pl: Odsetki
+  holdings_cost:
+    en: Holdings cost
+    pl: Koszt portfela
+  realized_profit:
+    en: Realized profit
+    pl: Zrealizowany zysk
+  sales_since:
+    en: "%{sales} since %{year}"
+    pl: "%{sales} od %{year}"
+  before_tax:
+    en: before tax
+    pl: przed opodatkowaniem
+  positions_count:
+    one:
+      en: 1 position
+      pl: 1 pozycja
+    other:
+      en: "%{count} positions"
+    few:
+      pl: "%{count} pozycje"
+    many:
+      pl: "%{count} pozycji"
+  providers_count:
+    one:
+      en: 1 provider
+      pl: 1 platforma
+    other:
+      en: "%{count} providers"
+    few:
+      pl: "%{count} platformy"
+    many:
+      pl: "%{count} platform"
+  payments_count:
+    one:
+      en: 1 payment
+      pl: 1 wypłata
+    other:
+      en: "%{count} payments"
+    few:
+      pl: "%{count} wypłaty"
+    many:
+      pl: "%{count} wypłat"
+  more_positions:
+    one:
+      en: 1 more position
+      pl: Jeszcze 1 pozycja
+    other:
+      en: "%{count} more positions"
+    few:
+      pl: Jeszcze %{count} pozycje
+    many:
+      pl: Jeszcze %{count} pozycji
+  by_year:
+    en: By year
+    pl: Według roku
+  by_year_caption:
+    en: realized profit, dividends and interest · before tax
+    pl: zrealizowany zysk, dywidendy i odsetki · przed opodatkowaniem
+  year:
+    en: Year
+    pl: Rok
+  realized_pln:
+    en: Realized, PLN
+    pl: Zysk, PLN
+  dividends_pln:
+    en: Dividends, PLN
+    pl: Dywidendy, PLN
+  interest_pln:
+    en: Interest, PLN
+    pl: Odsetki, PLN
+  total_pln:
+    en: Total, PLN
+    pl: Razem, PLN
+  total:
+    en: Total
+    pl: Razem
+  by_year_note:
+    en: "A year opens as a tax year with its e-PIT values. Crypto isn't in these totals: its records have no coin or amount, so there's no profit to show."
+    pl: "Wybrany rok otwiera widok podatkowy z kwotami do e-PIT. Te sumy nie obejmują krypto: wpisy nie zawierają rodzaju ani liczby jednostek kryptowaluty, więc nie da się obliczyć zysku."
+  holdings:
+    en: Holdings
+    pl: Posiadane papiery
+  holdings_caption:
+    en: open lots today · cost at the buy-day NBP rates, buy fees included
+    pl: otwarte partie na dziś · koszt po kursach NBP z dnia zakupu, z prowizjami
+  position:
+    en: Position
+    pl: Pozycja
+  cost_pln:
+    en: Cost, PLN
+    pl: Koszt, PLN
+  share_of_cost:
+    en: Share of cost
+    pl: Udział w koszcie
+  cost_percentage:
+    en: "% of the holdings cost"
+    pl: "% kosztu portfela"
+  by_currency:
+    en: By currency
+    pl: Według waluty
+  put_in:
+    en: Put in · buys and fees
+    pl: Wpłacono · zakupy i prowizje
+  taken_out:
+    en: Taken out · sales
+    pl: Wypłacono · sprzedaż
+  net:
+    en: Net
+    pl: Bilans
+  nbp_note:
+    en: "PLN values use the NBP rate of each record, as the tax view does, so they differ from your broker's own PLN figures."
+    pl: "Kwoty w PLN są przeliczane po kursie NBP dla każdego wpisu, tak jak w widoku podatkowym. Dlatego różnią się od kwot w PLN podawanych przez brokera."
   latest_rate:
     en: Latest NBP rate %{date}
     pl: Ostatni kurs NBP %{date}
@@ -913,6 +1028,104 @@ home:
     pl: Podsumowanie pokazuje każde pole formularza z przyciskiem kopiowania, gotowe do przeniesienia na stronę urzędu skarbowego.
 
 stocks:
+  portfolio_cost:
+    en: Holdings cost
+    pl: Koszt pozycji
+  realized_profit:
+    en: Realized profit
+    pl: Zrealizowany zysk
+  positions:
+    en: Positions
+    pl: Pozycje
+  open_closed:
+    one:
+      en: open · 1 closed
+      pl: otwarte · 1 zamknięta
+    other:
+      en: open · %{count} closed
+    few:
+      pl: otwarte · %{count} zamknięte
+    many:
+      pl: otwarte · %{count} zamkniętych
+  since_year:
+    en: since %{year}
+    pl: od %{year}
+  realized:
+    en: Realized
+    pl: Zrealizowane
+  portfolio_holdings_caption:
+    en: Open lots today, after every record · check them against your broker
+    pl: Otwarte partie na dziś, po wszystkich wpisach · porównaj je z danymi brokera
+  portfolio_realized_caption:
+    en: Every sale, FIFO per ticker and provider · before tax
+    pl: Wszystkie sprzedaże, FIFO osobno dla tickera i platformy · przed podatkiem
+  portfolio_records_caption:
+    en: Every record, newest first
+    pl: Wszystkie wpisy, od najnowszego
+  empty_all:
+    en: No stocks
+    pl: Brak akcji
+  average_price:
+    en: Avg price
+    pl: Średnia cena
+  since:
+    en: Since
+    pl: Od
+  toggle_position:
+    en: Open lots of %{ticker} in %{provider}
+    pl: Otwarte partie %{ticker} w %{provider}
+  open_lots_note:
+    one:
+      en: One open lot · every buy and sale of %{ticker} in %{provider} is in its history
+      pl: Jedna otwarta partia · wszystkie zakupy i sprzedaże %{ticker} w %{provider} znajdziesz w historii
+    other:
+      en: "%{count} open lots, oldest first · FIFO sells from the top"
+    few:
+      pl: "%{count} otwarte partie, od najstarszej · FIFO sprzedaje od góry"
+    many:
+      pl: "%{count} otwartych partii, od najstarszej · FIFO sprzedaje od góry"
+  no_open_lots_today:
+    en: No open lots today.
+    pl: Brak otwartych partii na dziś.
+  all_positions:
+    en: All positions
+    pl: Wszystkie pozycje
+  filtered_positions:
+    en: Filtered positions
+    pl: Filtrowane pozycje
+  sold_out_all:
+    en: "Sold out:"
+    pl: "Wyprzedane:"
+  holdings_note:
+    en: "Avg price is the share price alone. Cost, PLN uses each lot's buy-day NBP rate and includes its buy fee, the same cost FIFO takes when it sells. No market value: the app has no prices."
+    pl: "Średnia cena to sama cena akcji. Koszt w PLN uwzględnia kurs NBP dla dnia zakupu każdej partii i prowizję zakupu — ten sam koszt rozlicza FIFO przy sprzedaży. Brak wartości rynkowej: aplikacja nie ma notowań."
+  open_shares:
+    en: Open shares
+    pl: Otwarte akcje
+  lot_cost_tooltip:
+    en: "%{cost} · buy fee included"
+    pl: "%{cost} · z prowizją zakupu"
+  history_exchange:
+    en: Exchange · country
+    pl: Giełda · kraj
+  history_holding_today:
+    en: Holding today
+    pl: Stan na dziś
+  history_timeline_all:
+    en: every record of %{ticker} in %{provider}, oldest first
+    pl: każdy wpis %{ticker} w %{provider}, od najstarszego
+  history_timeline_all_split:
+    en: every record of %{ticker} in %{provider}, and the split, oldest first
+    pl: każdy wpis %{ticker} w %{provider} oraz split, od najstarszego
+  history_timeline_all_splits:
+    en: every record of %{ticker} in %{provider}, and the splits, oldest first
+    pl: każdy wpis %{ticker} w %{provider} oraz splity, od najstarszego
+  history_open_today_tooltip:
+    en: "%{shares} open today"
+    pl: "Otwarte na dziś: %{shares}"
+  history_no_buys:
+    en: No buys.
+    pl: Brak zakupów.
   sales_count:
     one:
       en: 1 sale
