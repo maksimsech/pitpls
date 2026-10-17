@@ -3,6 +3,8 @@
 mod app;
 mod components;
 mod config;
+#[cfg(test)]
+mod fixtures;
 mod format;
 mod i18n;
 mod messages;

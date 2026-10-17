@@ -603,3 +603,40 @@ impl Render for HistoryView {
             )
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use gpui_kit::TestAppContext;
+
+    use crate::{fixtures::T212, pages::stocks::tests::open};
+
+    #[gpui_kit::test]
+    fn sale_row_opens_the_instrument_history(cx: &mut TestAppContext) {
+        let ui = open(cx, Some(2025));
+        ui.click("line-aapl-s", cx);
+
+        ui.click("lots-link-0-aapl-s", cx);
+
+        let history = ui.read(cx, |page, _| {
+            page.history.as_ref().map(|(view, _)| view.clone())
+        });
+        let history = history.expect("the history is open");
+        let key = history.read_with(cx, |view, _| {
+            (view.key.ticker.to_string(), view.key.provider.to_string())
+        });
+        assert_eq!(key, ("AAPL".to_owned(), T212.to_owned()));
+        ui.wait_until(cx, |cx| {
+            history.read_with(cx, |view, _| view.display.is_some())
+        });
+        let rows = history.read_with(cx, |view, _| {
+            view.display
+                .as_ref()
+                .unwrap()
+                .rows
+                .iter()
+                .map(|row| row.id.to_string())
+                .collect::<Vec<_>>()
+        });
+        assert_eq!(rows, ["aapl-1", "aapl-s"]);
+    }
+}

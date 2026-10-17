@@ -12,3 +12,6 @@ rust_decimal.workspace = true
 serde_plain = "1"
 sqlx = { version = "0.8.6", features = ["chrono", "migrate", "runtime-tokio", "sqlite"] }
 thiserror.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt"] }

@@ -1195,3 +1195,264 @@ fn missing_row(
         exchange: None,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use pitpls_app::use_case::stock::load_stocks;
+    use rust_decimal::dec;
+
+    use super::*;
+    use crate::fixtures::{self, REVOLUT, T212, buy, on, sell, split, usd};
+
+    // AAPL and MSFT have an exchange; KO sells a share it never bought; NVDA splits in two
+    // providers.
+    async fn display() -> StockDisplay {
+        let app = fixtures::app(2025..=2025).await;
+        fixtures::listed(&app, "AAPL", T212, "XNAS").await;
+        fixtures::listed(&app, "MSFT", T212, "XNAS").await;
+        fixtures::add_stocks(
+            &app,
+            &[
+                buy(
+                    "aapl-1",
+                    on(2025, 2, 3),
+                    "AAPL",
+                    T212,
+                    dec!(10),
+                    usd(dec!(100)),
+                ),
+                buy(
+                    "aapl-2",
+                    on(2025, 3, 3),
+                    "AAPL",
+                    T212,
+                    dec!(5),
+                    usd(dec!(120)),
+                ),
+                sell(
+                    "aapl-s",
+                    on(2025, 5, 5),
+                    "AAPL",
+                    T212,
+                    dec!(12),
+                    usd(dec!(150)),
+                ),
+                buy(
+                    "ko-1",
+                    on(2025, 2, 3),
+                    "KO",
+                    REVOLUT,
+                    dec!(2),
+                    usd(dec!(50)),
+                ),
+                sell(
+                    "ko-s",
+                    on(2025, 6, 2),
+                    "KO",
+                    REVOLUT,
+                    dec!(3),
+                    usd(dec!(60)),
+                ),
+                buy(
+                    "msft-1",
+                    on(2025, 2, 3),
+                    "MSFT",
+                    T212,
+                    dec!(1),
+                    usd(dec!(300)),
+                ),
+                sell(
+                    "msft-s",
+                    on(2025, 4, 1),
+                    "MSFT",
+                    T212,
+                    dec!(1),
+                    usd(dec!(310)),
+                ),
+                buy(
+                    "nvda-t212",
+                    on(2025, 2, 3),
+                    "NVDA",
+                    T212,
+                    dec!(1),
+                    usd(dec!(500)),
+                ),
+                buy(
+                    "nvda-rev",
+                    on(2025, 2, 3),
+                    "NVDA",
+                    REVOLUT,
+                    dec!(2),
+                    usd(dec!(500)),
+                ),
+                split("nvda-split", on(2025, 6, 10), "NVDA", 1, 10),
+            ],
+        )
+        .await;
+        let data = load_stocks(&app, 2025).await.unwrap();
+        StockDisplay::new(&data, 2025)
+    }
+
+    fn row<'a>(rows: &'a [RowDisplay], id: &str) -> &'a RowDisplay {
+        rows.iter()
+            .find(|row| row.id.as_ref() == id)
+            .unwrap_or_else(|| panic!("no row {id}"))
+    }
+
+    fn texts(parts: &[DisplayText]) -> Vec<&str> {
+        parts.iter().map(|part| part.full.as_ref()).collect()
+    }
+
+    fn column(table: &LotTable, index: usize) -> Vec<&str> {
+        table
+            .rows
+            .iter()
+            .map(|row| row.cells[index].full.as_ref())
+            .collect()
+    }
+
+    #[tokio::test]
+    async fn sale_row_lists_the_lots_it_takes() {
+        let display = display().await;
+
+        assert_eq!(
+            display
+                .stats
+                .iter()
+                .map(|(key, value)| (*key, value.full.as_ref()))
+                .collect::<Vec<_>>(),
+            [
+                ("tax.income_c22", "9\u{202f}160.00 PLN"),
+                ("tax.costs_c23", "6\u{202f}560.00 PLN"),
+            ]
+        );
+        let sale = row(&display.sales, "aapl-s");
+        assert_eq!(
+            texts(&sale.cells),
+            [
+                "05.05",
+                "AAPL",
+                "NASDAQ",
+                "Trading 212",
+                "12",
+                "7\u{202f}200.00 PLN",
+                "4\u{202f}960.00 PLN",
+                "2\u{202f}240.00 PLN",
+            ]
+        );
+        assert!(sale.flagged.is_empty());
+        let lots = sale.lots.as_ref().unwrap();
+        // Bought, lot shares, before, taken, after.
+        assert_eq!(column(lots, 0), ["03.02.2025", "03.03.2025"]);
+        assert_eq!(column(lots, 3), ["10", "2"]);
+        assert_eq!(column(lots, 4), ["0", "3"]);
+        assert!(lots.rows.iter().all(|row| !row.uncovered));
+        assert_eq!(
+            lots.caption.as_ref(),
+            "15 shares in 2 lots before this sale → 3 in 1 lot after"
+        );
+    }
+
+    #[tokio::test]
+    async fn sale_without_a_buy_shows_the_missing_shares_and_exchange() {
+        let display = display().await;
+
+        let sale = row(&display.sales, "ko-s");
+        assert_eq!(sale.flagged, [2]);
+        let lots = sale.lots.as_ref().unwrap();
+        assert_eq!(column(lots, 0), ["03.02.2025", "No buy"]);
+        assert_eq!(column(lots, 3), ["2", "1"]);
+        assert_eq!(
+            lots.rows
+                .iter()
+                .map(|row| row.uncovered)
+                .collect::<Vec<_>>(),
+            [false, true]
+        );
+        assert_eq!(
+            lots.caption.as_ref(),
+            "2 shares in 1 lot before this sale, 3 shares sold"
+        );
+    }
+
+    #[tokio::test]
+    async fn warnings_ask_for_the_buy_and_the_exchange() {
+        let display = display().await;
+
+        let [no_buy, no_exchange] = &display.warnings[..] else {
+            panic!("expected two warnings");
+        };
+        assert_eq!(no_buy.title.as_ref(), "KO sold 1 share with no buy");
+        let WarningAction::AddBuy(Some(prefill)) = &no_buy.action else {
+            panic!("expected a prefilled buy");
+        };
+        assert_eq!(
+            (
+                prefill.ticker.as_str(),
+                prefill.provider.as_str(),
+                prefill.currency,
+                prefill.first_sale
+            ),
+            ("KO", REVOLUT, Currency::USD, on(2025, 6, 2))
+        );
+        let WarningAction::SetExchange(rows) = &no_exchange.action else {
+            panic!("expected the exchange rows");
+        };
+        assert_eq!(
+            rows.iter()
+                .map(|row| (row.ticker.as_ref(), row.provider.as_ref()))
+                .collect::<Vec<_>>(),
+            [("KO", REVOLUT)]
+        );
+    }
+
+    #[tokio::test]
+    async fn holdings_show_open_lots_and_sold_out_instruments() {
+        let display = display().await;
+
+        assert_eq!(
+            display
+                .holdings
+                .iter()
+                .map(|block| (
+                    block.ticker.as_ref(),
+                    block.provider.as_ref(),
+                    block.shares,
+                    block.lots.len()
+                ))
+                .collect::<Vec<_>>(),
+            [
+                ("AAPL", T212, dec!(3), 1),
+                ("NVDA", REVOLUT, dec!(20), 1),
+                ("NVDA", T212, dec!(10), 1),
+            ]
+        );
+        let aapl = &display.holdings[0].lots[0];
+        // Bought, lot shares, open.
+        assert_eq!(texts(&aapl.cells[..3]), ["03.03.2025", "5", "3"]);
+        assert_eq!(
+            display
+                .sold_out
+                .iter()
+                .map(|sold| sold.instrument.as_ref())
+                .collect::<Vec<_>>(),
+            ["KO · Revolut", "MSFT · NASDAQ · Trading 212"]
+        );
+    }
+
+    #[tokio::test]
+    async fn split_links_the_history_of_every_provider() {
+        let display = display().await;
+
+        assert_eq!(
+            row(&display.records, "nvda-split").links,
+            ["NVDA history · Revolut", "NVDA history · Trading 212"]
+        );
+        assert_eq!(row(&display.records, "aapl-1").links, ["AAPL history"]);
+        let providers = display.histories["nvda-split"]
+            .iter()
+            .map(|key| key.provider.as_ref())
+            .collect::<Vec<_>>();
+        assert_eq!(providers, [REVOLUT, T212]);
+    }
+}

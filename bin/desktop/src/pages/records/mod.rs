@@ -1231,3 +1231,34 @@ impl<K: RecordKind> Render for RecordsPage<K> {
             )
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{Dividends, Interests, YearInfo, other_year};
+
+    fn info(year: i32, dividends: u32, interests: u32) -> YearInfo {
+        YearInfo {
+            year,
+            dividends,
+            interests,
+            cryptos: 0,
+            stocks: 0,
+            custom: false,
+        }
+    }
+
+    #[test]
+    fn other_year_is_the_nearest_with_records_newer_on_a_tie() {
+        let years = [
+            info(2027, 2, 0),
+            info(2026, 0, 5),
+            info(2024, 0, 0),
+            info(2023, 1, 0),
+        ];
+
+        assert_eq!(other_year::<Dividends>(Some(2025), &years), Some((2027, 2)));
+        assert_eq!(other_year::<Interests>(Some(2025), &years), Some((2026, 5)));
+        assert_eq!(other_year::<Dividends>(Some(2027), &years), Some((2023, 1)));
+        assert_eq!(other_year::<Dividends>(None, &years), None);
+    }
+}

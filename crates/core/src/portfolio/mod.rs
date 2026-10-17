@@ -422,3 +422,339 @@ fn amounts_by_currency(amounts: impl Iterator<Item = Amount>) -> Vec<Amount> {
     totals.sort_by_key(|amount| amount.currency.as_str());
     totals
 }
+
+#[cfg(test)]
+mod tests {
+    use chrono::{DateTime, TimeZone, Utc};
+    use rust_decimal::dec;
+
+    use super::*;
+    use crate::{
+        common::Country,
+        dividend::{self, Dividend},
+        interest::{self, Interest},
+        rate::{NbpRateProvider, Rate},
+        settings::DividendRounding,
+        stock::{InstrumentExchange, Stock, StockAction, StockBuy, StockSell, replay},
+    };
+
+    const T212: &str = "Trading 212";
+    const REVOLUT: &str = "Revolut";
+
+    fn on(year: i32, month: u32, day: u32) -> DateTime<Utc> {
+        Utc.with_ymd_and_hms(year, month, day, 12, 0, 0).unwrap()
+    }
+
+    fn usd(value: Decimal) -> Amount {
+        Amount {
+            value,
+            currency: Currency::USD,
+        }
+    }
+
+    fn eur(value: Decimal) -> Amount {
+        Amount {
+            value,
+            currency: Currency::EUR,
+        }
+    }
+
+    fn rates() -> NbpRateProvider {
+        NbpRateProvider::new(
+            NaiveDate::from_ymd_opt(2023, 1, 1)
+                .unwrap()
+                .iter_days()
+                .take_while(|day| day.year() <= 2026)
+                .flat_map(|date| {
+                    [(Currency::USD, dec!(4)), (Currency::EUR, dec!(4.5))].map(
+                        |(currency, rate)| Rate {
+                            date,
+                            currency,
+                            rate,
+                        },
+                    )
+                })
+                .collect(),
+        )
+    }
+
+    fn buy(
+        id: &str,
+        time: DateTime<Utc>,
+        ticker: &str,
+        provider: &str,
+        shares: Decimal,
+        price: Amount,
+    ) -> Stock {
+        Stock {
+            id: id.to_owned(),
+            time,
+            ticker: ticker.to_owned(),
+            action: StockAction::Buy(StockBuy {
+                number: shares,
+                price,
+                amount: None,
+                fee: Amount {
+                    value: Decimal::ZERO,
+                    currency: price.currency,
+                },
+                provider: provider.to_owned(),
+                settlement_date: None,
+            }),
+        }
+    }
+
+    fn sell(
+        id: &str,
+        time: DateTime<Utc>,
+        ticker: &str,
+        provider: &str,
+        shares: Decimal,
+        price: Amount,
+    ) -> Stock {
+        Stock {
+            id: id.to_owned(),
+            time,
+            ticker: ticker.to_owned(),
+            action: StockAction::Sell(StockSell {
+                number: shares,
+                price,
+                amount: None,
+                fee: Amount {
+                    value: Decimal::ZERO,
+                    currency: price.currency,
+                },
+                provider: provider.to_owned(),
+                settlement_date: None,
+                tax_paid: None,
+            }),
+        }
+    }
+
+    fn with_fee(mut stock: Stock, fee: Decimal) -> Stock {
+        if let StockAction::Buy(buy) = &mut stock.action {
+            buy.fee.value = fee;
+        }
+        stock
+    }
+
+    fn interest(time: DateTime<Utc>, value: Decimal, provider: &str) -> Interest {
+        Interest {
+            id: format!("{provider}-{time}"),
+            time,
+            value: usd(value),
+            provider: provider.to_owned(),
+        }
+    }
+
+    #[test]
+    fn positions_weigh_price_by_open_shares_and_cost_includes_fees() {
+        let records = [
+            with_fee(
+                buy("a1", on(2025, 2, 3), "AAPL", T212, dec!(10), usd(dec!(10))),
+                dec!(1),
+            ),
+            buy("a2", on(2025, 3, 3), "AAPL", T212, dec!(30), usd(dec!(20))),
+            sell("a-s", on(2025, 4, 7), "AAPL", T212, dec!(5), usd(dec!(25))),
+            buy(
+                "m1",
+                on(2025, 2, 3),
+                "MSFT",
+                REVOLUT,
+                dec!(1),
+                usd(dec!(300)),
+            ),
+            buy("k1", on(2025, 2, 3), "KO", T212, dec!(2), usd(dec!(60))),
+            sell("k-s", on(2025, 4, 7), "KO", T212, dec!(2), usd(dec!(70))),
+        ];
+        let replay = replay(&records, &[], &rates()).unwrap();
+
+        let positions = positions(&replay.open_lots);
+
+        let [aapl, msft] = &positions[..] else {
+            panic!("expected AAPL and MSFT, KO is sold out");
+        };
+        assert_eq!(
+            (aapl.ticker.as_str(), aapl.shares, aapl.lots, aapl.since),
+            ("AAPL", dec!(35), 2, on(2025, 2, 3))
+        );
+        assert_eq!(aapl.avg_price, dec!(650) / dec!(35));
+        // 5 × 10 × 4 + half the 4 PLN fee, and 30 × 20 × 4.
+        assert_eq!(aapl.cost, dec!(2602));
+        assert_eq!((msft.ticker.as_str(), msft.cost), ("MSFT", dec!(1200)));
+    }
+
+    #[test]
+    fn realized_counts_in_the_settlement_year() {
+        let records = [
+            buy(
+                "buy",
+                on(2025, 6, 2),
+                "VWCE",
+                T212,
+                dec!(10),
+                eur(dec!(100)),
+            ),
+            sell("jun", on(2025, 6, 9), "VWCE", T212, dec!(1), eur(dec!(110))),
+            // Settles on 01.01.2026.
+            sell(
+                "dec",
+                on(2025, 12, 30),
+                "VWCE",
+                T212,
+                dec!(2),
+                eur(dec!(120)),
+            ),
+        ];
+        let exchanges = [InstrumentExchange {
+            ticker: "VWCE".to_owned(),
+            provider: T212.to_owned(),
+            mic: "XETR".parse().unwrap(),
+            country: "DE".parse().unwrap(),
+        }];
+        let replay = replay(&records, &exchanges, &rates()).unwrap();
+
+        let years = realized_by_year(&replay.sales)
+            .into_iter()
+            .map(|year| (year.year, year.sales, year.profit))
+            .collect::<Vec<_>>();
+
+        assert_eq!(years, [(2025, 1, dec!(45)), (2026, 1, dec!(180))]);
+    }
+
+    #[test]
+    fn interest_months_fill_gaps_in_warsaw_months() {
+        let interests = vec![
+            interest(on(2024, 12, 5), dec!(1), T212),
+            interest(on(2025, 1, 5), dec!(2), T212),
+            interest(on(2025, 1, 6), dec!(3), REVOLUT),
+            // 01.04 in Warsaw.
+            interest(
+                Utc.with_ymd_and_hms(2025, 3, 31, 22, 30, 0).unwrap(),
+                dec!(4),
+                T212,
+            ),
+        ];
+        let data = interest::calculate(interests, &rates()).unwrap();
+
+        let months = interest_by_month(&data.calculated)
+            .into_iter()
+            .map(|month| (month.year, month.month, month.records, month.value))
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            months,
+            [
+                (2024, 12, 1, dec!(4)),
+                (2025, 1, 2, dec!(20)),
+                (2025, 2, 0, dec!(0)),
+                (2025, 3, 0, dec!(0)),
+                (2025, 4, 1, dec!(16)),
+            ]
+        );
+    }
+
+    #[test]
+    fn last_12_months_leave_out_the_current_month() {
+        let interests = vec![
+            interest(on(2025, 9, 15), dec!(1), T212),
+            interest(on(2025, 10, 15), dec!(2), T212),
+            interest(on(2026, 9, 15), dec!(3), T212),
+            interest(on(2026, 10, 15), dec!(4), T212),
+        ];
+        let data = interest::calculate(interests, &rates()).unwrap();
+        let today = NaiveDate::from_ymd_opt(2026, 10, 17).unwrap();
+
+        let last = interest_last_12_months(&data.calculated, today);
+
+        assert_eq!(
+            (last.from, last.to, last.value),
+            ((2025, 10), (2026, 9), dec!(20))
+        );
+        let january = interest_last_12_months(
+            &data.calculated,
+            NaiveDate::from_ymd_opt(2026, 1, 5).unwrap(),
+        );
+        assert_eq!((january.from, january.to), ((2025, 1), (2025, 12)));
+    }
+
+    #[test]
+    fn payer_takes_the_latest_country_and_net_is_after_withholding() {
+        let dividend = |id: &str, time, country| Dividend {
+            id: id.to_owned(),
+            time,
+            ticker: "X".to_owned(),
+            value: usd(dec!(10)),
+            tax_paid: usd(dec!(1)),
+            country,
+            provider: T212.to_owned(),
+        };
+        let dividends = vec![
+            dividend("old", on(2024, 3, 1), Country::USA),
+            dividend("new", on(2025, 3, 1), "IE".parse().unwrap()),
+        ];
+        let data = dividend::calculate(dividends, &rates(), DividendRounding::SumToGroszy).unwrap();
+
+        let [payer] = &dividends_by_payer(&data.calculated)[..] else {
+            panic!("expected one payer");
+        };
+
+        assert_eq!(payer.country.to_string(), "IE");
+        assert_eq!(
+            (payer.payments, payer.first_year, payer.last_year),
+            (2, 2024, 2025)
+        );
+        assert_eq!(
+            (payer.gross, payer.withheld, payer.net),
+            (dec!(80), dec!(8), dec!(72))
+        );
+        assert_eq!(payer.gross_in_currency[0].value, dec!(20));
+    }
+
+    #[test]
+    fn earned_years_merge_every_source() {
+        let realized = [RealizedYear {
+            year: 2024,
+            profit: dec!(100),
+            ..Default::default()
+        }];
+        let dividends = [DividendYear {
+            year: 2025,
+            gross: dec!(50),
+            ..Default::default()
+        }];
+        let interests = [
+            InterestYear {
+                year: 2024,
+                total: dec!(10),
+                ..Default::default()
+            },
+            InterestYear {
+                year: 2025,
+                total: dec!(5),
+                ..Default::default()
+            },
+        ];
+
+        let years = earned_by_year(&realized, &dividends, &interests)
+            .into_iter()
+            .map(|year| {
+                (
+                    year.year,
+                    year.realized,
+                    year.dividends,
+                    year.interest,
+                    year.total,
+                )
+            })
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            years,
+            [
+                (2024, dec!(100), dec!(0), dec!(10), dec!(110)),
+                (2025, dec!(0), dec!(50), dec!(5), dec!(55)),
+            ]
+        );
+    }
+}

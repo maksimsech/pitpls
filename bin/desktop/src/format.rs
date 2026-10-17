@@ -128,3 +128,60 @@ fn group_thousands(digits: &str) -> String {
     }
     grouped
 }
+
+#[cfg(test)]
+mod tests {
+    use rust_decimal::dec;
+
+    use super::*;
+
+    fn parts(text: &DisplayText) -> (&str, &str, bool, &str) {
+        (&text.main, &text.extra, text.more, &text.copy)
+    }
+
+    #[test]
+    fn money_never_rounds() {
+        let value = money(dec!(1234.56789));
+        assert_eq!(
+            parts(&value),
+            ("1\u{202f}234.56", "789", false, "1234,56789")
+        );
+        assert_eq!(value.full.as_ref(), "1\u{202f}234.56789");
+
+        let long = money(dec!(0.1234567));
+        assert_eq!(parts(&long), ("0.12", "345", true, "0,1234567"));
+        assert_eq!(long.full.as_ref(), "0.1234567");
+
+        assert_eq!(parts(&money(dec!(1.5))), ("1.50", "", false, "1,50"));
+    }
+
+    #[test]
+    fn minus_is_typographic_on_screen_and_ascii_when_copied() {
+        assert_eq!(
+            parts(&money(dec!(-1500.5))),
+            ("\u{2212}1\u{202f}500.50", "", false, "-1500,50")
+        );
+    }
+
+    #[test]
+    fn units_follow_the_value() {
+        assert_eq!(pln(dec!(2)).full.as_ref(), "2.00 PLN");
+        let usd = amount(Amount {
+            value: dec!(0.125),
+            currency: pitpls_core::common::Currency::USD,
+        });
+        assert_eq!(
+            (usd.main.as_ref(), usd.extra.as_ref(), usd.full.as_ref()),
+            ("0.12", "5", "0.125 USD")
+        );
+    }
+
+    #[test]
+    fn whole_shares_have_no_decimals() {
+        assert_eq!(
+            parts(&shares(dec!(1000))),
+            ("1\u{202f}000", "", false, "1000")
+        );
+        assert_eq!(parts(&shares(dec!(0.5))), ("0.50", "", false, "0,50"));
+    }
+}

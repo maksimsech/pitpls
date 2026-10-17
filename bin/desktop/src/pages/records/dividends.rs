@@ -450,3 +450,365 @@ impl RecordForm for DividendForm {
             ))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::ops::RangeInclusive;
+
+    use chrono::{DateTime, Utc};
+    use gpui_kit::{AppContext as _, TestAppContext};
+    use pitpls_core::{
+        common::Country,
+        dividend::{CalculatedDividend, Dividend, calculate},
+        rate::NbpRateProvider,
+        settings::DividendRounding,
+    };
+    use rust_decimal::{Decimal, dec};
+
+    use super::{Dividends, RecordKind};
+    use crate::{
+        components::records::{EntryStyle, Preview, RowDisplay, Step, StepLine},
+        fixtures::{self, Event, REVOLUT, T212, Ui, on, rates, usd},
+        format::DisplayText,
+        navigation::Page,
+        pages::records::RecordsPage,
+    };
+
+    // 30% withheld, so the credit stops at the US treaty's 15%.
+    fn record() -> CalculatedDividend {
+        let dividend = Dividend {
+            id: "ko".to_owned(),
+            time: on(2025, 5, 15),
+            ticker: "KO".to_owned(),
+            value: usd(dec!(100)),
+            tax_paid: usd(dec!(30)),
+            country: Country::USA,
+            provider: REVOLUT.to_owned(),
+        };
+        let rates = NbpRateProvider::new(rates(2025..=2025));
+        calculate(vec![dividend], &rates, DividendRounding::SumToGroszy)
+            .unwrap()
+            .calculated
+            .pop()
+            .unwrap()
+    }
+
+    fn texts(parts: &[DisplayText]) -> Vec<&str> {
+        parts.iter().map(|part| part.full.as_ref()).collect()
+    }
+
+    fn titles(row: &RowDisplay) -> Vec<&str> {
+        row.steps.iter().map(|step| step.title).collect()
+    }
+
+    fn results(step: &Step) -> Vec<Vec<&str>> {
+        step.lines
+            .iter()
+            .filter_map(|line| match line {
+                StepLine::Result(value) | StepLine::Entry { value, .. } => Some(texts(value)),
+                StepLine::ValueCaption { value, .. } => Some(vec![value.full.as_ref()]),
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn tax_year_row_shows_conversion_tax_and_credit() {
+        let row = Dividends::display(&record());
+
+        assert_eq!(
+            texts(&row.cells),
+            ["15.05", "KO", "Revolut", "US", "100.00 USD", "30.00 USD"]
+        );
+        assert_eq!(
+            titles(&row),
+            [
+                "records.step_conversion",
+                "records.step_polish_tax",
+                "dividends.step_credit"
+            ]
+        );
+        let [conversion, tax, credit] = &row.steps[..] else {
+            panic!("expected three steps");
+        };
+        let StepLine::Formula(formula) = &conversion.lines[0] else {
+            panic!("expected the conversion formula first");
+        };
+        assert_eq!(texts(formula), ["100.00 USD", "× 4"]);
+        assert_eq!(results(conversion), [["400.00 PLN"]]);
+        assert_eq!(results(tax), [["76.00 PLN"]]);
+        assert_eq!(
+            results(credit),
+            [["120.00 PLN"], ["60.00 PLN"], ["60.00 PLN"]]
+        );
+        let strong = credit
+            .lines
+            .iter()
+            .filter_map(|line| match line {
+                StepLine::Entry { value, style, .. } if *style == EntryStyle::Strong => {
+                    Some(texts(value))
+                }
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(strong, [["60.00 PLN"]]);
+    }
+
+    #[test]
+    fn all_years_row_has_no_polish_tax_or_credit() {
+        let record = record();
+
+        let row = Dividends::portfolio_display(&record);
+        assert_eq!(
+            titles(&row),
+            ["records.step_conversion", "dividends.step_withheld"]
+        );
+        assert_eq!(results(&row.steps[1]), [["120.00 PLN"], ["280.00 PLN"]]);
+
+        let keys = |preview: Preview| {
+            preview
+                .results
+                .into_iter()
+                .map(|(key, value)| (key, value.full.to_string()))
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(
+            keys(Dividends::portfolio_preview(&record)),
+            [
+                ("dividends.withheld", "120.00 PLN".to_owned()),
+                ("dividends.net", "280.00 PLN".to_owned()),
+            ]
+        );
+        assert_eq!(
+            keys(Dividends::preview_display(&record)),
+            [
+                ("dividends.calculated_to_pay", "76.00 PLN".to_owned()),
+                ("dividends.used_tax_paid", "60.00 PLN".to_owned()),
+            ]
+        );
+    }
+
+    fn paid(id: &str, time: DateTime<Utc>, provider: &str, value: Decimal) -> Dividend {
+        Dividend {
+            id: id.to_owned(),
+            time,
+            ticker: id.to_uppercase(),
+            value: usd(value),
+            tax_paid: usd(value * dec!(0.15)),
+            country: Country::USA,
+            provider: provider.to_owned(),
+        }
+    }
+
+    fn open(
+        cx: &mut TestAppContext,
+        rates: Option<RangeInclusive<i32>>,
+        dividends: Vec<Dividend>,
+        year: Option<i32>,
+    ) -> Ui<RecordsPage<Dividends>> {
+        let runtime = fixtures::runtime();
+        let app = runtime.block_on(async {
+            let app = match rates {
+                Some(years) => fixtures::app(years).await,
+                None => fixtures::app_without_rates().await,
+            };
+            for dividend in &dividends {
+                app.db.dividend_repo().insert(dividend).await.unwrap();
+            }
+            app
+        });
+        let ui = fixtures::open(cx, runtime, app, move |context, window, cx| {
+            cx.new(|cx| RecordsPage::<Dividends>::new(context, year, None, window, cx))
+        });
+        ui.wait_loaded(1, cx);
+        ui
+    }
+
+    // KO in May and AAPL in March 2025, at USD 4.
+    fn open_2025(cx: &mut TestAppContext) -> Ui<RecordsPage<Dividends>> {
+        let dividends = vec![
+            paid("ko", on(2025, 5, 15), REVOLUT, dec!(100)),
+            paid("aapl", on(2025, 3, 10), T212, dec!(50)),
+        ];
+        open(cx, Some(2025..=2025), dividends, Some(2025))
+    }
+
+    fn stored(ui: &Ui<RecordsPage<Dividends>>, cx: &TestAppContext) -> Vec<(String, Decimal)> {
+        let services = ui.read(cx, |page, _| page.context.services.clone());
+        let mut stored = services
+            .runtime
+            .block_on(services.app.db.dividend_repo().get_by_year(None))
+            .unwrap()
+            .into_iter()
+            .map(|dividend| (dividend.id, dividend.value.value))
+            .collect::<Vec<_>>();
+        stored.sort();
+        stored
+    }
+
+    fn totals(ui: &Ui<RecordsPage<Dividends>>, cx: &TestAppContext) -> Vec<(&'static str, String)> {
+        ui.read(cx, |page, _| {
+            page.totals
+                .iter()
+                .map(|(key, value)| (*key, value.full.to_string()))
+                .collect()
+        })
+    }
+
+    #[gpui_kit::test]
+    fn year_page_lists_its_records_by_month_with_totals(cx: &mut TestAppContext) {
+        let ui = open_2025(cx);
+
+        assert_eq!(
+            totals(&ui, cx),
+            [
+                ("tax.income_i65", "600.00 PLN".to_owned()),
+                ("tax.to_pay_short_g47", "114.00 PLN".to_owned()),
+                ("tax.paid_short_g48", "90.00 PLN".to_owned()),
+            ]
+        );
+        let groups = ui.read(cx, |page, _| {
+            page.table
+                .groups
+                .iter()
+                .map(|group| (group.title.to_string(), group.count.to_string()))
+                .collect::<Vec<_>>()
+        });
+        assert_eq!(
+            groups,
+            [
+                ("March".to_owned(), "1 record".to_owned()),
+                ("May".to_owned(), "1 record".to_owned()),
+            ]
+        );
+        assert!(ui.find("select-ko", cx).is_some_and(|row| row.visible()));
+        assert!(ui.find("select-aapl", cx).is_some_and(|row| row.visible()));
+    }
+
+    #[gpui_kit::test]
+    fn clicking_a_row_opens_and_closes_its_calculation(cx: &mut TestAppContext) {
+        let ui = open_2025(cx);
+        assert_eq!(ui.find("line-ko", cx).unwrap().expanded(), Some(false));
+        assert!(ui.find("edit-ko", cx).is_none());
+
+        ui.click("line-ko", cx);
+        assert_eq!(ui.find("line-ko", cx).unwrap().expanded(), Some(true));
+        assert!(
+            ui.find("edit-ko", cx)
+                .is_some_and(|button| button.visible())
+        );
+        assert!(ui.find("delete-ko", cx).is_some());
+
+        ui.click("line-ko", cx);
+        assert!(ui.find("edit-ko", cx).is_none());
+    }
+
+    #[gpui_kit::test]
+    fn edited_value_is_saved_and_recalculated(cx: &mut TestAppContext) {
+        let ui = open_2025(cx);
+        ui.click("line-ko", cx);
+        ui.click("edit-ko", cx);
+
+        let (ticker, value) = ui.read(cx, |page, cx| {
+            let form = &page.editor.as_ref().expect("the editor is open").form;
+            (form.ticker.read(cx).value(), form.value.clone())
+        });
+        assert_eq!(ticker.as_ref(), "KO");
+        assert_eq!(
+            value.read_with(cx, |value, _| value.value()).as_ref(),
+            "100"
+        );
+
+        ui.type_into(&value, "200", cx);
+        ui.click("dialog-submit", cx);
+        ui.wait_loaded(2, cx);
+
+        assert!(ui.read(cx, |page, _| page.editor.is_none()));
+        assert_eq!(
+            stored(&ui, cx),
+            [("aapl".to_owned(), dec!(50)), ("ko".to_owned(), dec!(200))]
+        );
+        assert_eq!(totals(&ui, cx)[0].1, "1\u{202f}000.00 PLN");
+        assert!(
+            ui.events()
+                .iter()
+                .any(|event| matches!(event, Event::YearsChanged))
+        );
+    }
+
+    #[gpui_kit::test]
+    fn selected_records_are_deleted_after_confirming(cx: &mut TestAppContext) {
+        let ui = open_2025(cx);
+        ui.click("select-ko", cx);
+        assert_eq!(ui.find("select-ko", cx).unwrap().checked(), Some(true));
+
+        ui.click("delete-selected", cx);
+        assert_eq!(
+            stored(&ui, cx).len(),
+            2,
+            "nothing is deleted before confirming"
+        );
+        ui.click("dialog-confirm", cx);
+        ui.wait_loaded(2, cx);
+
+        assert_eq!(stored(&ui, cx), [("aapl".to_owned(), dec!(50))]);
+        assert!(ui.read(cx, |page, _| page.table.selected.is_empty()));
+        assert!(ui.find("select-ko", cx).is_none());
+    }
+
+    #[gpui_kit::test]
+    fn filter_narrows_the_table(cx: &mut TestAppContext) {
+        let ui = open_2025(cx);
+        let filter = ui.read(cx, |page, _| page.filter.clone());
+
+        ui.type_into(&filter, "aapl", cx);
+
+        assert_eq!(ui.read(cx, |page, _| page.table.shown()), 1);
+        assert!(ui.find("select-ko", cx).is_none());
+        assert!(ui.find("select-aapl", cx).is_some());
+    }
+
+    #[gpui_kit::test]
+    fn missing_rates_offer_to_download_the_year(cx: &mut TestAppContext) {
+        let ui = open(
+            cx,
+            Some(2024..=2024),
+            vec![paid("ko", on(2025, 5, 15), REVOLUT, dec!(100))],
+            Some(2025),
+        );
+        assert!(ui.read(cx, |page, _| page.missing_rate.is_some()));
+        assert_eq!(ui.read(cx, |page, _| page.missing_rate_year), Some(2025));
+
+        ui.click("missing-import", cx);
+
+        let year = ui.read(cx, |page, cx| {
+            page.nbp_year
+                .as_ref()
+                .map(|input| input.read(cx).value().to_string())
+        });
+        assert_eq!(year.as_deref(), Some("2025"));
+    }
+
+    #[gpui_kit::test]
+    fn empty_year_links_to_the_nearest_year_with_records(cx: &mut TestAppContext) {
+        let ui = open(
+            cx,
+            Some(2024..=2024),
+            vec![paid("ko", on(2024, 5, 15), REVOLUT, dec!(100))],
+            Some(2025),
+        );
+        assert_eq!(ui.read(cx, |page, _| page.other_year), Some((2024, 1)));
+
+        ui.click("other-year", cx);
+        ui.click("empty-import", cx);
+
+        let events = ui.events();
+        assert!(matches!(
+            events[..],
+            [
+                Event::SelectYear(Some(2024)),
+                Event::Navigate(Page::Imports)
+            ]
+        ));
+    }
+}

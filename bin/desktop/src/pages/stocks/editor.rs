@@ -1472,3 +1472,98 @@ impl StocksPage {
             })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use chrono::{TimeZone, Utc};
+    use gpui_kit::TestAppContext;
+    use pitpls_core::{common::Currency, stock::StockAction};
+    use rust_decimal::{Decimal, dec};
+
+    use super::Action;
+    use crate::{
+        components::form,
+        fixtures::{REVOLUT, Ui},
+        pages::stocks::{
+            StocksPage,
+            tests::{open, tab},
+        },
+    };
+
+    fn kept(ui: &Ui<StocksPage>, cx: &TestAppContext) -> Option<Decimal> {
+        ui.read(cx, |page, cx| page.editor.as_ref().unwrap().amount(cx))
+    }
+
+    #[gpui_kit::test]
+    fn imported_total_is_kept_only_while_shares_and_price_stay(cx: &mut TestAppContext) {
+        let ui = open(cx, Some(2025));
+        ui.click(tab(1), cx);
+        ui.click("line-aapl-1", cx);
+        ui.click("edit-aapl-1", cx);
+
+        let (shares, price) = ui.read(cx, |page, _| {
+            let editor = page.editor.as_ref().expect("the editor is open");
+            (editor.shares.clone(), editor.price.clone())
+        });
+        let value = |input: &gpui_kit::Entity<_>, cx: &TestAppContext| {
+            input.read_with(cx, |input: &gpui_kit::component::input::InputState, _| {
+                input.value().to_string()
+            })
+        };
+        assert_eq!(
+            (value(&shares, cx), value(&price, cx)),
+            ("10".to_owned(), "100.025".to_owned())
+        );
+        assert_eq!(kept(&ui, cx), Some(dec!(1000.25)));
+
+        ui.type_into(&price, "100.03", cx);
+        assert_eq!(kept(&ui, cx), None);
+        ui.type_into(&price, "100.025", cx);
+        assert_eq!(kept(&ui, cx), Some(dec!(1000.25)));
+        ui.type_into(&shares, "11", cx);
+        assert_eq!(kept(&ui, cx), None);
+
+        ui.type_into(&shares, "10", cx);
+        ui.type_into(&price, "101", cx);
+        ui.click("dialog-submit", cx);
+        ui.wait_loaded(2, cx);
+
+        let services = ui.read(cx, |page, _| page.context.services.clone());
+        let stored = services
+            .runtime
+            .block_on(services.app.db.stock_repo().get_by_year(Some(2025)))
+            .unwrap();
+        let record = stored.iter().find(|record| record.id == "aapl-1").unwrap();
+        let StockAction::Buy(buy) = &record.action else {
+            panic!("expected a buy");
+        };
+        assert_eq!((buy.price.value, buy.amount), (dec!(101), None));
+    }
+
+    #[gpui_kit::test]
+    fn missing_buy_warning_opens_a_prefilled_buy(cx: &mut TestAppContext) {
+        let ui = open(cx, Some(2025));
+
+        ui.click("warning-action-0", cx);
+
+        let (action, existing, ticker, provider, currency, time) = ui.read(cx, |page, cx| {
+            let editor = page.editor.as_ref().expect("the editor is open");
+            (
+                editor.action,
+                editor.existing.clone(),
+                editor.ticker.read(cx).value().to_string(),
+                editor.provider.read(cx).value().to_string(),
+                editor.price_currency.read(cx).selected_value().copied(),
+                form::picked_time(&editor.time, cx),
+            )
+        });
+        assert!(action == Action::Buy && existing.is_none());
+        assert_eq!((ticker.as_str(), provider.as_str()), ("KO", REVOLUT));
+        assert_eq!(currency, Some(Currency::USD));
+        // Midnight in Warsaw on the day of the first sale.
+        assert_eq!(
+            time,
+            Some(Utc.with_ymd_and_hms(2025, 6, 1, 22, 0, 0).unwrap())
+        );
+    }
+}

@@ -188,6 +188,61 @@ mod tests {
         ));
     }
 
+    fn usd_rate(date: NaiveDate, rate: Decimal) -> Rate {
+        Rate {
+            date,
+            currency: Currency::USD,
+            rate,
+        }
+    }
+
+    #[test]
+    fn rate_is_from_last_day_before() {
+        // Friday 07.03.2025 and Monday 10.03.2025.
+        let provider = NbpRateProvider::new(vec![
+            usd_rate(date(2025, 3, 7), Decimal::from(4)),
+            usd_rate(date(2025, 3, 10), Decimal::from(9)),
+        ]);
+
+        let monday = provider
+            .convert(&usd_amount(2), &date(2025, 3, 10))
+            .unwrap();
+        assert_eq!(
+            (monday.pln, monday.rate, monday.date),
+            (Decimal::from(8), Decimal::from(4), date(2025, 3, 7))
+        );
+
+        let pln = provider
+            .convert(
+                &Amount {
+                    value: Decimal::from(5),
+                    currency: Currency::PLN,
+                },
+                &date(2025, 3, 10),
+            )
+            .unwrap();
+        assert_eq!(
+            (pln.pln, pln.rate, pln.date),
+            (Decimal::from(5), Decimal::ONE, date(2025, 3, 10))
+        );
+    }
+
+    #[test]
+    fn missing_year_names_the_year_without_rates() {
+        // 2025 has rates, but a lookup on 02.01 needs December's.
+        let provider = NbpRateProvider::new(vec![usd_rate(date(2025, 1, 2), Decimal::ONE)]);
+        let error = provider
+            .convert(&usd_amount(1), &date(2025, 1, 2))
+            .unwrap_err();
+        assert_eq!(error.missing_year(), Some(2024));
+
+        let provider = NbpRateProvider::new(vec![usd_rate(date(2023, 6, 1), Decimal::ONE)]);
+        let error = provider
+            .convert(&usd_amount(1), &date(2025, 6, 10))
+            .unwrap_err();
+        assert_eq!(error.missing_year(), Some(2025));
+    }
+
     #[test]
     fn convert_returns_rate_when_lookup_takes_ten_steps() {
         let provider = NbpRateProvider::new(vec![Rate {

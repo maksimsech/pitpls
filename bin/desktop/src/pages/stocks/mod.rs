@@ -1082,3 +1082,77 @@ impl Render for StocksPage {
             )
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use gpui_kit::{AppContext as _, ElementId, TestAppContext};
+
+    use super::{StocksPage, Tab};
+    use crate::fixtures::{self, Ui};
+
+    pub fn open(cx: &mut TestAppContext, year: Option<i32>) -> Ui<StocksPage> {
+        let runtime = fixtures::runtime();
+        let app = runtime.block_on(fixtures::stock_app());
+        let ui = fixtures::open(cx, runtime, app, move |context, window, cx| {
+            cx.new(|cx| StocksPage::new(context, year, None, window, cx))
+        });
+        ui.wait_loaded(1, cx);
+        ui
+    }
+
+    pub fn tab(index: usize) -> ElementId {
+        ElementId::NamedChild(
+            Arc::new(ElementId::from("stock-tabs")),
+            index.to_string().into(),
+        )
+    }
+
+    #[gpui_kit::test]
+    fn tabs_switch_between_sales_records_and_holdings(cx: &mut TestAppContext) {
+        let ui = open(cx, Some(2025));
+        assert!(ui.read(cx, |page, _| matches!(page.tab, Tab::Sales)));
+        assert!(ui.find("line-aapl-s", cx).is_some());
+        assert!(ui.find("line-aapl-1", cx).is_none());
+
+        ui.click(tab(1), cx);
+        assert!(ui.read(cx, |page, _| matches!(page.tab, Tab::Records)));
+        assert!(ui.find("line-aapl-1", cx).is_some());
+
+        ui.click(tab(2), cx);
+        assert!(ui.read(cx, |page, _| matches!(page.tab, Tab::Holdings)));
+        assert!(ui.find("line-aapl-1", cx).is_none());
+    }
+
+    #[gpui_kit::test]
+    fn missing_exchange_warning_opens_the_exchange_dialog(cx: &mut TestAppContext) {
+        let ui = open(cx, Some(2025));
+        assert_eq!(
+            ui.read(cx, |page, _| page.display.as_ref().unwrap().warnings.len()),
+            2
+        );
+        assert!(ui.read(cx, |page, _| page.exchange_dialog.is_none()));
+
+        ui.click("warning-action-1", cx);
+
+        assert!(ui.read(cx, |page, _| page.exchange_dialog.is_some()));
+    }
+
+    #[gpui_kit::test]
+    fn all_years_page_has_no_tax_values_or_warnings(cx: &mut TestAppContext) {
+        let ui = open(cx, None);
+
+        let (portfolio, stats, warnings) = ui.read(cx, |page, _| {
+            let display = page.display.as_ref().unwrap();
+            (
+                display.portfolio.is_some(),
+                display.stats.len(),
+                display.warnings.len(),
+            )
+        });
+        assert!(portfolio);
+        assert_eq!((stats, warnings), (0, 0));
+        assert!(ui.find("warning-action-0", cx).is_none());
+    }
+}

@@ -512,3 +512,55 @@ fn option_skeleton(title: Cow<'static, str>, cx: &App) -> Div {
                 ),
         )
 }
+
+#[cfg(test)]
+mod tests {
+    use gpui_kit::{AppContext as _, ElementId, TestAppContext};
+    use pitpls_core::settings::DividendRounding;
+
+    use super::SettingsPage;
+    use crate::fixtures::{self, Ui};
+
+    fn stored(ui: &Ui<SettingsPage>, cx: &TestAppContext) -> DividendRounding {
+        let services = ui.read(cx, |page, _| page.context.services.clone());
+        services
+            .runtime
+            .block_on(services.app.db.settings_repo().load_dividend_rounding())
+            .unwrap()
+    }
+
+    #[gpui_kit::test]
+    fn picked_rounding_is_saved_or_discarded(cx: &mut TestAppContext) {
+        let runtime = fixtures::runtime();
+        let app = runtime.block_on(fixtures::app(2025..=2025));
+        let ui = fixtures::open(cx, runtime, app, |context, window, cx| {
+            cx.new(|cx| SettingsPage::new(context, window, cx))
+        });
+        ui.wait_loaded(1, cx);
+        assert!(ui.read(cx, |page, _| matches!(
+            page.saved,
+            Some(DividendRounding::SumToGroszy)
+        )));
+
+        ui.click_within("dividend-rounding", ElementId::Integer(1), cx);
+        assert!(ui.read(cx, |page, _| matches!(
+            page.picked,
+            Some(DividendRounding::SumToPayToZlote)
+        )));
+        ui.click("discard-rounding", cx);
+        assert!(ui.read(cx, |page, _| matches!(
+            page.picked,
+            Some(DividendRounding::SumToGroszy)
+        )));
+
+        ui.click_within("dividend-rounding", ElementId::Integer(3), cx);
+        ui.click("save-rounding", cx);
+        ui.wait_until(cx, |cx| {
+            ui.read(cx, |page, _| {
+                matches!(page.saved, Some(DividendRounding::AllToZlote))
+            })
+        });
+
+        assert!(matches!(stored(&ui, cx), DividendRounding::AllToZlote));
+    }
+}

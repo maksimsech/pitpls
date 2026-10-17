@@ -1,9 +1,9 @@
-use std::{path::Path, time::Duration};
+use std::{path::Path, str::FromStr, time::Duration};
 
 use sqlx::{
     SqlitePool,
     migrate::{MigrateError, Migrator},
-    sqlite::{SqliteConnectOptions, SqlitePoolOptions},
+    sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, SqliteSynchronous},
 };
 use thiserror::Error;
 
@@ -16,10 +16,15 @@ use repository::{
 };
 
 pub mod repository;
+#[cfg(test)]
+mod tests;
 
 pub const DB_FILENAME: &str = "pitpls.db";
 
 static MIGRATOR: Migrator = sqlx::migrate!();
+
+// SQLite takes one writer at a time, so more connections only help reads.
+const MAX_CONNECTIONS: u32 = 4;
 
 #[derive(Debug, Error)]
 #[error("{self:?}")]
@@ -44,11 +49,34 @@ impl Database {
             std::fs::create_dir_all(parent).map_err(OpenDatabaseError::CreateDirectory)?;
         }
 
+        // WAL lets reads go on during a write.
         let options = SqliteConnectOptions::new()
             .filename(path)
             .create_if_missing(true)
+            .journal_mode(SqliteJournalMode::Wal)
+            .synchronous(SqliteSynchronous::Normal)
             .busy_timeout(Duration::from_secs(5));
+        let pool = SqlitePoolOptions::new().max_connections(MAX_CONNECTIONS);
+        Self::connect(pool, options).await
+    }
+
+    // An in-memory database is gone when its last connection closes, so the one connection stays.
+    pub async fn open_in_memory() -> Result<Self, OpenDatabaseError> {
+        let options = SqliteConnectOptions::from_str("sqlite::memory:")
+            .map_err(OpenDatabaseError::Connect)?;
         let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .min_connections(1)
+            .idle_timeout(None)
+            .max_lifetime(None);
+        Self::connect(pool, options).await
+    }
+
+    async fn connect(
+        pool: SqlitePoolOptions,
+        options: SqliteConnectOptions,
+    ) -> Result<Self, OpenDatabaseError> {
+        let pool = pool
             .connect_with(options)
             .await
             .map_err(OpenDatabaseError::Connect)?;

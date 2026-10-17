@@ -1,0 +1,11 @@
+Action,Time,ISIN,Ticker,Name,Notes,ID,No. of shares,Price / share,Currency (Price / share),Exchange rate,Result,Currency (Result),Total,Currency (Total),Withholding tax,Currency (Withholding tax),Currency conversion fee,Currency (Currency conversion fee)
+Deposit,2025-01-02 10:00:00,,,,,deposit-1,,,,,,,1000.00,"PLN",,,,
+Market buy,2025-03-03 14:30:00,US0378331005,AAPL,"Apple",,buy-1,2.0000000000,150.1250000000,USD,4.01000000,,,300.25,"USD",,,,
+Limit buy,2025-03-04 15:00:00.123,US0378331005,AAPL,"Apple",,buy-2,0.3333333000,30.0000000000,USD,4.01000000,,,10.00,"USD",,,,
+Market buy,2025-03-05 15:00:00,US5949181045,MSFT,"Microsoft",,buy-3,1.0000000000,400.0000000000,USD,4.01000000,,,1606.12,"PLN",,,2.40,"PLN"
+Market buy,2025-03-06 15:00:00,US0000000009,AAPL,"Apple",,buy-4,1.0000000000,150.0000000000,USD,4.01000000,,,150.50,"USD",,,,
+Deposit,2025-04-01 10:00:00,,,,"Free Shares Promotion",deposit-2,,,,,,,12.34,"EUR",,,,
+Market buy,2025-04-01 10:00:00,DE0007164600,SAP,"SAP",,free-1,0.1000000000,123.4000000000,EUR,1.00000000,,,12.34,"EUR",,,0.02,"EUR"
+Market buy,2025-04-01 10:00:00,DE0007164600,SAP,"SAP",,paid-1,0.1000000000,123.4000000000,EUR,1.00000000,,,12.34,"EUR",,,,
+Dividend adjustment,2025-05-01 10:00:00,US0378331005,AAPL,"Apple",,adjustment-1,,,,,,,0.10,"USD",,,,
+Market sell,2025-06-02 15:00:00,US0378331005,AAPL,"Apple",,sell-1,1.0000000000,160.0000000000,USD,4.00000000,10.00,"USD",160.00,"USD",,,0.24,"EUR"

@@ -628,7 +628,8 @@ fn record_row<V: TableHost>(
     window: &Window,
     cx: &mut Context<V>,
 ) -> Div {
-    let row = v_flex().child(record_line(host, which, index, layout, focus, window, cx));
+    let row =
+        v_flex().child(record_line(host, which, index, layout, focus, window, cx).test_support());
     let table = host.table(which);
     let display = &table.state.rows[index];
     if !table.expanded.contains(display.id.as_ref()) {
@@ -1003,4 +1004,88 @@ fn chevron(open: bool, cx: &App) -> Icon {
 
 fn ring(focus: Option<&FocusHandle>, window: &Window) -> bool {
     window.last_input_was_keyboard() && focus.is_some_and(|focus| focus.is_focused(window))
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashSet;
+
+    use chrono::{DateTime, TimeZone, Utc};
+
+    use super::{RecordTable, RowDisplay};
+
+    fn row(id: &str, time: DateTime<Utc>, search: &str) -> RowDisplay {
+        RowDisplay {
+            id: id.to_owned().into(),
+            time,
+            search: search.to_owned(),
+            ..Default::default()
+        }
+    }
+
+    fn table(rows: Vec<RowDisplay>) -> RecordTable {
+        let mut table = RecordTable::new("test", Vec::new(), true, None);
+        table.set_rows(rows);
+        table
+    }
+
+    fn groups(table: &RecordTable, query: &str, with_year: bool) -> Vec<(String, Vec<usize>)> {
+        table
+            .month_groups(query, with_year)
+            .into_iter()
+            .map(|group| (group.title.to_string(), group.records))
+            .collect()
+    }
+
+    #[test]
+    fn rows_group_by_warsaw_month_and_filter() {
+        let table = table(vec![
+            // 01.02 00:30 in Warsaw.
+            row(
+                "feb",
+                Utc.with_ymd_and_hms(2025, 1, 31, 23, 30, 0).unwrap(),
+                "ko",
+            ),
+            row(
+                "jan",
+                Utc.with_ymd_and_hms(2025, 1, 31, 22, 30, 0).unwrap(),
+                "aapl",
+            ),
+            row(
+                "early",
+                Utc.with_ymd_and_hms(2025, 1, 5, 12, 0, 0).unwrap(),
+                "ko",
+            ),
+        ]);
+
+        assert_eq!(
+            groups(&table, "", false),
+            [
+                ("February".to_owned(), vec![0]),
+                ("January".to_owned(), vec![1, 2]),
+            ]
+        );
+        assert_eq!(
+            groups(&table, "ko", true),
+            [
+                ("February 2025".to_owned(), vec![0]),
+                ("January 2025".to_owned(), vec![2]),
+            ]
+        );
+    }
+
+    #[test]
+    fn new_rows_drop_selection_and_expansion_of_records_gone() {
+        let at = Utc.with_ymd_and_hms(2025, 3, 3, 12, 0, 0).unwrap();
+        let mut table = table(vec![row("a", at, ""), row("b", at, "")]);
+        table.selected.extend(["a".to_owned(), "b".to_owned()]);
+        table.toggle_expanded("a");
+        table.toggle_expanded("b");
+
+        assert!(!table.set_rows(vec![row("a", at, ""), row("b", at, "")]));
+        assert!(table.set_rows(vec![row("b", at, "")]));
+
+        let kept = HashSet::from(["b".to_owned()]);
+        assert_eq!((&table.selected, &table.expanded), (&kept, &kept));
+    }
 }

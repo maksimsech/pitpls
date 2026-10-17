@@ -1041,3 +1041,337 @@ fn step(
         )
         .children(button.map(|button| div().flex_shrink_0().child(button)))
 }
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use gpui_kit::{AppContext as _, ElementId, TestAppContext};
+    use pitpls_app::{App, use_case::tax::load_tax_summary};
+    use pitpls_core::{
+        common::Country,
+        crypto::{Action, Crypto},
+        dividend::Dividend,
+        interest::Interest,
+    };
+    use rust_decimal::dec;
+    use tokio::runtime::Runtime;
+
+    use super::{Forms, HomePage, Totals, form_id};
+    use crate::{
+        fixtures::{self, Event, REVOLUT, T212, Ui, buy, eur, on, sell, usd},
+        format::DisplayText,
+        navigation::Page,
+    };
+
+    async fn foreign_and_crypto(app: &App) {
+        app.db
+            .dividend_repo()
+            .insert(&Dividend {
+                id: "dividend".to_owned(),
+                time: on(2025, 5, 15),
+                ticker: "KO".to_owned(),
+                value: usd(dec!(100)),
+                tax_paid: usd(dec!(15)),
+                country: Country::USA,
+                provider: REVOLUT.to_owned(),
+            })
+            .await
+            .unwrap();
+        app.db
+            .interest_repo()
+            .insert(&Interest {
+                id: "interest".to_owned(),
+                time: on(2025, 5, 15),
+                value: usd(dec!(10)),
+                provider: T212.to_owned(),
+            })
+            .await
+            .unwrap();
+        app.db
+            .crypto_repo()
+            .insert(&Crypto {
+                id: "crypto".to_owned(),
+                value: usd(dec!(50)),
+                fee: usd(dec!(1)),
+                action: Action::FiatSell,
+                time: on(2025, 5, 15),
+                provider: "Coinbase".to_owned(),
+            })
+            .await
+            .unwrap();
+    }
+
+    // A US profit, a German loss and a sale without an exchange.
+    async fn stock_sales(app: &App) {
+        fixtures::listed(app, "AAPL", T212, "XNAS").await;
+        fixtures::listed(app, "VWCE", T212, "XETR").await;
+        fixtures::add_stocks(
+            app,
+            &[
+                buy(
+                    "aapl-1",
+                    on(2025, 2, 3),
+                    "AAPL",
+                    T212,
+                    dec!(10),
+                    usd(dec!(100)),
+                ),
+                sell(
+                    "aapl-s",
+                    on(2025, 5, 5),
+                    "AAPL",
+                    T212,
+                    dec!(10),
+                    usd(dec!(110)),
+                ),
+                buy(
+                    "vwce-1",
+                    on(2025, 2, 3),
+                    "VWCE",
+                    T212,
+                    dec!(10),
+                    eur(dec!(100)),
+                ),
+                sell(
+                    "vwce-s",
+                    on(2025, 5, 5),
+                    "VWCE",
+                    T212,
+                    dec!(10),
+                    eur(dec!(90)),
+                ),
+                buy(
+                    "ko-1",
+                    on(2025, 2, 3),
+                    "KO",
+                    REVOLUT,
+                    dec!(1),
+                    usd(dec!(50)),
+                ),
+                sell(
+                    "ko-s",
+                    on(2025, 5, 5),
+                    "KO",
+                    REVOLUT,
+                    dec!(1),
+                    usd(dec!(60)),
+                ),
+            ],
+        )
+        .await;
+    }
+
+    fn fields(fields: &[(&'static str, DisplayText)]) -> Vec<(&'static str, String)> {
+        fields
+            .iter()
+            .map(|(key, value)| (*key, value.full.to_string()))
+            .collect()
+    }
+
+    #[tokio::test]
+    async fn tax_year_values_go_to_their_form_fields() {
+        let app = fixtures::app(2025..=2025).await;
+        foreign_and_crypto(&app).await;
+        stock_sales(&app).await;
+
+        let forms = Forms::new(&load_tax_summary(&app, 2025).await.unwrap());
+
+        assert_eq!(
+            fields(&forms.shares),
+            [
+                ("tax.income_c22", "8\u{202f}690.00 PLN".to_owned()),
+                ("tax.costs_c23", "8\u{202f}700.00 PLN".to_owned()),
+            ]
+        );
+        assert_eq!(
+            fields(&forms.foreign),
+            [
+                ("tax.income_i65", "440.00 PLN".to_owned()),
+                ("tax.to_pay_g47", "83.60 PLN".to_owned()),
+                ("tax.paid_g48", "60.00 PLN".to_owned()),
+            ]
+        );
+        assert_eq!(forms.difference.full.as_ref(), "23.60 PLN");
+        assert_eq!(
+            fields(&forms.crypto),
+            [
+                ("tax.income_e36", "200.00 PLN".to_owned()),
+                ("tax.costs_e37", "4.00 PLN".to_owned()),
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn pit_zg_has_fields_only_for_countries_with_income() {
+        let app = fixtures::app(2025..=2025).await;
+        stock_sales(&app).await;
+
+        let forms = Forms::new(&load_tax_summary(&app, 2025).await.unwrap());
+
+        let pit_zg = forms.pit_zg.unwrap();
+        let [germany, usa] = &pit_zg.countries[..] else {
+            panic!("expected Germany and the US");
+        };
+        assert_eq!(
+            (germany.code.as_ref(), germany.detail.as_ref()),
+            ("DE", "XETRA · 1 sale")
+        );
+        assert!(germany.loss && germany.fields.is_none());
+        assert_eq!(germany.profit.full.as_ref(), "\u{2212}450.00 PLN");
+        assert!(!usa.loss);
+        assert_eq!(
+            fields(usa.fields.as_ref().unwrap()),
+            [
+                ("tax.income_zg29", "400.00 PLN".to_owned()),
+                ("tax.paid_abroad_zg30", "0.00 PLN".to_owned()),
+            ]
+        );
+        assert_eq!(
+            pit_zg.no_exchange.as_deref(),
+            Some("KO has no exchange, so its sales aren't in PIT/ZG.")
+        );
+    }
+
+    #[tokio::test]
+    async fn no_pit_zg_without_stock_sales() {
+        let app = fixtures::app(2025..=2025).await;
+        foreign_and_crypto(&app).await;
+
+        let forms = Forms::new(&load_tax_summary(&app, 2025).await.unwrap());
+
+        assert!(forms.pit_zg.is_none());
+    }
+
+    fn open(cx: &mut TestAppContext, runtime: Arc<Runtime>, app: App) -> Ui<HomePage> {
+        let ui = fixtures::open(cx, runtime, app, |context, window, cx| {
+            cx.new(|cx| HomePage::new(context, Some(2025), None, window, cx))
+        });
+        ui.wait_loaded(1, cx);
+        ui
+    }
+
+    // Dividends, interest, crypto and stock sales in 2025.
+    fn open_2025(cx: &mut TestAppContext) -> Ui<HomePage> {
+        let runtime = fixtures::runtime();
+        let app = runtime.block_on(async {
+            let app = fixtures::app(2025..=2025).await;
+            foreign_and_crypto(&app).await;
+            stock_sales(&app).await;
+            app
+        });
+        open(cx, runtime, app)
+    }
+
+    fn copy(key: &'static str) -> ElementId {
+        ElementId::NamedChild(Arc::new(form_id(key).into()), "copy".into())
+    }
+
+    #[gpui_kit::test]
+    fn first_run_points_to_rates_and_imports(cx: &mut TestAppContext) {
+        let runtime = fixtures::runtime();
+        let app = runtime.block_on(fixtures::app_without_rates());
+        let ui = open(cx, runtime, app);
+
+        assert!(ui.read(cx, |page, _| page.overview.as_ref().unwrap().first_run));
+        assert!(ui.find("first-run-rates", cx).is_some());
+        ui.click("first-run-imports", cx);
+
+        assert!(matches!(ui.events()[..], [Event::Navigate(Page::Imports)]));
+    }
+
+    #[gpui_kit::test]
+    fn form_fields_copy_their_values_in_polish_format(cx: &mut TestAppContext) {
+        let ui = open_2025(cx);
+
+        for (key, value) in [
+            ("tax.income_c22", "8690,00"),
+            ("tax.costs_c23", "8700,00"),
+            ("tax.income_i65", "440,00"),
+            ("tax.to_pay_g47", "83,60"),
+            ("tax.paid_g48", "60,00"),
+            ("form-difference", "23,60"),
+            ("tax.income_e36", "200,00"),
+            ("tax.costs_e37", "4,00"),
+        ] {
+            let id = if key == "form-difference" {
+                ElementId::NamedChild(Arc::new(key.into()), "copy".into())
+            } else {
+                copy(key)
+            };
+            let button = ui
+                .find(id, cx)
+                .unwrap_or_else(|| panic!("no copy button for {key}"));
+            assert_eq!(
+                button.label(),
+                Some(format!("Copy {value}").as_str()),
+                "{key}"
+            );
+        }
+
+        ui.click(copy("tax.income_c22"), cx);
+        let copied = cx.read_from_clipboard().and_then(|item| item.text());
+        assert_eq!(copied.as_deref(), Some("8690,00"));
+    }
+
+    #[gpui_kit::test]
+    fn record_links_open_the_pages_with_the_records(cx: &mut TestAppContext) {
+        let ui = open_2025(cx);
+        ui.click("foreign-records", cx);
+        ui.click("stock-records", cx);
+        assert!(matches!(
+            ui.events()[..],
+            [
+                Event::Navigate(Page::Dividends),
+                Event::Navigate(Page::Stocks)
+            ]
+        ));
+
+        // With interest only, the foreign income link opens Interests.
+        let runtime = fixtures::runtime();
+        let app = runtime.block_on(async {
+            let app = fixtures::app(2025..=2025).await;
+            app.db
+                .interest_repo()
+                .insert(&Interest {
+                    id: "interest".to_owned(),
+                    time: on(2025, 5, 15),
+                    value: usd(dec!(10)),
+                    provider: T212.to_owned(),
+                })
+                .await
+                .unwrap();
+            app
+        });
+        let ui = open(cx, runtime, app);
+        ui.click("foreign-records", cx);
+        assert!(matches!(
+            ui.events()[..],
+            [Event::Navigate(Page::Interests)]
+        ));
+    }
+
+    #[gpui_kit::test]
+    fn missing_rates_offer_to_download_the_year(cx: &mut TestAppContext) {
+        let runtime = fixtures::runtime();
+        let app = runtime.block_on(async {
+            let app = fixtures::app(2024..=2024).await;
+            foreign_and_crypto(&app).await;
+            app
+        });
+        let ui = open(cx, runtime, app);
+        assert!(ui.read(cx, |page, _| matches!(
+            page.overview.as_ref().unwrap().totals,
+            Totals::MissingRate(_, Some(2025))
+        )));
+
+        ui.click("missing-import", cx);
+
+        let year = ui.read(cx, |page, cx| {
+            page.nbp_year
+                .as_ref()
+                .map(|input| input.read(cx).value().to_string())
+        });
+        assert_eq!(year.as_deref(), Some("2025"));
+    }
+}

@@ -522,6 +522,130 @@ mod tests {
         assert_first_interest(&interests[0]);
     }
 
+    fn stocks() -> ImportData {
+        parse(include_str!("../../tests/fixtures/t212/stocks.csv").to_owned())
+            .expect("fixture should parse")
+    }
+
+    fn trade(data: &ImportData, id: &str) -> (Decimal, Amount, Option<Decimal>, Amount) {
+        let stock = data
+            .stocks
+            .iter()
+            .find(|stock| stock.id == id)
+            .unwrap_or_else(|| panic!("no stock {id}"));
+        match &stock.action {
+            StockAction::Buy(buy) => (buy.number, buy.price, buy.amount, buy.fee),
+            StockAction::Sell(sell) => (sell.number, sell.price, sell.amount, sell.fee),
+            StockAction::Split(_) => panic!("{id} is a split"),
+        }
+    }
+
+    fn amount(value: &str, currency: Currency) -> Amount {
+        Amount {
+            value: Decimal::from_str(value).unwrap(),
+            currency,
+        }
+    }
+
+    fn values(amount: Amount) -> (Decimal, Currency) {
+        (amount.value, amount.currency)
+    }
+
+    #[test]
+    fn parses_buys_and_sells() {
+        let data = stocks();
+
+        let ids = data
+            .stocks
+            .iter()
+            .map(|stock| stock.id.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            ids,
+            [
+                "buy-1", "buy-2", "buy-3", "buy-4", "free-1", "paid-1", "sell-1"
+            ]
+        );
+        assert!(
+            data.stocks
+                .iter()
+                .all(|stock| stock.provider() == Some(PROVIDER))
+        );
+
+        let buy = &data.stocks[0];
+        assert_eq!(buy.ticker, "AAPL");
+        assert_eq!(
+            buy.time,
+            Utc.with_ymd_and_hms(2025, 3, 3, 14, 30, 0).unwrap()
+        );
+        let (shares, price, _, fee) = trade(&data, "buy-1");
+        assert_eq!(shares, Decimal::from(2));
+        assert_eq!(values(price), values(amount("150.125", Currency::USD)));
+        assert_eq!(values(fee), values(amount("0", Currency::USD)));
+
+        let (_, _, _, fee) = trade(&data, "buy-3");
+        assert_eq!(values(fee), values(amount("2.40", Currency::PLN)));
+
+        let sell = data
+            .stocks
+            .iter()
+            .find(|stock| stock.id == "sell-1")
+            .unwrap();
+        assert!(matches!(sell.action, StockAction::Sell(_)));
+        let (shares, price, total, fee) = trade(&data, "sell-1");
+        assert_eq!((shares, price.value), (Decimal::ONE, Decimal::from(160)));
+        assert_eq!(total, Some(Decimal::from(160)));
+        assert_eq!(values(fee), values(amount("0.24", Currency::EUR)));
+    }
+
+    #[test]
+    fn total_is_kept_only_in_the_price_currency_within_a_cent() {
+        let data = stocks();
+        let total = |id: &str| trade(&data, id).2;
+
+        assert_eq!(total("buy-1"), Some(Decimal::from_str("300.25").unwrap()));
+        // 0.3333333 × 30 = 9.999999.
+        assert_eq!(total("buy-2"), Some(Decimal::from(10)));
+        assert_eq!(total("buy-3"), None);
+        assert_eq!(total("buy-4"), None);
+    }
+
+    #[test]
+    fn free_shares_promotion_costs_nothing_once() {
+        let data = stocks();
+
+        let (shares, price, total, fee) = trade(&data, "free-1");
+        assert_eq!(shares, Decimal::from_str("0.1").unwrap());
+        assert_eq!(values(price), values(amount("0", Currency::EUR)));
+        assert_eq!(total, None);
+        assert_eq!(values(fee), values(amount("0", Currency::EUR)));
+
+        let (_, price, total, _) = trade(&data, "paid-1");
+        assert_eq!(price.value, Decimal::from_str("123.4").unwrap());
+        assert_eq!(total, Some(Decimal::from_str("12.34").unwrap()));
+    }
+
+    #[test]
+    fn counts_skipped_adjustments_and_keeps_first_isin() {
+        let data = stocks();
+
+        assert_eq!(data.skipped_dividend_adjustments, 1);
+        assert!(data.dividends.is_empty());
+        let isins = data
+            .instruments
+            .iter()
+            .map(|instrument| (instrument.ticker.as_str(), instrument.isin.as_str()))
+            .collect::<Vec<_>>();
+        assert_eq!(
+            isins,
+            [
+                ("AAPL", "US0378331005"),
+                ("MSFT", "US5949181045"),
+                ("SAP", "DE0007164600"),
+            ]
+        );
+    }
+
     fn assert_first_dividend(dividend: &Dividend) {
         let expected_value = Decimal::from_str("34.8301912300").unwrap()
             * Decimal::from_str("0.204000").unwrap()
