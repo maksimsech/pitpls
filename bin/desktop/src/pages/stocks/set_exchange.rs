@@ -31,6 +31,7 @@ pub enum ExchangeDialogEvent {
 pub struct ExchangeDialog {
     services: Services,
     title: SharedString,
+    description: &'static str,
     rows: Vec<(ExchangeRow, Entity<PickerState>)>,
     catalog: Entity<Catalog>,
     filled: Option<usize>,
@@ -45,6 +46,7 @@ impl ExchangeDialog {
         services: Services,
         catalog: Entity<Catalog>,
         title: impl Into<SharedString>,
+        description: &'static str,
         rows: Vec<ExchangeRow>,
         window: &mut Window,
         cx: &mut App,
@@ -60,6 +62,7 @@ impl ExchangeDialog {
             Self {
                 services,
                 title: title.into(),
+                description,
                 rows,
                 catalog,
                 filled: None,
@@ -188,7 +191,7 @@ impl ExchangeDialog {
                 div()
                     .pb(px(14.))
                     .text_color(p.muted)
-                    .child(t!("exchange.description")),
+                    .child(t!(self.description)),
             )
             .children(rows)
             .when_some(refresh_error, |body, error| {

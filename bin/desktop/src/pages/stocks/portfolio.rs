@@ -51,7 +51,8 @@ struct ClosedPosition {
 pub struct PortfolioDisplay {
     pub positions: Vec<PositionRow>,
     cost: DisplayText,
-    realized: DisplayText,
+    profit: DisplayText,
+    pub realized: super::realized::Display,
     instruments: usize,
     sales: usize,
     first_sale: Option<i32>,
@@ -134,7 +135,8 @@ impl PortfolioDisplay {
         Self {
             positions,
             cost: pln(data.positions.iter().map(|position| position.cost).sum()),
-            realized: pln(data.replay.sales.iter().map(|sale| sale.profit).sum()),
+            profit: pln(data.replay.sales.iter().map(|sale| sale.profit).sum()),
+            realized: super::realized::Display::new(data),
             instruments: data.realized_instruments.len(),
             sales: data.replay.sales.len(),
             first_sale: data.realized_years.first().map(|row| row.year),
@@ -162,7 +164,7 @@ impl PortfolioDisplay {
             .child(value::plain_stat(
                 "realized-profit",
                 t!("stocks.realized_profit"),
-                &self.realized,
+                &self.profit,
                 Some("PLN".into()),
                 None,
                 cx,

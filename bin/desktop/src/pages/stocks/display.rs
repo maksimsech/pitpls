@@ -11,8 +11,8 @@ use pitpls_app::use_case::stock::{Listing, Listings, StockData};
 use pitpls_core::{
     common::{Amount, Currency},
     stock::{
-        CalculatedSale, Holding, LotMatch, SplitStep, Stock, StockAction, StockBuy, StockSell,
-        StockSplit, StockTaxData, Warning,
+        CalculatedSale, Holding, LotMatch, OpenLot, Replay, SplitStep, Stock, StockAction,
+        StockBuy, StockSell, StockSplit, StockTaxData, Warning,
     },
     time,
 };
@@ -109,30 +109,44 @@ pub struct StockDisplay {
 
 impl StockDisplay {
     pub fn all_years(data: &pitpls_app::use_case::portfolio::StockPortfolio) -> Self {
+        let replay = ReplayView::from(&data.replay);
+        let mut stocks = data.records.clone();
+        stocks.sort_by(|a, b| (b.time, &b.id).cmp(&(a.time, &a.id)));
+        let mut histories = HashMap::new();
+        let records = stocks
+            .iter()
+            .map(|record| {
+                let keys = history_keys(record, replay.holdings);
+                let row = record_row(record, &keys, &replay, &data.listings, None);
+                histories.insert(row.id.clone(), keys);
+                row
+            })
+            .collect();
         Self {
             portfolio: Some(super::portfolio::PortfolioDisplay::new(data)),
             stats: Vec::new(),
             warnings: Vec::new(),
             sales: Vec::new(),
             profits: Vec::new(),
-            records: Vec::new(),
-            stocks: data.records.clone(),
-            actions: Vec::new(),
+            records,
+            actions: stocks.iter().map(action).collect(),
+            stocks,
             holdings: Vec::new(),
             sold_out: Vec::new(),
-            histories: HashMap::new(),
+            histories,
         }
     }
 
     pub fn new(data: &StockData, year: i32) -> Self {
         let tax = &data.tax;
         let listings = &data.listings;
+        let replay = ReplayView::from(tax);
         let mut histories = HashMap::new();
         let sales = tax
             .sales
             .iter()
             .map(|sale| {
-                let row = sale_row(sale, holding_after(tax, sale), listings);
+                let row = sale_row(sale, holding_after(&tax.holdings, sale), listings);
                 histories.insert(
                     row.id.clone(),
                     vec![InstrumentKey::new(&sale.ticker, &sale.provider)],
@@ -144,8 +158,8 @@ impl StockDisplay {
             .records
             .iter()
             .map(|record| {
-                let keys = history_keys(record, tax);
-                let row = record_row(record, &keys, tax, listings, year);
+                let keys = history_keys(record, &tax.holdings);
+                let row = record_row(record, &keys, &replay, listings, Some(year));
                 histories.insert(row.id.clone(), keys);
                 row
             })
@@ -170,19 +184,18 @@ impl StockDisplay {
     }
 }
 
-fn holding_after<'a>(tax: &'a StockTaxData, sale: &CalculatedSale) -> Option<&'a Holding> {
-    tax.holdings
+fn holding_after<'a>(holdings: &'a [Holding], sale: &CalculatedSale) -> Option<&'a Holding> {
+    holdings
         .iter()
         .find(|holding| holding.record_id == sale.id && holding.provider == sale.provider)
 }
 
 /// A split has a history in every provider that held or traded the ticker by
 /// then.
-fn history_keys(record: &Stock, tax: &StockTaxData) -> Vec<InstrumentKey> {
+fn history_keys(record: &Stock, holdings: &[Holding]) -> Vec<InstrumentKey> {
     match record.provider() {
         Some(provider) => vec![InstrumentKey::new(&record.ticker, provider)],
-        None => tax
-            .holdings
+        None => holdings
             .iter()
             .filter(|holding| holding.record_id == record.id)
             .map(|holding| InstrumentKey::new(&record.ticker, &holding.provider))
@@ -338,7 +351,7 @@ fn sale_row(sale: &CalculatedSale, holding: Option<&Holding>, listings: &Listing
         id: sale.id.clone().into(),
         time: sale.time,
         cells,
-        steps: sale_steps(sale, listing),
+        steps: sale_steps(sale, listing, true),
         lots: Some(fifo_table(sale, holding, Some(link.into()))),
         flagged: if exchange.is_none() { vec![2] } else { vec![] },
         search: search(
@@ -362,7 +375,7 @@ fn search(ticker: &str, provider: &str, exchange: Option<&SharedString>, action:
     format!("{ticker}\n{provider}\n{exchange}\n{action}").to_lowercase()
 }
 
-fn sale_steps(sale: &CalculatedSale, listing: Option<&Listing>) -> Vec<Step> {
+fn sale_steps(sale: &CalculatedSale, listing: Option<&Listing>, tax: bool) -> Vec<Step> {
     let settled = if sale.settlement_worked_out {
         t!(
             "sale.settled_worked_out",
@@ -414,14 +427,16 @@ fn sale_steps(sale: &CalculatedSale, listing: Option<&Listing>) -> Vec<Step> {
             vec![pln(sale.costs)],
             EntryStyle::Strong,
         ),
-        StepLine::Caption(
+    ]);
+    if tax {
+        costs.push(StepLine::Caption(
             match counts_in {
                 Some(year) => t!("sale.adds_to_costs_in", year = year),
                 None => t!("sale.adds_to_costs"),
             }
             .into(),
-        ),
-    ]);
+        ));
+    }
 
     let result = if sale.profit < Decimal::ZERO {
         t!("home.loss")
@@ -429,15 +444,19 @@ fn sale_steps(sale: &CalculatedSale, listing: Option<&Listing>) -> Vec<Step> {
         t!("home.profit")
     };
     let tax_paid_pln = money(sale.tax_paid_pln).full;
-    let pit_zg = match (sale.country, listing) {
-        (Some(country), Some(listing)) => t!(
-            "sale.pit_zg",
-            country = country,
-            exchange = listing.name,
-            tax = tax_paid_pln
-        ),
-        _ if sale.tax_paid.is_some() => t!("sale.pit_zg_no_country_tax", tax = tax_paid_pln),
-        _ => t!("sale.pit_zg_no_country"),
+    let result_caption = if !tax {
+        t!("stocks.counts_in_year", year = sale.settlement_date.year())
+    } else {
+        match (sale.country, listing) {
+            (Some(country), Some(listing)) => t!(
+                "sale.pit_zg",
+                country = country,
+                exchange = listing.name,
+                tax = tax_paid_pln
+            ),
+            _ if sale.tax_paid.is_some() => t!("sale.pit_zg_no_country_tax", tax = tax_paid_pln),
+            _ => t!("sale.pit_zg_no_country"),
+        }
     };
     let adds_to_income = match counts_in {
         Some(year) => t!("sale.adds_to_income_in", year = year),
@@ -453,7 +472,14 @@ fn sale_steps(sale: &CalculatedSale, listing: Option<&Listing>) -> Vec<Step> {
             sale.nbp_rate,
         )),
         StepLine::Result(vec![pln(sale.income)]),
-        StepLine::Caption(format!("{settled} · {nbp} · {adds_to_income}").into()),
+        StepLine::Caption(
+            if tax {
+                format!("{settled} · {nbp} · {adds_to_income}")
+            } else {
+                format!("{settled} · {nbp}")
+            }
+            .into(),
+        ),
     ];
     if sale.from_total {
         income.push(StepLine::Caption(
@@ -479,15 +505,45 @@ fn sale_steps(sale: &CalculatedSale, listing: Option<&Listing>) -> Vec<Step> {
                     money(sale.costs),
                 ]),
                 StepLine::Result(vec![DisplayText::plain(result), pln(sale.profit.abs())]),
-                StepLine::Caption(pit_zg.into()),
+                StepLine::Caption(result_caption.into()),
             ],
         },
     ]
 }
 
-// The year's sales and the late-December ones that settle, and count, in the next year.
-fn all_sales(tax: &StockTaxData) -> impl Iterator<Item = &CalculatedSale> {
-    tax.sales.iter().chain(&tax.next_year_sales)
+struct ReplayView<'a> {
+    sales: &'a [CalculatedSale],
+    next_year_sales: &'a [CalculatedSale],
+    open_lots: &'a [OpenLot],
+    holdings: &'a [Holding],
+}
+
+impl<'a> From<&'a StockTaxData> for ReplayView<'a> {
+    fn from(tax: &'a StockTaxData) -> Self {
+        Self {
+            sales: &tax.sales,
+            next_year_sales: &tax.next_year_sales,
+            open_lots: &tax.open_lots,
+            holdings: &tax.holdings,
+        }
+    }
+}
+
+impl<'a> From<&'a Replay> for ReplayView<'a> {
+    fn from(replay: &'a Replay) -> Self {
+        Self {
+            sales: &replay.sales,
+            next_year_sales: &[],
+            open_lots: &replay.open_lots,
+            holdings: &replay.holdings,
+        }
+    }
+}
+
+impl ReplayView<'_> {
+    fn all_sales(&self) -> impl Iterator<Item = &CalculatedSale> {
+        self.sales.iter().chain(self.next_year_sales)
+    }
 }
 
 // A sale counts in the year it settles, so one traded in late December can count in the next.
@@ -612,9 +668,9 @@ fn split_note(split: &SplitStep) -> SharedString {
 fn record_row(
     record: &Stock,
     histories: &[InstrumentKey],
-    tax: &StockTaxData,
+    replay: &ReplayView<'_>,
     listings: &Listings,
-    year: i32,
+    year: Option<i32>,
 ) -> RowDisplay {
     let action = action(record);
     let dash = || DisplayText::plain("—");
@@ -638,7 +694,11 @@ fn record_row(
                 day(record.time),
                 DisplayText::plain(action.title()),
                 DisplayText::plain(record.ticker.clone()),
-                exchange_cell(exchange.as_ref()),
+                if year.is_none() && exchange.is_none() {
+                    dash()
+                } else {
+                    exchange_cell(exchange.as_ref())
+                },
                 DisplayText::plain(provider.clone()),
                 shares(*number),
                 amount(*price),
@@ -646,15 +706,15 @@ fn record_row(
                 amount(*fee),
             ];
             let (steps, lots) = match &record.action {
-                StockAction::Buy(buy) => (buy_steps(record, buy, tax, year), None),
-                _ => match all_sales(tax).find(|sale| sale.id == record.id) {
+                StockAction::Buy(buy) => (buy_steps(record, buy, replay, year), None),
+                _ => match replay.all_sales().find(|sale| sale.id == record.id) {
                     Some(sale) => {
                         let listing = listings
                             .get(&sale.ticker, &sale.provider)
                             .filter(|_| sale.exchange.is_some());
                         (
-                            sale_steps(sale, listing),
-                            Some(fifo_table(sale, holding_after(tax, sale), None)),
+                            sale_steps(sale, listing, year.is_some()),
+                            Some(fifo_table(sale, holding_after(replay.holdings, sale), None)),
                         )
                     }
                     None => (vec![], None),
@@ -674,10 +734,10 @@ fn record_row(
                 dash(),
                 dash(),
             ];
-            (cells, None, split_steps(record, split, tax), None)
+            (cells, None, split_steps(record, split, replay), None)
         }
     };
-    let flagged = if exchange.is_none() && action != Action::Split {
+    let flagged = if year.is_some() && exchange.is_none() && action != Action::Split {
         vec![3]
     } else {
         vec![]
@@ -717,10 +777,14 @@ struct LotView<'a> {
     splits: &'a [SplitStep],
 }
 
-/// A buy's lot shows up in the sales that took from it and, if any of it is
-/// left, among the open lots; all of them fall in the buy's year.
-fn buy_steps(record: &Stock, buy: &StockBuy, tax: &StockTaxData, year: i32) -> Vec<Step> {
-    let taken = all_sales(tax)
+fn buy_steps(
+    record: &Stock,
+    buy: &StockBuy,
+    replay: &ReplayView<'_>,
+    year: Option<i32>,
+) -> Vec<Step> {
+    let taken = replay
+        .all_sales()
         .flat_map(|sale| {
             sale.matches
                 .iter()
@@ -728,7 +792,7 @@ fn buy_steps(record: &Stock, buy: &StockBuy, tax: &StockTaxData, year: i32) -> V
                 .map(move |lot| (sale, lot))
         })
         .collect::<Vec<_>>();
-    let open = tax.open_lots.iter().find(|lot| lot.buy_id == record.id);
+    let open = replay.open_lots.iter().find(|lot| lot.buy_id == record.id);
     let lot = match (open, taken.last()) {
         (Some(open), _) => Some(LotView {
             value: open.lot_value,
@@ -824,12 +888,15 @@ fn buy_steps(record: &Stock, buy: &StockBuy, tax: &StockTaxData, year: i32) -> V
     events.sort_by_key(|(time, _)| *time);
     let open_shares = open.map_or(Decimal::ZERO, |lot| lot.open);
     let mut open_value = vec![shares(open_shares)];
-    if !open_shares.is_zero() {
+    if let Some(year) = year.filter(|_| !open_shares.is_zero()) {
         open_value.push(DisplayText::plain(t!("sale.moves_into", year = year + 1)));
     }
     let mut lines = events.into_iter().map(|(_, line)| line).collect::<Vec<_>>();
     lines.push(entry(
-        t!("sale.open_on", year = year),
+        match year {
+            Some(year) => t!("sale.open_on", year = year),
+            None => t!("stocks.open_today"),
+        },
         open_value,
         EntryStyle::Strong,
     ));
@@ -874,11 +941,9 @@ fn conversion_fee(fee: Amount, rate: Decimal) -> Vec<DisplayText> {
     vec![amount(fee), DisplayText::plain(format!("× {rate}"))]
 }
 
-/// A lot the split changed is open on 31.12, or taken by a later sale of the
-/// year.
-fn split_steps(record: &Stock, split: &StockSplit, tax: &StockTaxData) -> Vec<Step> {
+fn split_steps(record: &Stock, split: &StockSplit, replay: &ReplayView<'_>) -> Vec<Step> {
     let mut changed: BTreeMap<(&str, DateTime<Utc>, &str), &SplitStep> = BTreeMap::new();
-    let taken = all_sales(tax).flat_map(|sale| {
+    let taken = replay.all_sales().flat_map(|sale| {
         sale.matches.iter().map(move |lot| {
             (
                 sale.provider.as_str(),
@@ -888,7 +953,7 @@ fn split_steps(record: &Stock, split: &StockSplit, tax: &StockTaxData) -> Vec<St
             )
         })
     });
-    let open = tax.open_lots.iter().map(|lot| {
+    let open = replay.open_lots.iter().map(|lot| {
         (
             lot.provider.as_str(),
             lot.bought,
@@ -991,7 +1056,7 @@ fn holdings(tax: &StockTaxData, listings: &Listings) -> (Vec<HoldingBlock>, Vec<
     blocks.sort_by(|a, b| (&a.ticker, &a.provider).cmp(&(&b.ticker, &b.provider)));
 
     let mut last_sales: BTreeMap<(&str, &str), &CalculatedSale> = BTreeMap::new();
-    for sale in all_sales(tax) {
+    for sale in tax.sales.iter().chain(&tax.next_year_sales) {
         last_sales.insert((&sale.ticker, &sale.provider), sale);
     }
     let sold_out = last_sales

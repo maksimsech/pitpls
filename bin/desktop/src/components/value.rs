@@ -160,6 +160,14 @@ pub fn reveal_full(element: Stateful<Div>, value: &DisplayText) -> AnyElement {
         .into_any_element()
 }
 
+pub fn reveal(element: Stateful<Div>, value: &DisplayText, copy: bool) -> AnyElement {
+    if copy {
+        reveal_full(element, value)
+    } else {
+        full_tooltip(element, value).into_any_element()
+    }
+}
+
 pub fn full_tooltip(element: Stateful<Div>, value: &DisplayText) -> Stateful<Div> {
     element.when(value.more, |element| {
         let full = value.full.clone();

@@ -1028,6 +1028,63 @@ home:
     pl: Podsumowanie pokazuje każde pole formularza z przyciskiem kopiowania, gotowe do przeniesienia na stronę urzędu skarbowego.
 
 stocks:
+  exchange_hint:
+    en: Saved with %{ticker} for all its records
+    pl: Zapisywana przy %{ticker} dla wszystkich jego wpisów
+  exchange_description:
+    en: The exchange is saved on the instrument, so every record of it uses the same one.
+    pl: Giełda jest zapisywana przy instrumencie, więc każdy jego wpis używa tej samej.
+  realized_by_year:
+    en: Realized profit by year
+    pl: Zrealizowany zysk według lat
+  realized_by_year_caption:
+    en: sale income − costs, PLN, before tax
+    pl: przychód ze sprzedaży − koszty, PLN, przed podatkiem
+  shares_sold:
+    en: Shares sold
+    pl: Sprzedane akcje
+  income_pln:
+    en: Income, PLN
+    pl: Przychód, PLN
+  costs_pln:
+    en: Costs, PLN
+    pl: Koszty, PLN
+  now:
+    en: Now
+    pl: Teraz
+  held:
+    en: Held
+    pl: Posiadane
+  closed:
+    en: Sold out
+    pl: Wyprzedane
+  first_last_sale:
+    en: First sale %{first} · last %{last}
+    pl: Pierwsza sprzedaż %{first} · ostatnia %{last}
+  all:
+    en: All
+    pl: Razem
+  filtered:
+    en: Filtered
+    pl: Po filtrze
+  no_realized:
+    en: No sales yet.
+    pl: Nie ma jeszcze sprzedaży.
+  no_realized_match:
+    en: No realized instruments match “%{query}”.
+    pl: Brak instrumentów ze sprzedażami pasujących do „%{query}”.
+  realized_note:
+    en: The same FIFO as the tax view, run once over every record. Each sale's own steps open in its tax year (Sales tab there).
+    pl: To samo FIFO co w widoku podatkowym, obliczone raz dla wszystkich wpisów. Obliczenia każdej sprzedaży znajdziesz w jej roku podatkowym, na karcie Sprzedaże.
+  all_records_note:
+    en: Same table as a tax year, every year at once. Opening a buy shows its whole lot, later sales included; in a tax year it stops at 31.12.
+    pl: Ta sama tabela co w roku podatkowym, ale ze wszystkich lat. Po otwarciu zakupu zobaczysz całą historię partii, także późniejsze sprzedaże; w roku podatkowym kończy się ona na 31.12.
+  counts_in_year:
+    en: Counts in tax year %{year}
+    pl: Rozliczenie w roku podatkowym %{year}
+  open_today:
+    en: Open today
+    pl: Otwarte na dziś
   portfolio_cost:
     en: Holdings cost
     pl: Koszt pozycji

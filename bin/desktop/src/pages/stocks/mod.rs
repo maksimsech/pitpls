@@ -4,6 +4,7 @@ mod exchange;
 mod history;
 mod holdings;
 mod portfolio;
+mod realized;
 mod set_exchange;
 
 use crate::{
@@ -77,6 +78,7 @@ pub struct StocksPage {
     records: RecordTable,
     holdings: holdings::Layout,
     portfolio: portfolio::Layout,
+    realized: realized::Layout,
     filter: Entity<InputState>,
     query: String,
     page_scroll: ScrollHandle,
@@ -107,10 +109,15 @@ fn sale_columns() -> Vec<RecordColumn> {
     ]
 }
 
-fn record_columns() -> Vec<RecordColumn> {
+fn record_columns(all_years: bool) -> Vec<RecordColumn> {
     vec![
         RecordColumn::new("column.date", CellStyle::Time, 96., 50.),
-        RecordColumn::new("column.action", CellStyle::Tag, 64., 56.),
+        RecordColumn::new(
+            "column.action",
+            CellStyle::Tag,
+            if all_years { 80. } else { 64. },
+            if all_years { 80. } else { 56. },
+        ),
         RecordColumn::new("column.ticker", CellStyle::Strong, 64., 56.),
         RecordColumn::new("column.exchange", CellStyle::Muted, 80., 64.).optional(),
         RecordColumn::grow("column.provider", CellStyle::Muted),
@@ -166,9 +173,10 @@ impl StocksPage {
             },
             display: None,
             sales: RecordTable::new("stock-sales", sale_columns(), false, width),
-            records: RecordTable::new("stock-records", record_columns(), true, width),
+            records: RecordTable::new("stock-records", record_columns(year.is_none()), true, width),
             holdings: holdings::Layout::new(width),
             portfolio: portfolio::Layout::default(),
+            realized: realized::Layout::new(width),
             filter,
             query: String::new(),
             page_scroll: ScrollHandle::default(),
@@ -215,7 +223,8 @@ impl StocksPage {
 
     fn width(&self) -> Option<Pixels> {
         match self.tab {
-            Tab::Sales | Tab::Realized => self.sales.state.viewport_width,
+            Tab::Sales => self.sales.state.viewport_width,
+            Tab::Realized => self.realized.width,
             Tab::Records => self.records.state.viewport_width,
             Tab::Holdings => self.holdings.width,
         }
@@ -229,7 +238,8 @@ impl StocksPage {
         let width = self.width();
         self.tab = tab;
         match tab {
-            Tab::Sales | Tab::Realized => self.sales.state.viewport_width = width,
+            Tab::Sales => self.sales.state.viewport_width = width,
+            Tab::Realized => self.realized.width = width,
             Tab::Records => self.records.state.viewport_width = width,
             Tab::Holdings => self.holdings.width = width,
         }
@@ -290,7 +300,7 @@ impl StocksPage {
         }
         self.sales.set_groups(sales);
 
-        let mut records = self.records.month_groups(&self.query, false);
+        let mut records = self.records.month_groups(&self.query, self.year.is_none());
         for group in &mut records {
             group.count = record_count(group.records.len() as u32).into();
             let count = |action| {
@@ -451,7 +461,11 @@ impl StocksPage {
         let narrow = self.width().is_some_and(|width| width < px(NARROW));
         let (shown, total) = match self.tab {
             Tab::Sales => (self.sales.shown(), self.sales.state.rows.len()),
-            Tab::Realized => (0, 0),
+            Tab::Realized => self
+                .display
+                .as_ref()
+                .and_then(|display| display.portfolio.as_ref())
+                .map_or((0, 0), |portfolio| portfolio.realized.counts(&self.query)),
             Tab::Records => (self.records.shown(), self.records.state.rows.len()),
             Tab::Holdings => {
                 self.display
@@ -549,6 +563,7 @@ impl StocksPage {
             self.context.services.clone(),
             self.catalog.clone(),
             t!("stocks.set_exchange"),
+            "exchange.description",
             rows,
             window,
             cx,
@@ -674,7 +689,22 @@ impl StocksPage {
         if self.year.is_none() {
             return match self.tab {
                 Tab::Holdings => self.portfolio_holdings(cx),
-                _ => div().into_any_element(),
+                Tab::Realized => self.realized_view(cx),
+                Tab::Records => {
+                    let empty = no_match(&self.query, cx);
+                    v_flex()
+                        .flex_1()
+                        .min_h_0()
+                        .child(table(self, Table::Records, empty, window, cx))
+                        .child(
+                            notice::info(t!("stocks.all_records_note"), cx)
+                                .mx(px(20.))
+                                .my(px(12.))
+                                .flex_shrink_0(),
+                        )
+                        .into_any_element()
+                }
+                Tab::Sales => div().into_any_element(),
             };
         }
         let year = self.year.unwrap_or_default();
@@ -907,6 +937,10 @@ impl TableHost for StocksPage {
 
     fn editable(&self) -> bool {
         true
+    }
+
+    fn copyable(&self) -> bool {
+        self.year.is_some()
     }
 
     fn edit(&mut self, id: &str, window: &mut Window, cx: &mut Context<Self>) {

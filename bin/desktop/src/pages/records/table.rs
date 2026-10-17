@@ -108,8 +108,8 @@ impl RecordTable {
             if !row.search.contains(query) {
                 continue;
             }
-            let local = time::local(row.time);
-            let key = (local.year(), local.month());
+            let date = time::tax_date(row.time);
+            let key = (date.year(), date.month());
             match groups.last_mut() {
                 Some(group) if group.key == key => group.records.push(index),
                 _ => groups.push(MonthGroup {
@@ -204,6 +204,9 @@ pub trait TableHost: Render {
     fn deleting(&self) -> &HashSet<String>;
     fn page_focus(&self) -> &FocusHandle;
     fn editable(&self) -> bool;
+    fn copyable(&self) -> bool {
+        true
+    }
     fn edit(&mut self, id: &str, window: &mut Window, cx: &mut Context<Self>);
     fn delete_one(&mut self, id: &str, window: &mut Window, cx: &mut Context<Self>);
     /// `index` is the link's place in `RowDisplay::links`; a lot table's link
@@ -423,7 +426,7 @@ fn month_row<V: TableHost>(
                                 .when_some(*label, |part, label| {
                                     part.child(format!("{} ", t!(label)))
                                 })
-                                .child(value::reveal_full(
+                                .child(value::reveal(
                                     div()
                                         .id(SharedString::from(format!(
                                             "subtotal-{}-{}-{index}",
@@ -431,6 +434,7 @@ fn month_row<V: TableHost>(
                                         )))
                                         .child(value::text(value, false, true, cx)),
                                     value,
+                                    host.copyable(),
                                 ))
                         }),
                 ),
@@ -509,15 +513,20 @@ fn record_line<V: TableHost>(
             layout
                 .shown(display.cells.iter().zip(&table.columns).enumerate())
                 .map(|((column, (value, kind)), width)| {
-                    cell(
-                        SharedString::from(format!("cell-{id}-{column}")),
-                        value,
-                        kind,
-                        width,
-                        layout.compact,
-                        display.flagged.contains(&column),
-                        cx,
-                    )
+                    let id = SharedString::from(format!("cell-{id}-{column}"));
+                    if host.copyable() {
+                        cell(
+                            id,
+                            value,
+                            kind,
+                            width,
+                            layout.compact,
+                            display.flagged.contains(&column),
+                            cx,
+                        )
+                    } else {
+                        records::plain_cell(id, value, kind, width, layout.compact, cx)
+                    }
                 }),
         )
         .child(control(layout.frame[2]).justify_end().map(|slot| {
@@ -699,6 +708,7 @@ fn record_row<V: TableHost>(
         links,
         lots_link,
         edit.into_iter().chain([delete.into_any_element()]),
+        host.copyable(),
         cx,
     ))
 }

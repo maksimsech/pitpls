@@ -476,20 +476,21 @@ pub struct RowDisplay {
     pub links: Vec<SharedString>,
 }
 
-fn parts(id: impl Into<ElementId>, parts: &[DisplayText], cx: &App) -> Stateful<Div> {
+fn parts(id: impl Into<ElementId>, parts: &[DisplayText], copy: bool, cx: &App) -> Stateful<Div> {
     h_flex()
         .id(id)
         .flex_wrap()
         .gap_x(px(4.))
         .children(parts.iter().enumerate().map(|(index, part)| {
-            value::reveal_full(
+            value::reveal(
                 div().id(index).child(value::text(part, false, true, cx)),
                 part,
+                copy,
             )
         }))
 }
 
-fn step(index: usize, step: &Step, cx: &App) -> Stateful<Div> {
+fn step(index: usize, step: &Step, copy: bool, cx: &App) -> Stateful<Div> {
     let p = *palette(cx);
     v_flex()
         .id(("step", index))
@@ -521,11 +522,11 @@ fn step(index: usize, step: &Step, cx: &App) -> Stateful<Div> {
         .children(step.lines.iter().enumerate().map(|(index, line)| {
             let id = ("line", index);
             match line {
-                StepLine::Formula(formula) => parts(id, formula, cx)
+                StepLine::Formula(formula) => parts(id, formula, copy, cx)
                     .text_color(p.muted)
                     .font_features(tabular_digits())
                     .into_any_element(),
-                StepLine::Result(result) => parts(id, result, cx)
+                StepLine::Result(result) => parts(id, result, copy, cx)
                     .text_size(px(16.))
                     .font_medium()
                     .font_features(tabular_digits())
@@ -544,11 +545,13 @@ fn step(index: usize, step: &Step, cx: &App) -> Stateful<Div> {
                     .justify_between()
                     .items_baseline()
                     .gap(px(12.))
+                    .when(!copy, |entry| entry.flex_wrap().gap_y_0())
                     .line_height(px(22.))
                     .when(*style == EntryStyle::Strong, |entry| entry.font_semibold())
                     .child(
                         div()
                             .min_w_0()
+                            .when(!copy, |label| label.flex_shrink_0().max_w_full())
                             .text_color(match style {
                                 EntryStyle::Normal => p.muted,
                                 EntryStyle::Strong => p.text,
@@ -557,8 +560,9 @@ fn step(index: usize, step: &Step, cx: &App) -> Stateful<Div> {
                             .child(label.clone()),
                     )
                     .child(
-                        parts(id, value, cx)
+                        parts(id, value, copy, cx)
                             .flex_shrink_0()
+                            .when(!copy, |value| value.max_w_full().flex_grow(1.))
                             .justify_end()
                             .font_features(tabular_digits()),
                     )
@@ -614,13 +618,14 @@ pub fn preview_band(preview: &Result<Preview, SharedString>, cx: &App) -> Div {
                 .gap_x(px(4.))
                 .text_color(p.muted)
                 .children(preview.formula.iter().enumerate().map(|(index, part)| {
-                    preview_value(("preview-formula", index), part, div(), cx)
+                    preview_value(("preview-formula", index), part, div(), true, cx)
                 }))
                 .child("=")
                 .child(preview_value(
                     "preview-value",
                     &preview.value,
                     div().font_semibold().text_color(p.text),
+                    true,
                     cx,
                 )),
         )
@@ -637,6 +642,7 @@ pub fn preview_band(preview: &Result<Preview, SharedString>, cx: &App) -> Div {
                             *label,
                             result,
                             div().text_color(p.text),
+                            true,
                             cx,
                         ))
                     })),
@@ -650,11 +656,13 @@ pub fn preview_value(
     id: impl Into<ElementId>,
     display: &DisplayText,
     style: Div,
+    copy: bool,
     cx: &App,
 ) -> AnyElement {
-    value::reveal_full(
+    value::reveal(
         style.id(id).child(value::text(display, false, true, cx)),
         display,
+        copy,
     )
 }
 
@@ -757,7 +765,13 @@ pub fn link(id: impl Into<ElementId>, label: SharedString, cx: &App) -> Button {
         .child(Icon::new(IconName::ChevronRight).size(px(13.)))
 }
 
-fn lot_table(table: &LotTable, layout: &TableLayout, link: Option<AnyElement>, cx: &App) -> Div {
+fn lot_table(
+    table: &LotTable,
+    layout: &TableLayout,
+    link: Option<AnyElement>,
+    copy: bool,
+    cx: &App,
+) -> Div {
     let p = *palette(cx);
     let headings = lot_row()
         .h(px(28.))
@@ -797,7 +811,7 @@ fn lot_table(table: &LotTable, layout: &TableLayout, link: Option<AnyElement>, c
                     .justify_end()
                     .items_baseline()
                     .into_any_element(),
-                LotCell::Shares | LotCell::Taken | LotCell::Number => value::reveal_full(
+                LotCell::Shares | LotCell::Taken | LotCell::Number => value::reveal(
                     slot.id(id)
                         .when(column.cell == LotCell::Shares, |slot| {
                             slot.text_color(p.muted)
@@ -805,6 +819,7 @@ fn lot_table(table: &LotTable, layout: &TableLayout, link: Option<AnyElement>, c
                         .when(column.cell == LotCell::Taken, |slot| slot.font_semibold())
                         .child(value::text(value, true, true, cx)),
                     value,
+                    copy,
                 ),
             }
         });
@@ -869,6 +884,7 @@ pub fn details(
     links: Vec<AnyElement>,
     lots_link: Option<AnyElement>,
     actions: impl IntoIterator<Item = AnyElement>,
+    copy: bool,
     cx: &App,
 ) -> Div {
     let p = *palette(cx);
@@ -879,7 +895,8 @@ pub fn details(
             .ml(indent)
             .mr(px(PADDING))
             .children(steps.iter().enumerate().map(|(index, item)| {
-                step(index, item, cx).when(index > 0, |step| step.border_t_1().border_color(p.line))
+                step(index, item, copy, cx)
+                    .when(index > 0, |step| step.border_t_1().border_color(p.line))
             }))
     } else {
         // Stretched columns, so the dividers run the full height.
@@ -888,7 +905,7 @@ pub fn details(
             .ml(indent)
             .mr(px(PADDING))
             .children(steps.iter().enumerate().map(|(index, item)| {
-                step(index, item, cx)
+                step(index, item, copy, cx)
                     .flex_1()
                     .pr(px(20.))
                     .when(index > 0, |step| {
@@ -910,7 +927,7 @@ pub fn details(
                 div()
                     .ml(indent)
                     .mr(px(PADDING))
-                    .child(lot_table(lots, layout, lots_link, cx)),
+                    .child(lot_table(lots, layout, lots_link, copy, cx)),
             )
         })
         .child(
@@ -930,10 +947,12 @@ pub fn details(
                         .font_family(cx.theme().mono_font_family.clone())
                         .child(SharedString::from(record_id.to_owned())),
                 )
-                .child(CopyButton::new(
-                    SharedString::from(format!("copy-id-{record_id}")),
-                    record_id.to_owned(),
-                ))
+                .when(copy, |footer| {
+                    footer.child(CopyButton::new(
+                        SharedString::from(format!("copy-id-{record_id}")),
+                        record_id.to_owned(),
+                    ))
+                })
                 .child(record_time(time, layout.stacked, cx))
                 .when(!links.is_empty(), |footer| {
                     footer.child(h_flex().ml(px(6.)).gap(px(2.)).children(links))

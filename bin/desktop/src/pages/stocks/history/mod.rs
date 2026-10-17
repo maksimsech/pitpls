@@ -104,6 +104,11 @@ impl HistoryView {
             self.context.services.clone(),
             self.catalog.clone(),
             t!("history.edit_instrument"),
+            if self.year.is_some() {
+                "exchange.description"
+            } else {
+                "stocks.exchange_description"
+            },
             vec![display.instrument.clone()],
             window,
             cx,

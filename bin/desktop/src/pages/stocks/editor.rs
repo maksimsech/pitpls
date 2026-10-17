@@ -509,7 +509,7 @@ impl StockEditor {
         )
     }
 
-    fn exchange_hint(&self, catalog: &Catalog, cx: &App) -> Result<String, String> {
+    fn exchange_hint(&self, catalog: &Catalog, tax: bool, cx: &App) -> Result<String, String> {
         if let Some(error) = &catalog.refresh_error {
             return Err(error.to_string());
         }
@@ -519,7 +519,12 @@ impl StockEditor {
         } else {
             ticker
         };
-        Ok(t!("editor.exchange_hint", ticker = ticker).into_owned())
+        let key = if tax {
+            "editor.exchange_hint"
+        } else {
+            "stocks.exchange_hint"
+        };
+        Ok(t!(key, ticker = ticker).into_owned())
     }
 
     fn time_hint(&self, cx: &App) -> String {
@@ -726,7 +731,7 @@ fn fifo_line(sale: &CalculatedSale) -> String {
 }
 
 impl PreviewView {
-    fn new(preview: &StockPreview, draft: &Draft) -> Self {
+    fn new(preview: &StockPreview, draft: &Draft, tax: bool) -> Self {
         match preview {
             StockPreview::Sell { sale, holding } => {
                 let result_label = if sale.profit < Decimal::ZERO {
@@ -762,7 +767,7 @@ impl PreviewView {
                         result(
                             t!("editor.tax_abroad"),
                             pln(sale.tax_paid_pln),
-                            Some(tax_note),
+                            tax.then_some(tax_note),
                         ),
                     ],
                     caption: sale.from_total.then(|| {
@@ -995,13 +1000,14 @@ impl StocksPage {
         if draft == editor.draft {
             return;
         }
+        let tax = self.year.is_some();
         let task = draft.clone().map(|draft| {
             self.context.services.run(
                 window,
                 cx,
                 move |app| async move {
                     let preview = stock::preview_stock(&app, draft.stock(), draft.exchange).await?;
-                    Ok(PreviewView::new(&preview, &draft))
+                    Ok(PreviewView::new(&preview, &draft, tax))
                 },
                 |this, result, _, cx| {
                     if let Some(editor) = &mut this.editor {
@@ -1152,7 +1158,7 @@ impl StocksPage {
                 body.child(form::error(error.text(), cx).mt(px(12.)))
             })
             .when_some(editor.preview.as_ref(), |body, preview| {
-                body.child(Self::preview_band(editor, preview, cx).mt(px(16.)))
+                body.child(Self::preview_band(editor, preview, self.year.is_some(), cx).mt(px(16.)))
             });
         dialog::editor(
             self,
@@ -1222,10 +1228,12 @@ impl StocksPage {
 
     fn trade_fields(&self, editor: &StockEditor, busy: bool, cx: &mut Context<Self>) -> Div {
         let p = *palette(cx);
-        let exchange_hint = match editor.exchange_hint(self.catalog.read(cx), cx) {
-            Ok(lead) => form::hint_ending(lead, "PIT/ZG", cx),
-            Err(error) => form::hint(error, cx).text_color(p.warning),
-        };
+        let exchange_hint =
+            match editor.exchange_hint(self.catalog.read(cx), self.year.is_some(), cx) {
+                Ok(lead) if self.year.is_some() => form::hint_ending(lead, "PIT/ZG", cx),
+                Ok(lead) => form::hint(lead, cx),
+                Err(error) => form::hint(error, cx).text_color(p.warning),
+            };
         let exchange = form::field(
             t!("field.exchange"),
             div().w_full().h_8().flex_shrink_0().child(exchange::picker(
@@ -1382,6 +1390,7 @@ impl StocksPage {
     fn preview_band(
         editor: &StockEditor,
         preview: &Result<PreviewView, SharedString>,
+        copy: bool,
         cx: &App,
     ) -> Div {
         let p = *palette(cx);
@@ -1411,13 +1420,14 @@ impl StocksPage {
                         .gap_x(px(4.))
                         .text_color(p.muted)
                         .children(preview.formula.iter().enumerate().map(|(index, part)| {
-                            preview_value(("stock-preview-formula", index), part, div(), cx)
+                            preview_value(("stock-preview-formula", index), part, div(), copy, cx)
                         }))
                         .child("=")
                         .child(preview_value(
                             "stock-preview-value",
                             value,
                             div().font_semibold().text_color(p.text),
+                            copy,
                             cx,
                         ))
                         .child(div().text_color(p.faint).child(t!(*unit))),
@@ -1450,6 +1460,7 @@ impl StocksPage {
                                     ("stock-preview-result", index),
                                     &result.value,
                                     div().text_color(p.text),
+                                    copy,
                                     cx,
                                 ))
                                 .children(result.note.clone())
